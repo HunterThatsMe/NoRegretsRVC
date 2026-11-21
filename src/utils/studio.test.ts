@@ -166,6 +166,8 @@ test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samp
   assert.match(nbFile.content, /Preset Settings\\"\), open=False, visible=False/);
   assert.match(nbFile.content, /NoRegretsRVC Live Monitor/);
   assert.match(nbFile.content, /Lowest Loss/);
+  assert.match(nbFile.content, /deque\(maxlen=25\)/);
+  assert.doesNotMatch(nbFile.content, /placeholder=\\"Enter model name/);
   assert.doesNotMatch(nbFile.content, /core_backup\.py/);
   assert.doesNotMatch(nbFile.content, /filebrowser/i);
   assert.doesNotMatch(nbFile.content, /hf_token/);

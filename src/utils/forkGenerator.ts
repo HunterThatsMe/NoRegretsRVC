@@ -794,6 +794,10 @@ export function generateKaggleNotebookJson(
 
   installLines.push(
     ``,
+    `# Reset previously patched Applio UI files so re-runs stay clean`,
+    `if (repo_dir / ".git").is_dir():`,
+    `    subprocess.run(["git", "-C", str(repo_dir), "checkout", "--", "tabs", "assets/app_links.py", "assets/app_shell.py"], check=False)`,
+    ``,
     `# Write ${BRAND_NAME} custom WebUI, locked red theme, and UI overrides`,
     `(repo_dir / "assets" / "themes").mkdir(parents=True, exist_ok=True)`,
     `(repo_dir / "assets" / "themes" / "NoRegretsRVC.py").write_bytes(base64.b64decode("${themeB64}"))`,
@@ -811,10 +815,10 @@ export function generateKaggleNotebookJson(
     `train_tab_py = repo_dir / "tabs" / "train" / "train.py"`,
     `if train_tab_py.is_file():`,
     `    _tr = train_tab_py.read_text(encoding="utf-8", errors="replace")`,
-    `    _tr = _tr.replace('label=i18n("Sampling Rate"),\\n                    value="40000",', 'label=i18n("Sampling Rate"),\\n                    value="32000",')`,
+    `    _tr = _tr.replace('choices=["32000", "40000", "48000"],\\n                    value="40000",', 'choices=["32000", "40000", "48000"],\\n                    value="32000",')`,
     `    _tr = _tr.replace("batch_size = gr.Slider(\\n                1,\\n                64,\\n                4,", "batch_size = gr.Slider(\\n                1,\\n                64,\\n                2,")`,
     `    _tr = _tr.replace("save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                10,", "save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                5,")`,
-    `    _tr = _tr.replace('value="my-project",', 'value="", placeholder="Enter model name (e.g. VocalModel-32k)",')`,
+    `    _tr = _tr.replace('value="my-project",', 'value="",')`,
     `    train_tab_py.write_text(_tr, encoding="utf-8")`,
     ...(turboEnabled
       ? [
@@ -1038,7 +1042,7 @@ export function generateKaggleNotebookJson(
     ``,
     `session_links = []`,
     `milestones = deque(maxlen=6)`,
-    `errors = deque(maxlen=8)`,
+    `errors = deque(maxlen=25)`,
     `epoch_rows = deque(maxlen=15)`,
     `seen_epochs = set()`,
     `live_mid_epoch = ""`,
@@ -1157,7 +1161,7 @@ export function generateKaggleNotebookJson(
     `        if ERROR_START_RE.search(line):`,
     `            errors.append(line)`,
     `            if "Traceback" in line:`,
-    `                tb_lines_seen = 10`,
+    `                tb_lines_seen = 25`,
     `            render_monitor("Error")`,
     `            continue`,
     `        if MILESTONE_RE.search(line):`,
