@@ -1,0 +1,487 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { APP_VERSION, DEFAULT_PROJECTS, DEFAULT_STUDIO_STATE, SAMPLE_TRAINING_LOG } from '../data/defaults.ts';
+import { FREE_SAMPLES } from '../data/freeSamples.ts';
+import {
+  buildBlendCliCommand,
+  buildInferCliCommand,
+  buildTrainPipelineCommands,
+  estimateKaggleSurvival,
+  estimateT4VramUsage,
+  estimateTrainingCompletion,
+  extractPthFilenameFromUrl,
+  inferMatchingDUrl,
+  isHuggingFaceRepoUrl,
+  isPretrainedZipUrl,
+  resolveCustomPretrainedPath,
+  validateForkConfig,
+} from './rvcTuning.ts';
+import { createTranslator, resolveLocale } from './i18n.ts';
+import { analyzeTrainingZones, parseTrainingNotebookOrLog } from './logParser.ts';
+import { generateForkBundle, generateTurboTrainerPython } from './forkGenerator.ts';
+import {
+  applyBalancedAudioCleanup,
+  clampCleanupStrength,
+  computeCleanupParameters,
+  encodePcm16Wav,
+} from './audioCleanup.ts';
+import { buildZipArchive } from './zipBuilder.ts';
+
+test('default project uses empty model name, 32000 SR, batch 2, save every 5, total 200, fp32, and required checkbox defaults', () => {
+  const def = DEFAULT_PROJECTS[0];
+  assert.equal(APP_VERSION, '0.0.0');
+  assert.equal(DEFAULT_STUDIO_STATE.convertAudio.volumeEnvelope, 1);
+  assert.equal(DEFAULT_STUDIO_STATE.convertAudio.protect, 0.5);
+  assert.equal(DEFAULT_STUDIO_STATE.ttsDefaults.protect, 0.5);
+  assert.equal(def.name, '');
+  assert.equal(def.samplingRate, '32000');
+  assert.equal(def.batchSize, 2);
+  assert.equal(def.saveEveryEpoch, 5);
+  assert.equal(def.totalEpoch, 200);
+  assert.equal(def.silentTrainingFiles, 0);
+  assert.equal(def.fp16, false);
+  assert.equal(def.truncateSilenceEnabled, false);
+  assert.equal(def.noiseFilter, false);
+  assert.equal(def.loudnessNorm, false);
+  assert.equal(def.saveOnlyLatest, true);
+  assert.equal(def.saveEveryWeights, true);
+  assert.equal(def.pretrained, true);
+  assert.equal(def.freshTraining, false);
+  assert.equal(def.cacheDatasetGpu, false);
+  assert.equal(def.checkpointing, false);
+  assert.equal(def.shutdownAfterFinish, false);
+  assert.equal(def.customPretrained, false);
+  assert.equal(def.agreedTerms, true);
+  assert.equal(DEFAULT_STUDIO_STATE.convertAudio.agreedTerms, true);
+  assert.equal(DEFAULT_STUDIO_STATE.generalSettings.listFilterEnabled, false);
+  assert.equal(DEFAULT_STUDIO_STATE.trainingSettings.precision, 'fp32');
+  assert.equal(DEFAULT_STUDIO_STATE.forkConfig.turboTraining, true);
+});
+
+test('estimateT4VramUsage flags Risk of OOM for oversized RefineGAN FP32 batch and Optimal for default', () => {
+  const heavy = {
+    ...DEFAULT_PROJECTS[0],
+    samplingRate: '48000' as const,
+    vocoder: 'RefineGAN' as const,
+    batchSize: 16,
+    fp16: false,
+  };
+  const est = estimateT4VramUsage(heavy);
+  assert.equal(est.fitStatus, 'Risk of OOM');
+  assert.ok(est.estimatedVramGb > 14.5);
+
+  const defEst = estimateT4VramUsage(DEFAULT_PROJECTS[0]);
+  assert.equal(defEst.fitStatus, 'Optimal');
+});
+
+test('buildTrainPipelineCommands emits truncate silence & loudness flags when toggled on', () => {
+  const withToggles = {
+    ...DEFAULT_PROJECTS[0],
+    name: 'TestVoice',
+    datasetPath: '/kaggle/input/datasets/user/ds',
+    truncateSilenceEnabled: true,
+    silenceDurationMs: 450,
+    loudnessNorm: true,
+  };
+  const trainCmd = buildTrainPipelineCommands(withToggles);
+  assert.match(trainCmd, /--truncate_silence True --silence_duration_ms 450/);
+  assert.match(trainCmd, /--process_effects True --loudness_target -14/);
+  assert.match(trainCmd, /--fp16 False/);
+
+  const inferCmd = buildInferCliCommand(DEFAULT_STUDIO_STATE.convertAudio);
+  assert.match(inferCmd, /python core\.py infer/);
+  assert.match(inferCmd, /--sid 0 --f0_method rmvpe --embedder_model contentvec/);
+  assert.match(inferCmd, /--protect 0\.5 --volume_envelope 1/);
+  assert.match(inferCmd, /--proposed_pitch False/);
+
+  const enhancedInferCmd = buildInferCliCommand({
+    ...DEFAULT_STUDIO_STATE.convertAudio,
+    proposedPitch: true,
+    noiseReduction: true,
+    noiseReductionStrength: 18,
+    formantShiftEnabled: true,
+    formantQuefrency: 1.5,
+    formantTimbre: 1.2,
+  });
+  assert.match(enhancedInferCmd, /--proposed_pitch True/);
+  assert.match(enhancedInferCmd, /--clean_audio True --clean_strength 18/);
+  assert.match(enhancedInferCmd, /--formant_shifting True --formant_qfrency 1\.5 --formant_timbre 1\.2/);
+
+  const blendCmd = buildBlendCliCommand(DEFAULT_STUDIO_STATE.blender);
+  assert.match(blendCmd, /python core\.py model_blend/);
+});
+
+test('validateForkConfig catches missing Horizon ID and invalid customRepoUrl', () => {
+  const issues = validateForkConfig({
+    ...DEFAULT_STUDIO_STATE.forkConfig,
+    tunnelMode: 'Horizon',
+    horizonId: '',
+    customRepoUrl: 'not-a-github-url',
+  });
+  assert.ok(issues.some((i) => i.field === 'horizonId' && i.severity === 'warning'));
+  assert.ok(issues.some((i) => i.field === 'customRepoUrl' && i.severity === 'warning'));
+});
+
+test('parseTrainingNotebookOrLog parses raw training stdout, live tqdm bar, and ipynb JSON accurately', () => {
+  const rawResult = parseTrainingNotebookOrLog(SAMPLE_TRAINING_LOG);
+  assert.ok(rawResult);
+  assert.equal(rawResult.speakerName, 'StudioDemo');
+  assert.equal(rawResult.segmentCount, 411);
+  assert.equal(rawResult.epochsCompleted, 51);
+  assert.equal(rawResult.lowestLoss, 14.616);
+
+  const liveLog = [
+    'DemoVoice | epoch=1 | step=107 | time=17:02:47 | training_speed=0:00:54',
+    'DemoVoice | epoch=2 | step=214 | time=17:03:39 | training_speed=0:00:51 | lowest_value=29.003 (epoch 1 and step 104)',
+    'epoch=3 | step=296 |  77%|█████████▏  | batch=82/107 [00:39<00:11,  2.17it/s]',
+  ].join('\n');
+  const parsedLive = parseTrainingNotebookOrLog(liveLog);
+  assert.ok(parsedLive);
+  assert.equal(parsedLive.points.length, 2);
+  assert.equal(parsedLive.lowestLossEpoch, 1);
+  assert.ok(parsedLive.liveProgress);
+  assert.equal(parsedLive.liveProgress?.epoch, 3);
+  assert.equal(parsedLive.liveProgress?.step, 296);
+  assert.equal(parsedLive.liveProgress?.percent, 77);
+  assert.equal(parsedLive.liveProgress?.batchDone, 82);
+  assert.equal(parsedLive.liveProgress?.batchTotal, 107);
+  assert.equal(parsedLive.liveProgress?.itPerSec, 2.17);
+});
+
+test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samples & Models tabs, and ZIP archive', () => {
+  const files = generateForkBundle(
+    DEFAULT_STUDIO_STATE.forkConfig,
+    DEFAULT_PROJECTS[0],
+    DEFAULT_STUDIO_STATE.downloadManifest
+  );
+  assert.equal(files.length, 5);
+  const nbFile = files.find((f) => f.id === 'notebook');
+  assert.ok(nbFile);
+  const parsedNb = JSON.parse(nbFile.content);
+  assert.equal(parsedNb.nbformat, 4);
+  assert.match(nbFile.content, /noregrets_turbo\.py/);
+  assert.match(nbFile.content, /minimum=-32/);
+  assert.match(nbFile.content, /Preset Settings\\"\), open=False, visible=False/);
+  assert.match(nbFile.content, /NoRegretsRVC Live Monitor/);
+  assert.match(nbFile.content, /Lowest Loss/);
+  assert.doesNotMatch(nbFile.content, /core_backup\.py/);
+  assert.doesNotMatch(nbFile.content, /filebrowser/i);
+  assert.doesNotMatch(nbFile.content, /hf_token/);
+
+  const turboFile = files.find((f) => f.id === 'turbo-py');
+  assert.ok(turboFile);
+  assert.match(turboFile.content, /cudnn\.benchmark = True/);
+  assert.match(turboFile.content, /fused=True/);
+  assert.match(turboFile.content, /gradient_as_bucket_view/);
+  assert.match(turboFile.content, /_MIN_SYSTEM_FREE_RAM_BYTES/);
+  assert.doesNotMatch(turboFile.content, /allow_tf32/);
+
+  const turboDisabledFiles = generateForkBundle(
+    { ...DEFAULT_STUDIO_STATE.forkConfig, turboTraining: false },
+    DEFAULT_PROJECTS[0],
+    DEFAULT_STUDIO_STATE.downloadManifest
+  );
+  const disabledNb = turboDisabledFiles.find((f) => f.id === 'notebook');
+  assert.ok(disabledNb);
+  assert.doesNotMatch(disabledNb.content, /noregrets_turbo\.apply\(\)/);
+
+  const turboPy = generateTurboTrainerPython();
+  assert.match(turboPy, /def apply\(\) -> None:/);
+
+  const appFile = files.find((f) => f.id === 'app-py');
+  assert.ok(appFile);
+  assert.match(appFile.content, /with gr\.TabItem\("Samples"\):/);
+  assert.match(appFile.content, /with gr\.TabItem\("Free Samples"\):/);
+  assert.match(appFile.content, /with gr\.TabItem\("Models"\):/);
+  assert.match(appFile.content, /GRADIO_6/);
+
+  const zipBytes = buildZipArchive(files.map((f) => ({ path: f.zipPath, content: f.content })));
+  assert.equal(zipBytes[0], 0x50);
+  assert.equal(zipBytes[1], 0x4b);
+});
+
+test('estimateKaggleSurvival stays Safe by default and flags Risk of Full if saveOnlyLatest is disabled', () => {
+  const safeEst = estimateKaggleSurvival(DEFAULT_PROJECTS[0]);
+  assert.equal(safeEst.diskStatus, 'Safe');
+  assert.equal(safeEst.sessionStatus, 'Fits 12h');
+  assert.ok(safeEst.estimatedDiskGb < 10);
+
+  const diskHeavy = {
+    ...DEFAULT_PROJECTS[0],
+    saveOnlyLatest: false,
+    saveEveryEpoch: 5,
+    totalEpoch: 200,
+  };
+  const heavyEst = estimateKaggleSurvival(diskHeavy);
+  assert.equal(heavyEst.diskStatus, 'Risk of Full');
+  assert.ok(heavyEst.estimatedDiskGb > 20);
+});
+
+test('analyzeTrainingZones snaps all suggested epochs strictly to saveEveryEpoch and adapts to model & sound check', () => {
+  const projEvery5 = { ...DEFAULT_PROJECTS[0], name: 'TestVoice', saveEveryEpoch: 5, totalEpoch: 200 };
+
+  // Model-only estimate (no log loaded yet)
+  const noLogZones = analyzeTrainingZones(null, projEvery5, 'untested');
+  assert.equal(noLogZones.confidence, 'estimate');
+  assert.equal(noLogZones.saveEveryEpoch, 5);
+  assert.equal((noLogZones.undertrainingEndEpoch ?? 0) % 5, 0);
+  assert.equal((noLogZones.sweetSpotMinEpoch ?? 0) % 5, 0);
+  assert.equal((noLogZones.sweetSpotMaxEpoch ?? 0) % 5, 0);
+  assert.equal((noLogZones.sweetSpotEpoch ?? 0) % 5, 0);
+  assert.equal((noLogZones.overtrainingStartEpoch ?? 0) % 5, 0);
+
+  // Still dropping sample log (saveEveryEpoch = 5)
+  const parsedSample = parseTrainingNotebookOrLog(SAMPLE_TRAINING_LOG);
+  assert.ok(parsedSample);
+  const sampleZones = analyzeTrainingZones(parsedSample, projEvery5, 'untested');
+  assert.equal(sampleZones.confidence, 'estimate');
+  assert.equal((sampleZones.sweetSpotMinEpoch ?? 0) % 5, 0);
+  assert.equal((sampleZones.sweetSpotMaxEpoch ?? 0) % 5, 0);
+
+  // Plateau log with custom saveEveryEpoch = 10 -> every epoch is multiple of 10
+  const projEvery10 = { ...DEFAULT_PROJECTS[0], saveEveryEpoch: 10, totalEpoch: 200 };
+  const plateauLog = [
+    'VoiceA | epoch=11 | step=1000 | time=10:01:00 | training_speed=0:00:45 | lowest_value=21.000 (epoch 11 and step 1000)',
+    'VoiceA | epoch=42 | step=4000 | time=10:04:00 | training_speed=0:00:45 | lowest_value=15.200 (epoch 42 and step 4000)',
+    'VoiceA | epoch=78 | step=8000 | time=10:08:00 | training_speed=0:00:45 | lowest_value=14.300 (epoch 78 and step 8000)',
+    'VoiceA | epoch=122 | step=12000 | time=10:12:00 | training_speed=0:00:45 | lowest_value=14.250 (epoch 122 and step 12000)',
+    'VoiceA | epoch=163 | step=16000 | time=10:16:00 | training_speed=0:00:45 | lowest_value=14.280 (epoch 163 and step 16000)',
+  ].join('\n');
+  const parsedPlateau = parseTrainingNotebookOrLog(plateauLog);
+  assert.ok(parsedPlateau);
+  const observedZones = analyzeTrainingZones(parsedPlateau, projEvery10, 'clean');
+  assert.equal(observedZones.confidence, 'observed');
+  assert.equal((observedZones.sweetSpotEpoch ?? 0) % 10, 0);
+  assert.equal((observedZones.undertrainingEndEpoch ?? 0) % 10, 0);
+  assert.equal((observedZones.overtrainingStartEpoch ?? 0) % 10, 0);
+
+  // Overtrained sound feedback shifts sweet spot earlier and still aligns to saveEveryEpoch
+  const overtrainedZones = analyzeTrainingZones(parsedPlateau, projEvery10, 'overtrained');
+  assert.ok((overtrainedZones.sweetSpotEpoch ?? 999) < (observedZones.sweetSpotEpoch ?? 0));
+  assert.equal((overtrainedZones.sweetSpotEpoch ?? 0) % 10, 0);
+});
+
+test('FREE_SAMPLES catalog provides 3 male and 3 female speaking clips backed by real WAV files', () => {
+  assert.equal(FREE_SAMPLES.length, 6);
+  assert.equal(FREE_SAMPLES.filter((s) => s.gender === 'male').length, 3);
+  assert.equal(FREE_SAMPLES.filter((s) => s.gender === 'female').length, 3);
+
+  const ids = new Set(FREE_SAMPLES.map((s) => s.id));
+  const urls = new Set(FREE_SAMPLES.map((s) => s.url));
+  assert.equal(ids.size, 6);
+  assert.equal(urls.size, 6);
+
+  for (const sample of FREE_SAMPLES) {
+    assert.ok(sample.url.startsWith('/assets/aistudio/'));
+    assert.ok(sample.fileName.endsWith('.wav'));
+    const diskPath = path.join(process.cwd(), 'public', sample.url.replace(/^\//, ''));
+    assert.ok(fs.existsSync(diskPath), `Missing sample file on disk: ${diskPath}`);
+    assert.ok(fs.statSync(diskPath).size > 100_000);
+  }
+});
+
+test('audioCleanup reduces quiet background hiss/rumble cleanly without crushing speech peaks', () => {
+  assert.equal(clampCleanupStrength(0), 1);
+  assert.equal(clampCleanupStrength(99), 30);
+  assert.equal(computeCleanupParameters(12).tierLabel, 'Balanced');
+
+  const sr = 32000;
+  const totalSamples = sr; // 1.0s clip: first 0.5s quiet noise+rumble, second 0.5s speech-like tone
+  const raw = new Float32Array(totalSamples);
+  for (let i = 0; i < totalSamples; i++) {
+    const t = i / sr;
+    const rumble = 0.015 * Math.sin(2 * Math.PI * 35 * t);
+    const hiss = 0.008 * Math.sin(2 * Math.PI * 5200 * t);
+    const speech = i >= sr / 2 ? 0.45 * Math.sin(2 * Math.PI * 220 * t) : 0;
+    raw[i] = rumble + hiss + speech;
+  }
+
+  const cleaned = applyBalancedAudioCleanup(raw, sr, 12);
+  assert.equal(cleaned.length, raw.length);
+
+  const rmsRange = (buf: Float32Array, from: number, to: number) => {
+    let sum = 0;
+    for (let i = from; i < to; i++) sum += buf[i] * buf[i];
+    return Math.sqrt(sum / (to - from));
+  };
+
+  const quietBefore = rmsRange(raw, Math.round(sr * 0.1), Math.round(sr * 0.45));
+  const quietAfter = rmsRange(cleaned, Math.round(sr * 0.1), Math.round(sr * 0.45));
+  const speechBefore = rmsRange(raw, Math.round(sr * 0.6), Math.round(sr * 0.95));
+  const speechAfter = rmsRange(cleaned, Math.round(sr * 0.6), Math.round(sr * 0.95));
+
+  // Quiet floor should be meaningfully reduced (not underdoing it) yet remain non-zero (not hard-gated)
+  assert.ok(quietAfter < quietBefore * 0.65, `Expected quiet RMS reduction, got ${quietAfter} vs ${quietBefore}`);
+  assert.ok(quietAfter > 0.0005, `Expected natural floor retention without hard mute, got ${quietAfter}`);
+  // Active vocal energy should remain intact (not overdoing it)
+  assert.ok(speechAfter > speechBefore * 0.9, `Expected vocal preservation, got ${speechAfter} vs ${speechBefore}`);
+
+  const wavBlob = encodePcm16Wav([cleaned], sr);
+  assert.equal(wavBlob.type, 'audio/wav');
+  assert.equal(wavBlob.size, 44 + totalSamples * 2);
+});
+
+test('estimateTrainingCompletion computes remaining time, Today/Tomorrow rollover, warmup vs stabilized accuracy %, and disclaimer', () => {
+  const baseMorning = new Date(2026, 10, 20, 10, 0, 0).getTime();
+  const warmup = estimateTrainingCompletion({
+    currentEpoch: 1,
+    totalEpoch: 50,
+    batchDone: 10,
+    batchTotal: 100,
+    elapsedSec: 5,
+    itPerSec: 2.0,
+    nowMs: baseMorning,
+  });
+  assert.ok(warmup.remainingSeconds > 2400 && warmup.remainingSeconds < 2600);
+  assert.match(warmup.remainingLabel, /~4[0-9] minutes/);
+  assert.match(warmup.finishDayLabel, /^Today · /);
+  assert.ok(warmup.finishTimeLabel.length >= 4);
+  assert.ok(warmup.accuracyPercent >= 28 && warmup.accuracyPercent <= 45);
+  assert.match(warmup.disclaimer, /rough estimate/i);
+
+  const stable = estimateTrainingCompletion({
+    currentEpoch: 25,
+    totalEpoch: 50,
+    batchDone: 50,
+    batchTotal: 100,
+    elapsedSec: 1200,
+    itPerSec: 2.0,
+    completedEpochDurationsSec: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
+    nowMs: baseMorning,
+  });
+  assert.ok(stable.accuracyPercent >= 78, `Expected stabilized accuracy >= 78, got ${stable.accuracyPercent}`);
+  assert.ok(stable.accuracyPercent > warmup.accuracyPercent);
+
+  const lateNight = new Date(2026, 10, 20, 23, 50, 0).getTime();
+  const rollover = estimateTrainingCompletion({
+    currentEpoch: 1,
+    totalEpoch: 30,
+    batchDone: 0,
+    batchTotal: 100,
+    elapsedSec: 0,
+    itPerSec: 1.0,
+    nowMs: lateNight,
+  });
+  assert.match(rollover.finishDayLabel, /^Tomorrow · /);
+});
+
+test('i18n resolveLocale and createTranslator switch languages cleanly with Arabic RTL', () => {
+  assert.equal(resolveLocale('System Auto', 'es-MX'), 'es_ES');
+  assert.equal(resolveLocale('System Auto', 'pt-BR'), 'pt_BR');
+  assert.equal(resolveLocale('fr_FR', 'en-US'), 'fr_FR');
+
+  const es = createTranslator('es_ES');
+  assert.equal(es.isRtl, false);
+  assert.equal(es.t('nav.training'), 'Entrenamiento');
+  assert.equal(es.t('nav.settings'), 'Ajustes');
+
+  const ar = createTranslator('ar_SA');
+  assert.equal(ar.isRtl, true);
+  assert.equal(ar.t('nav.training'), 'التدريب');
+  assert.equal(ar.t('customPretrain.uploadBtn'), 'رفع ملف .pth');
+});
+
+test('extractPthFilenameFromUrl, resolveCustomPretrainedPath, and pipeline commands support Hugging Face G & D URLs', () => {
+  const gUrl = 'https://huggingface.co/lyery/test/resolve/main/G_2333333%20(6).pth?download=true';
+  const dUrl = 'https://huggingface.co/lyery/test/resolve/main/D_2333333%20(6).pth?download=true';
+
+  assert.equal(extractPthFilenameFromUrl(gUrl, 'custom_G.pth'), 'G_2333333 (6).pth');
+  assert.equal(extractPthFilenameFromUrl(dUrl, 'custom_D.pth'), 'D_2333333 (6).pth');
+
+  assert.equal(
+    resolveCustomPretrainedPath(gUrl, 'G'),
+    'rvc/models/pretraineds/custom/G_2333333 (6).pth'
+  );
+  assert.equal(
+    resolveCustomPretrainedPath(dUrl, 'D'),
+    'rvc/models/pretraineds/custom/D_2333333 (6).pth'
+  );
+
+  const cmd = buildTrainPipelineCommands({
+    ...DEFAULT_PROJECTS[0],
+    name: 'CustomPretrainTest',
+    customPretrained: true,
+    customPretrainedG: gUrl,
+    customPretrainedD: dUrl,
+  });
+  assert.match(cmd, /curl -fL "https:\/\/huggingface\.co\/lyery\/test\/resolve\/main\/G_2333333%20\(6\)\.pth\?download=true" -o "rvc\/models\/pretraineds\/custom\/G_2333333 \(6\)\.pth"/);
+  assert.match(cmd, /curl -fL "https:\/\/huggingface\.co\/lyery\/test\/resolve\/main\/D_2333333%20\(6\)\.pth\?download=true" -o "rvc\/models\/pretraineds\/custom\/D_2333333 \(6\)\.pth"/);
+  assert.match(cmd, /--custom_pretrained True --g_pretrained_path "rvc\/models\/pretraineds\/custom\/G_2333333 \(6\)\.pth" --d_pretrained_path "rvc\/models\/pretraineds\/custom\/D_2333333 \(6\)\.pth"/);
+
+  const bundle = generateForkBundle(
+    DEFAULT_STUDIO_STATE.forkConfig,
+    {
+      ...DEFAULT_PROJECTS[0],
+      customPretrained: true,
+      customPretrainedG: gUrl,
+      customPretrainedD: dUrl,
+    },
+    DEFAULT_STUDIO_STATE.downloadManifest
+  );
+  const nb = bundle.find((f) => f.id === 'notebook');
+  assert.ok(nb);
+  assert.match(nb.content, /custom_pretrain_dir/);
+  assert.match(nb.content, /G_2333333%20\(6\)\.pth\?download=true/);
+  assert.match(nb.content, /D_2333333%20\(6\)\.pth\?download=true/);
+});
+
+test('inferMatchingDUrl, HF repo detection, ZIP detection, auto-D CLI & Gradio crimson scrollbar CSS work accurately', () => {
+  const gUrl = 'https://huggingface.co/lyery/test/resolve/main/G_2333333%20(6).pth?download=true';
+  const expectedDUrl = 'https://huggingface.co/lyery/test/resolve/main/D_2333333%20(6).pth?download=true';
+
+  assert.equal(inferMatchingDUrl(gUrl), expectedDUrl);
+  assert.equal(inferMatchingDUrl('rvc/models/pretraineds/custom/f0G40k.pth'), 'rvc/models/pretraineds/custom/f0D40k.pth');
+  assert.equal(inferMatchingDUrl('https://huggingface.co/author/pretrained'), '');
+  assert.equal(inferMatchingDUrl('https://huggingface.co/author/repo/resolve/main/weights.zip'), '');
+
+  assert.equal(isHuggingFaceRepoUrl('https://huggingface.co/author/pretrained'), true);
+  assert.equal(isHuggingFaceRepoUrl(gUrl), false);
+  assert.equal(isPretrainedZipUrl('https://huggingface.co/author/repo/resolve/main/weights.zip?download=true'), true);
+  assert.equal(isPretrainedZipUrl(gUrl), false);
+
+  // Auto-discovers matching D in pipeline commands when D is left blank
+  const autoCmd = buildTrainPipelineCommands({
+    ...DEFAULT_PROJECTS[0],
+    name: 'AutoDVoice',
+    customPretrained: true,
+    customPretrainedG: gUrl,
+    customPretrainedD: '',
+  });
+  assert.match(autoCmd, /curl -fL "https:\/\/huggingface\.co\/lyery\/test\/resolve\/main\/D_2333333%20\(6\)\.pth\?download=true"/);
+  assert.match(autoCmd, /--d_pretrained_path "rvc\/models\/pretraineds\/custom\/D_2333333 \(6\)\.pth"/);
+
+  // HF repo skips direct curl in shell preview & uses repo helper in notebook
+  const repoCmd = buildTrainPipelineCommands({
+    ...DEFAULT_PROJECTS[0],
+    name: 'RepoVoice',
+    customPretrained: true,
+    customPretrainedG: 'https://huggingface.co/author/pretrained',
+    customPretrainedD: '',
+  });
+  assert.doesNotMatch(repoCmd, /curl -fL "https:\/\/huggingface\.co\/author\/pretrained"/);
+
+  const bundle = generateForkBundle(
+    DEFAULT_STUDIO_STATE.forkConfig,
+    {
+      ...DEFAULT_PROJECTS[0],
+      customPretrained: true,
+      customPretrainedG: gUrl,
+      customPretrainedD: '',
+    },
+    DEFAULT_STUDIO_STATE.downloadManifest
+  );
+  const nb = bundle.find((f) => f.id === 'notebook');
+  assert.ok(nb);
+  assert.match(nb.content, /_download_hf_repo_pretrains/);
+  assert.match(nb.content, /zipfile\.ZipFile/);
+  assert.match(nb.content, /D_2333333%20\(6\)\.pth\?download=true/);
+
+  const appPy = bundle.find((f) => f.id === 'app-py');
+  assert.ok(appPy);
+  assert.match(appPy.content, /scrollbar-color:\s*#e51923\s+#100506/i);
+  assert.match(appPy.content, /::-webkit-scrollbar-thumb/);
+});
+
+
