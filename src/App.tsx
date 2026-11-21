@@ -16,16 +16,12 @@ import {
   TtsDefaults,
   VoiceModelProject,
 } from './types/studio';
-import type { FreeSampleItem } from './data/freeSamples';
-import { sanitizeModelName } from './utils/rvcTuning';
 import { I18nProvider, resolveLocale } from './utils/i18n';
 import { TopBar } from './components/TopBar';
 import { TrainWorkspaceView } from './components/TrainWorkspaceView';
 
 const loadConvertAudioView = () =>
   import('./components/ConvertAudioView').then((m) => ({ default: m.ConvertAudioView }));
-const loadFreeSamplesView = () =>
-  import('./components/FreeSamplesView').then((m) => ({ default: m.FreeSamplesView }));
 const loadWorkbenchView = () =>
   import('./components/WorkbenchView').then((m) => ({ default: m.WorkbenchView }));
 const loadTensorBoardView = () =>
@@ -34,7 +30,6 @@ const loadSettingsView = () =>
   import('./components/SettingsView').then((m) => ({ default: m.SettingsView }));
 
 const ConvertAudioView = lazy(loadConvertAudioView);
-const FreeSamplesView = lazy(loadFreeSamplesView);
 const WorkbenchView = lazy(loadWorkbenchView);
 const TensorBoardView = lazy(loadTensorBoardView);
 const SettingsView = lazy(loadSettingsView);
@@ -45,7 +40,6 @@ const VALID_SECTIONS: StudioSection[] = [
   'training',
   'models',
   'samples',
-  'free_samples',
   'blender',
   'tts',
   'tensorboard',
@@ -229,9 +223,6 @@ export default function App() {
       case 'samples':
         void loadConvertAudioView();
         break;
-      case 'free_samples':
-        void loadFreeSamplesView();
-        break;
       case 'models':
       case 'blender':
       case 'tts':
@@ -337,79 +328,6 @@ export default function App() {
     }));
   }, []);
 
-  const queuedFileNames = useMemo(
-    () => sampleQueue.map((c) => c.fileName),
-    [sampleQueue]
-  );
-
-  const handleUseFreeSamples = useCallback((items: FreeSampleItem[]) => {
-    if (items.length === 0) return;
-    const current = latestStateRef.current;
-    const conv = current.convertAudio;
-    const fallbackModel =
-      conv.voiceModel ||
-      (() => {
-        const p = current.projects[0];
-        if (!p) return '';
-        const safe = sanitizeModelName(p.name);
-        return p.exportPthFile || `logs/${safe}/${safe}_${p.totalEpoch}e.pth`;
-      })();
-
-    const now = Date.now();
-    const added: SampleClipItem[] = items.map((item, idx) => ({
-      id: `free-${item.id}-${now}-${idx}`,
-      fileName: item.fileName,
-      sourceUrl: item.url,
-      pitch: conv.pitch,
-      indexRate: conv.indexRate,
-      voiceModel: fallbackModel,
-      indexFile: conv.indexFile || '',
-      protect: conv.protect,
-      volumeEnvelope: conv.volumeEnvelope,
-      speakerId: conv.speakerId,
-      pitchExtractor: conv.pitchExtractor,
-      embedder: conv.embedder,
-      splitAudio: conv.splitAudio,
-      autotune: conv.autotune,
-      proposedPitch: conv.proposedPitch,
-      outputFormat: conv.outputFormat,
-      convertedUrl: '',
-      convertedName: '',
-      status: 'queued',
-    }));
-
-    const nextQueue = [...sampleQueueRef.current, ...added];
-    const totalCount = nextQueue.length;
-    const firstAdded = added[0];
-    setSampleQueue(nextQueue);
-    setState((prevState) => ({
-      ...prevState,
-      activeSection: 'samples',
-      convertAudio: {
-        ...prevState.convertAudio,
-        sourceMode: 'single',
-        audioFileName:
-          totalCount === 1
-            ? firstAdded.fileName
-            : `${totalCount} audio clips loaded`,
-        audioObjectUrl: firstAdded.sourceUrl,
-        conversionOutput:
-          added.length === 1
-            ? `Added free sample "${firstAdded.fileName}" to Samples queue. Play it or click Convert.`
-            : `Added ${added.length} free speaking samples to Samples queue.`,
-      },
-    }));
-  }, []);
-
-  const handleUseSingleFreeSample = useCallback(
-    (sample: FreeSampleItem) => handleUseFreeSamples([sample]),
-    [handleUseFreeSamples]
-  );
-
-  const handleOpenFreeSamples = useCallback(() => {
-    handleSelectSection('free_samples');
-  }, [handleSelectSection]);
-
   return (
     <I18nProvider language={state.generalSettings.language}>
       <div className="min-h-screen flex flex-col bg-[#0D0405] text-[#FDF7F7]">
@@ -439,16 +357,7 @@ export default function App() {
                   onSetSampleQueue={setSampleQueue}
                   onRegisterBlobUrl={registerBlobUrl}
                   onRevokeUrl={revokeBlobUrl}
-                  onOpenFreeSamples={handleOpenFreeSamples}
                   onUpdateConvertAudio={handleUpdateConvertAudio}
-                />
-              )}
-
-              {state.activeSection === 'free_samples' && (
-                <FreeSamplesView
-                  queuedFileNames={queuedFileNames}
-                  onUseSample={handleUseSingleFreeSample}
-                  onUseAllSamples={handleUseFreeSamples}
                 />
               )}
 

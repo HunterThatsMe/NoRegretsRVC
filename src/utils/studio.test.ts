@@ -167,6 +167,7 @@ test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samp
   assert.match(nbFile.content, /NoRegretsRVC Live Monitor/);
   assert.match(nbFile.content, /Lowest Loss/);
   assert.match(nbFile.content, /deque\(maxlen=25\)/);
+  assert.match(nbFile.content, /Model Settings/);
   assert.doesNotMatch(nbFile.content, /placeholder=\\"Enter model name/);
   assert.doesNotMatch(nbFile.content, /core_backup\.py/);
   assert.doesNotMatch(nbFile.content, /filebrowser/i);
@@ -197,6 +198,11 @@ test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samp
   assert.match(appFile.content, /with gr\.TabItem\("Samples"\):/);
   assert.match(appFile.content, /with gr\.TabItem\("Free Samples"\):/);
   assert.match(appFile.content, /with gr\.TabItem\("Models"\):/);
+  assert.match(appFile.content, /nr-header-card/);
+  assert.match(appFile.content, /elem_id="nr-main-tabs"/);
+  assert.match(appFile.content, /\.applio-step/);
+  assert.match(appFile.content, /--block-label-background-fill/);
+  assert.match(appFile.content, /input\[type="checkbox"\]:checked/);
   assert.match(appFile.content, /GRADIO_6/);
 
   const zipBytes = buildZipArchive(files.map((f) => ({ path: f.zipPath, content: f.content })));

@@ -9,7 +9,6 @@ import {
   SlidersHorizontal,
   Trash2,
   Upload,
-  Volume2,
   X,
 } from 'lucide-react';
 import { ACCENT_HEX } from '../data/defaults';
@@ -35,7 +34,6 @@ interface ConvertAudioViewProps {
   onSetSampleQueue: React.Dispatch<React.SetStateAction<SampleClipItem[]>>;
   onRegisterBlobUrl: (url: string) => string;
   onRevokeUrl: (url: string) => void;
-  onOpenFreeSamples: () => void;
   onUpdateConvertAudio: (updated: ConvertAudioState) => void;
 }
 
@@ -56,7 +54,6 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
   onSetSampleQueue: setSampleQueue,
   onRegisterBlobUrl: registerUrl,
   onRevokeUrl: revokeUrl,
-  onOpenFreeSamples,
   onUpdateConvertAudio,
 }) => {
   const { t } = useI18n();
@@ -417,7 +414,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
     if (sampleQueue.length === 0) {
       onUpdateConvertAudio({
         ...convertAudio,
-        conversionOutput: 'Upload audio files or pick a clip from Free Samples in Step 2 first.',
+        conversionOutput: 'Upload audio files in Step 2 first.',
       });
       return;
     }
@@ -655,14 +652,6 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                   style={{ backgroundColor: ACCENT_HEX }}
                 >
                   Upload Audio (Single / Multi)
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenFreeSamples}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#E51923]/60 bg-[#200B0E] px-3.5 py-2 text-xs font-semibold text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap shrink-0"
-                >
-                  <Volume2 className="h-3.5 w-3.5 text-[#E51923]" />
-                  <span>Browse Free Samples (6)</span>
                 </button>
               </div>
             </div>

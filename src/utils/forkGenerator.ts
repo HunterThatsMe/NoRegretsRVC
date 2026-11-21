@@ -124,47 +124,55 @@ export function generateAppPython(
 ): string {
   const tabDefs: Record<
     ApplioTabId,
-    { importLine: string; tabTitle: string; fnCall: string }
+    { importLine: string; tabTitle: string; fnCall: string; subtitle: string }
   > = {
     train: {
       importLine: 'from tabs.train.train import train_tab',
       tabTitle: 'Training',
       fnCall: 'train_tab()',
+      subtitle: 'Set up your voice dataset, extract acoustic features, and run RVC training.',
     },
     models: {
       importLine: 'from tabs.download.download import download_tab',
       tabTitle: 'Models',
       fnCall: 'download_tab()',
+      subtitle: 'Fetch remote voice archives, drop local weights, and manage custom pretrains.',
     },
     samples: {
       importLine: 'from tabs.inference.inference import inference_tab',
       tabTitle: 'Samples',
       fnCall: 'inference_tab()',
+      subtitle: 'Run single or batch RVC voice conversion inference with full pitch and index control.',
     },
     voice_blender: {
       importLine: 'from tabs.voice_blender.voice_blender import voice_blender_tab',
       tabTitle: 'Voice Blender',
       fnCall: 'voice_blender_tab()',
+      subtitle: 'Merge two compatible RVC checkpoints into a single hybrid voice weights file.',
     },
     tts: {
       importLine: 'from tabs.tts.tts import tts_tab',
       tabTitle: 'TTS',
       fnCall: 'tts_tab()',
+      subtitle: 'Synthesize spoken dialogue with Edge-TTS and route it through your RVC model.',
     },
     tensorboard: {
       importLine: 'from tabs.tensorboard.tensorboard import tensorboard_tab',
       tabTitle: 'TensorBoard',
       fnCall: 'tensorboard_tab()',
+      subtitle: 'Inspect live training loss curves and TensorBoard metrics.',
     },
     extra: {
       importLine: 'from tabs.extra.extra import extra_tab',
       tabTitle: 'Extra',
       fnCall: 'extra_tab()',
+      subtitle: 'Inspect checkpoints, analyze audio files, and extract F0 pitch curves.',
     },
     settings: {
       importLine: 'from tabs.settings.settings import settings_tab',
       tabTitle: 'Settings',
       fnCall: 'settings_tab()',
+      subtitle: 'Customize engine preferences, training precision, and language defaults.',
     },
   };
 
@@ -172,18 +180,14 @@ export function generateAppPython(
     (id) => config.activeTabs[id]
   );
   const imports = enabledTabs.map((id) => tabDefs[id].importLine).join('\n');
-  const tabBlocks = enabledTabs
-    .map(
-      (id) =>
-        `            with gr.TabItem("${tabDefs[id].tabTitle}"):\n                ${tabDefs[id].fnCall}`
-    )
-    .join('\n');
 
   const freeSamplesTabBlock = `            with gr.TabItem("Free Samples"):
-                gr.Markdown("### Free Voice Conversion Samples (3 Male · 3 Female)")
-                gr.Markdown(
-                    "Six dry 32 kHz mono speaking clips bundled with ${BRAND_NAME}. "
-                    "Any clips placed in \`assets/free_samples\` or \`assets/audios\` appear automatically below and in the **Samples** dropdown."
+                gr.HTML(
+                    '<div class="nr-page-heading">'
+                    '<div><h2>Free Samples</h2>'
+                    '<p>Six dry 32 kHz mono speaking clips (3 male, 3 female) ready for testing in Samples.</p></div>'
+                    '<a class="nr-readme-pill" href="${REPO_README_URL}" target="_blank" rel="noopener noreferrer">GitHub README ↗</a>'
+                    '</div>'
                 )
                 with gr.Row():
                     fs_repo_box = gr.Textbox(
@@ -269,6 +273,31 @@ export function generateAppPython(
                 fs_fetch_btn.click(_fetch_from_github, inputs=[fs_repo_box], outputs=[fs_status, fs_player])
                 fs_copy_btn.click(_copy_to_audios, outputs=[fs_status])`;
 
+  const tabBlocksList: string[] = [];
+  for (const id of enabledTabs) {
+    const def = tabDefs[id];
+    tabBlocksList.push(
+      `            with gr.TabItem("${def.tabTitle}"):\n` +
+        `                gr.HTML(\n` +
+        `                    '<div class="nr-page-heading">'\n` +
+        `                    '<div><h2>${def.tabTitle}</h2><p>${def.subtitle}</p></div>'\n` +
+        `                    '<a class="nr-readme-pill" href="${REPO_README_URL}" target="_blank" rel="noopener noreferrer">GitHub README ↗</a>'\n` +
+        `                    '</div>'\n` +
+        `                )\n` +
+        `                ${def.fnCall}`
+    );
+    if (id === 'samples') {
+      tabBlocksList.push(freeSamplesTabBlock);
+    }
+  }
+  if (!enabledTabs.includes('samples')) {
+    tabBlocksList.push(freeSamplesTabBlock);
+  }
+  const tabBlocks = tabBlocksList.join('\n');
+
+  const safeHeaderName = (project.name.trim() || 'Untitled Model').replace(/[<>&"']/g, '');
+  const effBatch = project.batchSize * Math.max(1, project.gpuCount || 2);
+
   return `import argparse
 import os
 import shutil
@@ -303,15 +332,410 @@ from assets.themes.NoRegretsRVC import NoRegretsRVCTheme
 ${imports}
 
 CUSTOM_CSS = """
-.gradio-container { max-width: 1360px !important; margin: 0 auto !important; }
-.tab-nav button.selected { color: ${ACCENT_HEX} !important; border-color: ${ACCENT_HEX} !important; }
-.gr-box, .gr-panel, .gr-form { border-radius: 12px !important; }
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root, body, .gradio-container {
+  --app-bg: #0D0405;
+  --app-surface: #160709;
+  --app-panel: #100506;
+  --app-border: #47161D;
+  --app-text: #FDF7F7;
+  --app-muted: #AD8288;
+  --app-heading: #FDF7F7;
+  --font: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif !important;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace !important;
+  --body-background-fill: #0D0405 !important;
+  --body-background-fill-dark: #0D0405 !important;
+  --background-fill-primary: #160709 !important;
+  --background-fill-secondary: #200B0E !important;
+  --block-background-fill: #160709 !important;
+  --block-border-color: #47161D !important;
+  --block-border-width: 1px !important;
+  --block-radius: 12px !important;
+  --block-label-background-fill: transparent !important;
+  --block-label-border-width: 0px !important;
+  --block-label-padding: 0px !important;
+  --block-label-text-color: #FDF7F7 !important;
+  --block-title-background-fill: transparent !important;
+  --block-title-border-width: 0px !important;
+  --block-title-padding: 0px !important;
+  --block-title-text-color: #FDF7F7 !important;
+  --block-info-text-color: #AD8288 !important;
+  --border-color-primary: #47161D !important;
+  --panel-background-fill: #160709 !important;
+  --panel-border-color: #47161D !important;
+  --input-background-fill: #100506 !important;
+  --input-background-fill-focus: #100506 !important;
+  --input-border-color: #47161D !important;
+  --input-border-color-focus: ${ACCENT_HEX} !important;
+  --input-radius: 8px !important;
+  --input-placeholder-color: #8A5E64 !important;
+  --form-gap-width: 14px !important;
+  --button-primary-background-fill: ${ACCENT_HEX} !important;
+  --button-primary-background-fill-hover: #FF2B35 !important;
+  --button-primary-text-color: #FFFFFF !important;
+  --button-primary-border-color: #9F1018 !important;
+  --button-secondary-background-fill: #200B0E !important;
+  --button-secondary-background-fill-hover: #331116 !important;
+  --button-secondary-border-color: #47161D !important;
+  --button-secondary-text-color: #FDF7F7 !important;
+  --button-large-radius: 8px !important;
+  --button-small-radius: 8px !important;
+  --checkbox-background-color: #100506 !important;
+  --checkbox-background-color-selected: ${ACCENT_HEX} !important;
+  --checkbox-border-color: #47161D !important;
+  --checkbox-border-color-selected: ${ACCENT_HEX} !important;
+  --checkbox-label-background-fill: #100506 !important;
+  --checkbox-label-background-fill-selected: rgba(229, 25, 35, 0.14) !important;
+  --checkbox-label-text-color-selected: #FFFFFF !important;
+  --slider-color: ${ACCENT_HEX} !important;
+  --color-accent: ${ACCENT_HEX} !important;
+  color-scheme: dark;
+  background: #0D0405 !important;
+  color: #FDF7F7 !important;
+  font-family: var(--font) !important;
+  -webkit-font-smoothing: antialiased;
+}
+.gradio-container { max-width: 1280px !important; margin: 0 auto !important; padding: 20px 24px 40px !important; }
 footer { display: none !important; }
+
+/* Custom Red Side Scrollbar */
 * { scrollbar-width: thin; scrollbar-color: ${ACCENT_HEX} #100506; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #100506; }
-::-webkit-scrollbar-thumb { background: ${ACCENT_HEX}; border-radius: 999px; border: 2px solid #100506; }
-::-webkit-scrollbar-thumb:hover { background: #ff2b35; }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, ${ACCENT_HEX} 0%, #b91c1c 100%); border-radius: 999px; border: 2px solid #100506; }
+::-webkit-scrollbar-thumb:hover { background: #FF2B35; }
+
+/* NoRegretsRVC Studio Top Header Card */
+.nr-header-wrap { padding: 0 !important; border: 0 !important; background: transparent !important; margin-bottom: 12px !important; box-shadow: none !important; }
+.nr-header-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: #160709;
+  border: 1px solid #47161D;
+  border-radius: 14px;
+  padding: 14px 20px;
+}
+.nr-brand-left { display: flex; align-items: center; gap: 14px; }
+.nr-logo-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: ${ACCENT_HEX};
+  color: #FFFFFF;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+.nr-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nr-title-row h1 { margin: 0 !important; font-size: 20px !important; font-weight: 700 !important; color: #FDF7F7 !important; line-height: 1.2 !important; }
+.nr-version-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: #200B0E;
+  border: 1px solid #47161D;
+  color: #DFBFC3;
+  font-size: 11px;
+  font-weight: 600;
+}
+.nr-brand-sub { margin: 3px 0 0 !important; font-size: 12px !important; color: #AD8288 !important; }
+.nr-status-box {
+  background: #100506;
+  border: 1px solid #47161D;
+  border-radius: 10px;
+  padding: 8px 14px;
+  text-align: right;
+}
+.nr-status-title { margin: 0; font-size: 13px; font-weight: 600; color: #FDF7F7; }
+.nr-status-meta { margin: 2px 0 0; font-size: 11px; color: #AD8288; font-family: var(--font-mono); }
+
+/* Main Navigation Bar matching AI Studio Preview */
+#nr-main-tabs { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+#nr-main-tabs > .tab-wrapper,
+#nr-main-tabs > .tab-nav,
+#nr-main-tabs > [role="tablist"] {
+  background: #160709 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 12px !important;
+  padding: 6px !important;
+  gap: 6px !important;
+  margin-bottom: 18px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+#nr-main-tabs > .tab-wrapper .tab-container[role="tablist"] {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  gap: 6px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  width: 100% !important;
+}
+#nr-main-tabs > .tab-nav button,
+#nr-main-tabs > .tab-wrapper button[role="tab"],
+#nr-main-tabs > [role="tablist"] button[role="tab"] {
+  border: 0 !important;
+  border-radius: 8px !important;
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #DFBFC3 !important;
+  background: transparent !important;
+  transition: background-color 0.15s, color 0.15s !important;
+}
+#nr-main-tabs > .tab-nav button:hover,
+#nr-main-tabs > .tab-wrapper button[role="tab"]:hover,
+#nr-main-tabs > [role="tablist"] button[role="tab"]:hover {
+  background: #200B0E !important;
+  color: #FFFFFF !important;
+}
+#nr-main-tabs > .tab-nav button.selected,
+#nr-main-tabs > .tab-wrapper button[role="tab"].selected,
+#nr-main-tabs > .tab-wrapper button[aria-selected="true"],
+#nr-main-tabs > [role="tablist"] button[aria-selected="true"] {
+  background: ${ACCENT_HEX} !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+#nr-main-tabs > .tab-nav button::after,
+#nr-main-tabs > .tab-wrapper button::after,
+#nr-main-tabs > [role="tablist"] button::after {
+  display: none !important;
+}
+#nr-main-tabs > .tabitem {
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* Page Section Heading inside each tab */
+.nr-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 18px !important;
+  padding: 0 2px;
+}
+.nr-page-heading h2 { margin: 0 !important; font-size: 24px !important; font-weight: 700 !important; color: #FDF7F7 !important; letter-spacing: -0.02em; }
+.nr-page-heading p { margin: 4px 0 0 !important; font-size: 13px !important; color: #DFBFC3 !important; }
+.nr-readme-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #160709;
+  border: 1px solid #47161D;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #DFBFC3 !important;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+.nr-readme-pill:hover { border-color: ${ACCENT_HEX}; color: #FFFFFF !important; }
+
+/* Applio Step Cards & Crimson Number Badges */
+.applio-card {
+  background: #160709 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 12px !important;
+  padding: 20px !important;
+  gap: 16px !important;
+  margin-bottom: 16px !important;
+  box-shadow: none !important;
+}
+.applio-card > .row,
+.applio-card > .column,
+.applio-card .form {
+  flex: 0 0 auto !important;
+}
+.applio-step-header, .applio-step-header .html-container {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.applio-card-head { display: flex; flex-direction: column; gap: 4px; margin: 0 0 4px; }
+.applio-card-heading {
+  display: flex !important;
+  align-items: center !important;
+  margin: 0 !important;
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+  color: #FDF7F7 !important;
+}
+.applio-step {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  border-radius: 8px !important;
+  background: ${ACCENT_HEX} !important;
+  color: #FFFFFF !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  margin-right: 12px !important;
+  flex-shrink: 0 !important;
+}
+.applio-card-desc {
+  margin: 2px 0 0 40px !important;
+  color: #AD8288 !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+/* Strip Gradio outer form/block boxes so only clean inset inputs have borders */
+.gradio-container .form {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  gap: 14px !important;
+  overflow: visible !important;
+}
+.applio-card .block,
+.applio-card .form > .block {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.applio-card .group,
+.applio-card .gr-group {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.gradio-container .block > label > span:first-child,
+.gradio-container label[data-testid="block-label"] {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 0 4px !important;
+  color: #FDF7F7 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+.gradio-container .block span[data-testid="block-info"],
+.gradio-container .info {
+  color: #AD8288 !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+}
+.gradio-container input[type="text"],
+.gradio-container input[type="number"],
+.gradio-container textarea,
+.gradio-container select,
+.gradio-container .wrap-inner,
+.gradio-container .secondary-wrap {
+  background: #100506 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 8px !important;
+  color: #FDF7F7 !important;
+}
+.gradio-container input[type="text"]:focus,
+.gradio-container input[type="number"]:focus,
+.gradio-container textarea:focus,
+.gradio-container .wrap-inner:focus-within,
+.gradio-container .secondary-wrap:focus-within {
+  border-color: ${ACCENT_HEX} !important;
+  box-shadow: 0 0 0 2px rgba(229, 25, 35, 0.18) !important;
+}
+
+/* Segmented nested tabs inside cards (e.g. Audio vs Batch) */
+.applio-card .tab-nav,
+.applio-card .tab-container[role="tablist"] {
+  background: #100506 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 9px !important;
+  padding: 4px !important;
+  gap: 4px !important;
+}
+.applio-card .tab-nav button,
+.applio-card .tab-container[role="tablist"] button {
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: #DFBFC3 !important;
+  background: transparent !important;
+}
+.applio-card .tab-nav button.selected,
+.applio-card .tab-container[role="tablist"] button.selected,
+.applio-card .tab-container[role="tablist"] button[aria-selected="true"] {
+  background: ${ACCENT_HEX} !important;
+  color: #FFFFFF !important;
+}
+.applio-card .tab-container[role="tablist"] button::after { display: none !important; }
+
+/* Custom Checkboxes, Radios, Sliders, Accordions, Audio & Buttons */
+.gradio-container input[type="checkbox"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  border-radius: 5px !important;
+  border: 1px solid #6E232D !important;
+  background: #100506 !important;
+  cursor: pointer !important;
+}
+.gradio-container input[type="checkbox"]:checked {
+  background-color: ${ACCENT_HEX} !important;
+  border-color: ${ACCENT_HEX} !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 6.2 2.6 2.6 5.4-5.6' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-size: 12px 12px !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+.gradio-container input[type="radio"] {
+  appearance: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  border: 1px solid #6E232D !important;
+  background: #100506 !important;
+}
+.gradio-container input[type="radio"]:checked {
+  border-color: ${ACCENT_HEX} !important;
+  background: radial-gradient(circle, #FFFFFF 0 3px, ${ACCENT_HEX} 3.5px) !important;
+}
+.gradio-container input[type="range"] { accent-color: ${ACCENT_HEX} !important; }
+.accordion, .gradio-accordion {
+  background: #100506 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 10px !important;
+  padding: 2px 12px !important;
+}
+button.primary {
+  background: ${ACCENT_HEX} !important;
+  border-color: #9F1018 !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+}
+button.primary:hover { background: #FF2B35 !important; }
+button.secondary {
+  background: #200B0E !important;
+  border-color: #47161D !important;
+  color: #FDF7F7 !important;
+  border-radius: 8px !important;
+}
+button.secondary:hover { border-color: ${ACCENT_HEX} !important; background: #2D0F14 !important; }
 """
 
 
@@ -330,14 +754,27 @@ def build_ui(theme=None) -> gr.Blocks:
         blocks_kwargs["theme"] = theme
         blocks_kwargs["css"] = CUSTOM_CSS
     with gr.Blocks(**blocks_kwargs) as app:
-        gr.Markdown("# ${BRAND_NAME} · Beta version 0.0.0")
-        gr.Markdown(
-            "RVC Voice Model Training, Inference & Kaggle Studio (${project.samplingRate} · ${project.vocoder} · ${project.pitchExtractor.toUpperCase()}) · "
-            "Turbo Training Ready · [GitHub README](${REPO_README_URL})"
+        gr.HTML(
+            '<div class="nr-header-card">'
+            '<div class="nr-brand-left">'
+            '<div class="nr-logo-box">NR</div>'
+            '<div>'
+            '<div class="nr-title-row">'
+            '<h1>${BRAND_NAME}</h1>'
+            '<span class="nr-version-badge">Beta version 0.0.0</span>'
+            '</div>'
+            '<p class="nr-brand-sub">RVC Voice Model Training, Inference &amp; Kaggle Studio</p>'
+            '</div>'
+            '</div>'
+            '<div class="nr-status-box">'
+            '<p class="nr-status-title">${safeHeaderName} (${project.samplingRate})</p>'
+            '<p class="nr-status-meta">${project.vocoder} · Batch ${project.batchSize} (${effBatch} eff.) · ${project.totalEpoch} ep</p>'
+            '</div>'
+            '</div>',
+            elem_classes="nr-header-wrap",
         )
-        with gr.Tabs():
+        with gr.Tabs(elem_id="nr-main-tabs"):
 ${tabBlocks || '            with gr.TabItem("Training"):\n                gr.Markdown("Enable at least one tab.")'}
-${freeSamplesTabBlock}
     return app
 
 
@@ -364,7 +801,7 @@ def main():
         "auth": auth,
         "inbrowser": args.client,
         "show_error": True,
-        "allowed_paths": ["logs"],
+        "allowed_paths": ["logs", "assets"],
     }
     if GRADIO_6:
         launch_kwargs["theme"] = theme
@@ -814,11 +1251,35 @@ export function generateKaggleNotebookJson(
     ``,
     `train_tab_py = repo_dir / "tabs" / "train" / "train.py"`,
     `if train_tab_py.is_file():`,
+    `    import re as _re`,
     `    _tr = train_tab_py.read_text(encoding="utf-8", errors="replace")`,
     `    _tr = _tr.replace('choices=["32000", "40000", "48000"],\\n                    value="40000",', 'choices=["32000", "40000", "48000"],\\n                    value="32000",')`,
     `    _tr = _tr.replace("batch_size = gr.Slider(\\n                1,\\n                64,\\n                4,", "batch_size = gr.Slider(\\n                1,\\n                64,\\n                2,")`,
     `    _tr = _tr.replace("save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                10,", "save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                5,")`,
     `    _tr = _tr.replace('value="my-project",', 'value="",')`,
+    `    _ms_pat = _re.compile(`,
+    `        r'(?P<head>with step_card\\(1, "Model Settings"[^\\n]*\\n)'`,
+    `        r'        with gr\\.Row\\(\\):\\n'`,
+    `        r'            with gr\\.Column\\(\\):\\n'`,
+    `        r'(?P<mname>                model_name = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)'`,
+    `        r'(?P<arch>                architecture = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)'`,
+    `        r'            with gr\\.Column\\(\\):\\n'`,
+    `        r'(?P<srate>                sampling_rate = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)'`,
+    `        r'(?P<voc>                vocoder = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)',`,
+    `    )`,
+    `    def _reindent_step(_blk, _from="                ", _to="            "):`,
+    `        return "\\n".join((_to + _ln[len(_from):]) if _ln.startswith(_from) else _ln for _ln in _blk.splitlines()) + "\\n"`,
+    `    _ms_m = _ms_pat.search(_tr)`,
+    `    if _ms_m:`,
+    `        _new_ms = (`,
+    `            _ms_m.group("head")`,
+    `            + "        with gr.Row():\\n"`,
+    `            + _reindent_step(_ms_m.group("mname"), "                ", "            ")`,
+    `            + _reindent_step(_ms_m.group("srate"), "                ", "            ")`,
+    `            + _reindent_step(_ms_m.group("voc"), "                ", "        ")`,
+    `            + _reindent_step(_ms_m.group("arch"), "                ", "        ")`,
+    `        )`,
+    `        _tr = _tr[:_ms_m.start()] + _new_ms + _tr[_ms_m.end():]`,
     `    train_tab_py.write_text(_tr, encoding="utf-8")`,
     ...(turboEnabled
       ? [
