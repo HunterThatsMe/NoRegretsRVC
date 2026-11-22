@@ -150,7 +150,7 @@ test('parseTrainingNotebookOrLog parses raw training stdout, live tqdm bar, and 
   assert.equal(parsedLive.liveProgress?.itPerSec, 2.17);
 });
 
-test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samples & Models tabs, and ZIP archive', () => {
+test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.toml theme, turbo trainer, Samples & Models tabs, and ZIP archive', () => {
   const files = generateForkBundle(
     DEFAULT_STUDIO_STATE.forkConfig,
     DEFAULT_PROJECTS[0],
@@ -162,17 +162,18 @@ test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samp
   const parsedNb = JSON.parse(nbFile.content);
   assert.equal(parsedNb.nbformat, 4);
   assert.match(nbFile.content, /noregrets_turbo\.py/);
-  assert.match(nbFile.content, /minimum=-32/);
-  assert.match(nbFile.content, /Preset Settings\\"\), open=False, visible=False/);
+  assert.match(nbFile.content, /streamlit>=1\.40\.0/);
+  assert.match(nbFile.content, /streamlit_app\.py/);
+  assert.match(nbFile.content, /config\.toml/);
   assert.match(nbFile.content, /NoRegretsRVC Live Monitor/);
   assert.match(nbFile.content, /Lowest Loss/);
   assert.match(nbFile.content, /deque\(maxlen=25\)/);
   const cell1Py = parsedNb.cells[2].source.join('');
-  assert.match(cell1Py, /Model Settings/);
+  const cell2Py = parsedNb.cells[4].source.join('');
+  assert.match(cell2Py, /"streamlit", "run", "streamlit_app\.py"/);
   assert.match(cell1Py, /_cfg_d\["precision"\] = "fp32"/);
-  assert.match(cell1Py, /include_mutes/);
-  assert.match(cell1Py, /terms_checkbox/);
-  assert.doesNotMatch(nbFile.content, /placeholder=\\"Enter model name/);
+  assert.match(cell1Py, /_cfg_d\["discord_presence"\] = False/);
+  assert.match(cell1Py, /\.streamlit/);
   assert.doesNotMatch(nbFile.content, /core_backup\.py/);
   assert.doesNotMatch(nbFile.content, /filebrowser/i);
   assert.doesNotMatch(nbFile.content, /hf_token/);
@@ -197,23 +198,35 @@ test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samp
   const turboPy = generateTurboTrainerPython();
   assert.match(turboPy, /def apply\(\) -> None:/);
 
+  const themeFile = files.find((f) => f.id === 'theme-py');
+  assert.ok(themeFile);
+  assert.equal(themeFile.zipPath, '.streamlit/config.toml');
+  assert.match(themeFile.content, /base = "dark"/);
+  assert.match(themeFile.content, /primaryColor = "#E51923"/);
+  assert.match(themeFile.content, /backgroundColor = "#0D0405"/);
+  assert.match(themeFile.content, /secondaryBackgroundColor = "#160709"/);
+
   const appFile = files.find((f) => f.id === 'app-py');
   assert.ok(appFile);
-  assert.match(appFile.content, /gr\.Button\("Samples"/);
-  assert.match(appFile.content, /gr\.Button\("Free Samples"/);
-  assert.match(appFile.content, /gr\.Button\("Models"/);
+  assert.equal(appFile.zipPath, 'streamlit_app.py');
+  assert.match(appFile.content, /import streamlit as st/);
+  assert.match(appFile.content, /st\.set_page_config/);
   assert.match(appFile.content, /nr-header-card/);
-  assert.match(appFile.content, /elem_id="nr-nav-bar"/);
-  assert.match(appFile.content, /elem_classes="nr-page-col"/);
   assert.match(appFile.content, /\.applio-step/);
-  assert.match(appFile.content, /--block-label-background-fill/);
-  assert.match(appFile.content, /input\[type="checkbox"\]:checked/);
+  assert.match(appFile.content, /"Samples"/);
+  assert.match(appFile.content, /"Free Samples"/);
+  assert.match(appFile.content, /"Models"/);
+  assert.match(appFile.content, /"Diagnostics"/);
+  assert.match(appFile.content, /"Voice Blender"/);
+  assert.match(appFile.content, /"TTS"/);
+  assert.match(appFile.content, /"Settings"/);
   assert.match(appFile.content, /nr_precision_initialized/);
-  assert.match(appFile.content, /GRADIO_6/);
-  assert.match(appFile.content, /with gr\.Tabs\(elem_classes="nr-subtabs"\):\s+extra_tab\(\)/);
-  assert.match(appFile.content, /with gr\.Tabs\(elem_classes="nr-subtabs"\):\s+settings_tab\(\)/);
-  assert.match(cell1Py, /tts_tab_py/);
-  assert.match(cell1Py, /terms_checkbox\(\?:_batch\)\?/);
+  assert.match(appFile.content, /"nr_silent_files", 0/);
+  assert.match(appFile.content, /key="nr_train_terms"/);
+  assert.match(appFile.content, /key="nr_inf_terms"/);
+  assert.match(appFile.content, /key="nr_tts_terms"/);
+  assert.match(appFile.content, /start_new_session=True/);
+  assert.match(appFile.content, /x="Epoch", y="Lowest Loss"/);
 
   const zipBytes = buildZipArchive(files.map((f) => ({ path: f.zipPath, content: f.content })));
   assert.equal(zipBytes[0], 0x50);
@@ -445,7 +458,7 @@ test('extractPthFilenameFromUrl, resolveCustomPretrainedPath, and pipeline comma
   assert.match(nb.content, /D_2333333%20\(6\)\.pth\?download=true/);
 });
 
-test('inferMatchingDUrl, HF repo detection, ZIP detection, auto-D CLI & Gradio crimson scrollbar CSS work accurately', () => {
+test('inferMatchingDUrl, HF repo detection, ZIP detection, auto-D CLI & Streamlit crimson scrollbar CSS work accurately', () => {
   const gUrl = 'https://huggingface.co/lyery/test/resolve/main/G_2333333%20(6).pth?download=true';
   const expectedDUrl = 'https://huggingface.co/lyery/test/resolve/main/D_2333333%20(6).pth?download=true';
 

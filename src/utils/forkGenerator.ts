@@ -21,100 +21,22 @@ export interface GeneratedBundleFile {
 }
 
 export function generateThemePython(): string {
-  return `from __future__ import annotations
-from typing import Iterable
-from gradio.themes.base import Base
-from gradio.themes.utils import colors, fonts, sizes
+  return `[theme]
+base = "dark"
+primaryColor = "${ACCENT_HEX}"
+backgroundColor = "#0D0405"
+secondaryBackgroundColor = "#160709"
+textColor = "#FDF7F7"
+font = "sans serif"
 
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 2048
 
-class NoRegretsRVCTheme(Base):
-    """Locked deep crimson-red Gradio theme for ${BRAND_NAME}."""
-
-    def __init__(
-        self,
-        *,
-        primary_hue: colors.Color | str = colors.neutral,
-        secondary_hue: colors.Color | str = colors.neutral,
-        neutral_hue: colors.Color | str = colors.neutral,
-        spacing_size: sizes.Size | str = sizes.spacing_md,
-        radius_size: sizes.Size | str = sizes.radius_lg,
-        text_size: sizes.Size | str = sizes.text_md,
-        font: fonts.Font | str | Iterable[fonts.Font | str] = (
-            fonts.GoogleFont("Plus Jakarta Sans"),
-            "ui-sans-serif",
-            "system-ui",
-        ),
-        font_mono: fonts.Font | str | Iterable[fonts.Font | str] = (
-            fonts.GoogleFont("JetBrains Mono"),
-            "ui-monospace",
-            "monospace",
-        ),
-    ):
-        super().__init__(
-            primary_hue=primary_hue,
-            secondary_hue=secondary_hue,
-            neutral_hue=neutral_hue,
-            spacing_size=spacing_size,
-            radius_size=radius_size,
-            text_size=text_size,
-            font=font,
-            font_mono=font_mono,
-        )
-        self.name = "${BRAND_NAME}"
-        super().set(
-            body_background_fill="#0D0405",
-            body_background_fill_dark="#0D0405",
-            background_fill_primary="#160709",
-            background_fill_primary_dark="#160709",
-            background_fill_secondary="#200B0E",
-            background_fill_secondary_dark="#200B0E",
-            block_background_fill="#160709",
-            block_background_fill_dark="#160709",
-            block_border_color="#47161D",
-            block_border_color_dark="#47161D",
-            block_border_width="1px",
-            block_border_width_dark="1px",
-            block_label_background_fill="#200B0E",
-            block_label_background_fill_dark="#200B0E",
-            block_label_text_color="#DFBFC3",
-            block_label_text_color_dark="#DFBFC3",
-            block_title_text_color="#FDF7F7",
-            block_title_text_color_dark="#FDF7F7",
-            body_text_color="#FDF7F7",
-            body_text_color_dark="#FDF7F7",
-            body_text_color_subdued="#AD8288",
-            body_text_color_subdued_dark="#AD8288",
-            input_background_fill="#100506",
-            input_background_fill_dark="#100506",
-            input_border_color="#47161D",
-            input_border_color_dark="#47161D",
-            input_border_color_focus="${ACCENT_HEX}",
-            input_border_color_focus_dark="${ACCENT_HEX}",
-            button_primary_background_fill="${ACCENT_HEX}",
-            button_primary_background_fill_dark="${ACCENT_HEX}",
-            button_primary_background_fill_hover="#FF2B35",
-            button_primary_background_fill_hover_dark="#FF2B35",
-            button_primary_text_color="#FFFFFF",
-            button_primary_text_color_dark="#FFFFFF",
-            button_primary_border_color="#9F1018",
-            button_primary_border_color_dark="#9F1018",
-            button_secondary_background_fill="#200B0E",
-            button_secondary_background_fill_dark="#200B0E",
-            button_secondary_background_fill_hover="#331116",
-            button_secondary_background_fill_hover_dark="#331116",
-            button_secondary_text_color="#FDF7F7",
-            button_secondary_text_color_dark="#FDF7F7",
-            button_secondary_border_color="#47161D",
-            button_secondary_border_color_dark="#47161D",
-            slider_color="${ACCENT_HEX}",
-            slider_color_dark="${ACCENT_HEX}",
-            checkbox_background_color_selected="${ACCENT_HEX}",
-            checkbox_background_color_selected_dark="${ACCENT_HEX}",
-            checkbox_border_color_focus="${ACCENT_HEX}",
-            checkbox_border_color_focus_dark="${ACCENT_HEX}",
-            color_accent="${ACCENT_HEX}",
-            color_accent_soft="#5E0E14",
-        )
+[browser]
+gatherUsageStats = false
 `;
 }
 
@@ -122,253 +44,96 @@ export function generateAppPython(
   config: ForkConfig,
   project: VoiceModelProject
 ): string {
-  const tabDefs: Record<
-    ApplioTabId,
-    { importLine: string; tabTitle: string; fnCall: string; subtitle: string }
-  > = {
-    train: {
-      importLine: 'from tabs.train.train import train_tab',
-      tabTitle: 'Training',
-      fnCall: 'train_tab()',
-      subtitle: 'Set up your voice dataset, extract acoustic features, and run RVC training.',
-    },
-    models: {
-      importLine: 'from tabs.download.download import download_tab',
-      tabTitle: 'Models',
-      fnCall: 'download_tab()',
-      subtitle: 'Fetch remote voice archives, drop local weights, and manage custom pretrains.',
-    },
-    samples: {
-      importLine: 'from tabs.inference.inference import inference_tab',
-      tabTitle: 'Samples',
-      fnCall: 'inference_tab()',
-      subtitle: 'Run single or batch RVC voice conversion inference with full pitch and index control.',
-    },
-    voice_blender: {
-      importLine: 'from tabs.voice_blender.voice_blender import voice_blender_tab',
-      tabTitle: 'Voice Blender',
-      fnCall: 'voice_blender_tab()',
-      subtitle: 'Merge two compatible RVC checkpoints into a single hybrid voice weights file.',
-    },
-    tts: {
-      importLine: 'from tabs.tts.tts import tts_tab',
-      tabTitle: 'TTS',
-      fnCall: 'tts_tab()',
-      subtitle: 'Synthesize spoken dialogue with Edge-TTS and route it through your RVC model.',
-    },
-    tensorboard: {
-      importLine: 'from tabs.tensorboard.tensorboard import tensorboard_tab',
-      tabTitle: 'TensorBoard',
-      fnCall: 'tensorboard_tab()',
-      subtitle: 'Inspect live training loss curves and TensorBoard metrics.',
-    },
-    extra: {
-      importLine: 'from tabs.extra.extra import extra_tab',
-      tabTitle: 'Extra',
-      fnCall: 'extra_tab()',
-      subtitle: 'Inspect checkpoints, analyze audio files, and extract F0 pitch curves.',
-    },
-    settings: {
-      importLine: 'from tabs.settings.settings import settings_tab',
-      tabTitle: 'Settings',
-      fnCall: 'settings_tab()',
-      subtitle: 'Customize engine preferences, training precision, and language defaults.',
-    },
-  };
+  const safeDefaultName = (project.name || '').replace(/["\\]/g, '');
+  const defaultSr = project.samplingRate || '32000';
+  const defaultVocoder = project.vocoder || 'HiFi-GAN';
+  const defaultBatch = project.batchSize || 2;
+  const defaultSaveEvery = project.saveEveryEpoch || 5;
+  const defaultTotalEpoch = project.totalEpoch || 200;
+  const defaultRepo = (config.customRepoUrl.trim() || REPO_URL).replace(/["\\]/g, '');
 
-  const enabledTabs = (Object.keys(tabDefs) as ApplioTabId[]).filter(
-    (id) => config.activeTabs[id]
-  );
-  const imports = enabledTabs.map((id) => tabDefs[id].importLine).join('\n');
+  const enabledNav: string[] = [];
+  if (config.activeTabs.train) enabledNav.push('Training');
+  if (config.activeTabs.models) enabledNav.push('Models');
+  if (config.activeTabs.samples) enabledNav.push('Samples');
+  enabledNav.push('Free Samples');
+  enabledNav.push('Diagnostics');
+  if (config.activeTabs.voice_blender) enabledNav.push('Voice Blender');
+  if (config.activeTabs.tts) enabledNav.push('TTS');
+  if (config.activeTabs.extra) enabledNav.push('Extra');
+  if (config.activeTabs.settings) enabledNav.push('Settings');
+  if (enabledNav.length === 0) enabledNav.push('Training');
 
-  const freeSamplesCardBody = `            with gr.Column(scale=0, min_width=0, elem_classes="applio-card"):
-                gr.HTML(
-                    '<div class="applio-card-head">'
-                    '<h2 class="applio-card-heading"><span class="applio-step">1</span>Free Voice Samples</h2>'
-                    '<p class="applio-card-desc">Download and audition six dry 32 kHz mono speaking clips directly inside Kaggle.</p>'
-                    '</div>',
-                    elem_classes="applio-step-header",
-                )
-                fs_repo_box = gr.Textbox(
-                    label="GitHub Repo URL (to fetch the 6 WAV samples into Kaggle)",
-                    placeholder="${REPO_URL}",
-                    value="${config.customRepoUrl.trim() || REPO_URL}",
-                )
-                with gr.Row():
-                    fs_fetch_btn = gr.Button("Fetch 6 Free Samples from GitHub", variant="primary")
-                    fs_copy_btn = gr.Button("Copy Available Free Samples into Samples Tab")
-                fs_status = gr.Markdown("Ready. Pick a clip below or fetch from your GitHub repo.")
-                fs_catalog = [
-                    ("Male Speaking Test 1", "MaleSpeakingTest-1_931b5ffd.wav", "Male · Dry 32 kHz mono speaking clip 1"),
-                    ("Male Speaking Test 2", "MaleSpeakingTest-2_c2e6e7fe.wav", "Male · Dry 32 kHz mono speaking clip 2"),
-                    ("Male Speaking Test 3", "MaleSpeakingTest-3_d78e8233.wav", "Male · Dry 32 kHz mono speaking clip 3"),
-                    ("Female Speaking Test 1", "FemaleSpeakingTest-1_bb3d674f.wav", "Female · Dry 32 kHz mono speaking clip 1"),
-                    ("Female Speaking Test 2", "FemaleSpeakingTest-2_d1823132.wav", "Female · Dry 32 kHz mono speaking clip 2"),
-                    ("Female Speaking Test 3", "FemaleSpeakingTest-3_458bd4fc.wav", "Female · Dry 32 kHz mono speaking clip 3"),
-                ]
-                fs_selector = gr.Dropdown(
-                    label="Select Free Sample",
-                    choices=[f"{title} ({fname})" for title, fname, _ in fs_catalog],
-                    value=f"{fs_catalog[0][0]} ({fs_catalog[0][1]})",
-                )
-                fs_player = gr.Audio(label="Sample Preview & Download", type="filepath", interactive=False)
+  return `from __future__ import annotations
 
-                def _resolve_sample_path(choice_label: str):
-                    for title, fname, _ in fs_catalog:
-                        if f"{title} ({fname})" == choice_label:
-                            for d in ("assets/free_samples", "assets/audios"):
-                                p = os.path.join(now_dir, d, fname)
-                                if os.path.isfile(p):
-                                    return p, f"Loaded **{title}** from \`{d}/{fname}\`."
-                            return None, f"**{title}** (\`{fname}\`) is not in \`assets/free_samples\` yet. Paste your GitHub repo URL above and click Fetch."
-                    return None, "Select a sample."
-
-                def _fetch_from_github(repo_url_val: str):
-                    import urllib.request
-                    raw_repo = (repo_url_val or "").strip().rstrip("/")
-                    if raw_repo.endswith(".git"):
-                        raw_repo = raw_repo[:-4]
-                    if "github.com/" not in raw_repo:
-                        return "Enter a valid GitHub repo URL (https://github.com/user/repo).", None
-                    slug = raw_repo.split("github.com/", 1)[1].strip("/")
-                    parts = [p for p in slug.split("/") if p]
-                    if len(parts) < 2:
-                        return "Enter a full GitHub repo URL (https://github.com/user/repo).", None
-                    owner_repo = f"{parts[0]}/{parts[1]}"
-                    fs_dir = os.path.join(now_dir, "assets", "free_samples")
-                    au_dir = os.path.join(now_dir, "assets", "audios")
-                    os.makedirs(fs_dir, exist_ok=True)
-                    os.makedirs(au_dir, exist_ok=True)
-                    downloaded = 0
-                    for _, fname, _ in fs_catalog:
-                        for branch in ("main", "master"):
-                            url = f"https://raw.githubusercontent.com/{owner_repo}/{branch}/public/assets/aistudio/{fname}"
-                            try:
-                                dst_fs = os.path.join(fs_dir, fname)
-                                urllib.request.urlretrieve(url, dst_fs)
-                                shutil.copy2(dst_fs, os.path.join(au_dir, fname))
-                                downloaded += 1
-                                break
-                            except Exception:
-                                continue
-                    first_path = os.path.join(fs_dir, fs_catalog[0][1])
-                    if downloaded == 0:
-                        return f"Could not find \`public/assets/aistudio/*.wav\` on \`{owner_repo}\` (main/master).", None
-                    return f"Fetched {downloaded}/6 free samples into \`assets/free_samples\` and \`assets/audios\`. Click Refresh in Samples if needed.", first_path if os.path.isfile(first_path) else None
-
-                def _copy_to_audios():
-                    fs_dir = os.path.join(now_dir, "assets", "free_samples")
-                    au_dir = os.path.join(now_dir, "assets", "audios")
-                    os.makedirs(au_dir, exist_ok=True)
-                    copied = 0
-                    for _, fname, _ in fs_catalog:
-                        src = os.path.join(fs_dir, fname)
-                        if os.path.isfile(src):
-                            shutil.copy2(src, os.path.join(au_dir, fname))
-                            copied += 1
-                    return f"Copied {copied} free samples to \`assets/audios\`."
-
-                fs_selector.change(_resolve_sample_path, inputs=[fs_selector], outputs=[fs_player, fs_status])
-                fs_fetch_btn.click(_fetch_from_github, inputs=[fs_repo_box], outputs=[fs_status, fs_player])
-                fs_copy_btn.click(_copy_to_audios, outputs=[fs_status])`;
-
-  interface PageSpec {
-    key: string;
-    title: string;
-    subtitle: string;
-    body: string;
-  }
-  const orderedPages: PageSpec[] = [];
-  for (const id of enabledTabs) {
-    const def = tabDefs[id];
-    const body =
-      id === 'settings' || id === 'extra'
-        ? `            with gr.Tabs(elem_classes="nr-subtabs"):\n                ${def.fnCall}`
-        : `            ${def.fnCall}`;
-    orderedPages.push({
-      key: id,
-      title: def.tabTitle,
-      subtitle: def.subtitle,
-      body,
-    });
-    if (id === 'samples') {
-      orderedPages.push({
-        key: 'free_samples',
-        title: 'Free Samples',
-        subtitle: 'Six dry 32 kHz mono speaking clips (3 male, 3 female) ready for testing in Samples.',
-        body: freeSamplesCardBody,
-      });
-    }
-  }
-  if (!enabledTabs.includes('samples')) {
-    orderedPages.push({
-      key: 'free_samples',
-      title: 'Free Samples',
-      subtitle: 'Six dry 32 kHz mono speaking clips (3 male, 3 female) ready for testing in Samples.',
-      body: freeSamplesCardBody,
-    });
-  }
-
-  const navBtnInits = orderedPages
-    .map(
-      (p, idx) =>
-        `            nav_btns.append(gr.Button("${p.title}", variant="${idx === 0 ? 'primary' : 'secondary'}", size="sm", elem_classes="nr-nav-btn"))`
-    )
-    .join('\n');
-
-  const pageColBlocks = orderedPages
-    .map(
-      (p, idx) =>
-        `        with gr.Column(visible=${idx === 0 ? 'True' : 'False'}, elem_classes="nr-page-col") as _page_${idx}:\n` +
-        `            gr.HTML(\n` +
-        `                '<div class="nr-page-heading">'\n` +
-        `                '<div><h2>${p.title}</h2><p>${p.subtitle}</p></div>'\n` +
-        `                '<a class="nr-readme-pill" href="${REPO_README_URL}" target="_blank" rel="noopener noreferrer">GitHub README ↗</a>'\n` +
-        `                '</div>'\n` +
-        `            )\n` +
-        `${p.body}\n` +
-        `        page_cols.append(_page_${idx})`
-    )
-    .join('\n');
-
-  const safeHeaderName = (project.name.trim() || 'Untitled Model').replace(/[<>&"']/g, '');
-  const effBatch = project.batchSize * Math.max(1, project.gpuCount || 2);
-
-  return `import argparse
+import hmac
+import html
 import json
 import os
+import queue
+import re
 import shutil
+import signal
+import subprocess
 import sys
+import threading
+import time
+import urllib.parse
+import urllib.request
+import zipfile
+from pathlib import Path
+from typing import Any
+
+import streamlit as st
 
 now_dir = os.getcwd()
 if now_dir not in sys.path:
-    sys.path.append(now_dir)
+    sys.path.insert(0, now_dir)
 
 CONFIG_PATH = os.path.join(now_dir, "assets", "config.json")
 os.environ.setdefault("APPLIO_CONFIG_FILE", CONFIG_PATH)
 CONFIG_TEMPLATE_PATH = os.path.join(now_dir, "assets", "config_template.json")
+ACTIVE_TRAIN_META = os.path.join(now_dir, "assets", "nr_active_train.json")
+LOG_CACHE_DIR = os.path.join(now_dir, "assets", "nr_logs")
+os.makedirs(LOG_CACHE_DIR, exist_ok=True)
+
 if not os.path.exists(CONFIG_PATH) and os.path.exists(CONFIG_TEMPLATE_PATH):
     shutil.copy(CONFIG_TEMPLATE_PATH, CONFIG_PATH)
-if os.path.exists(CONFIG_PATH):
+
+def _load_config() -> dict[str, Any]:
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as _cf:
-            _cfg_data = json.load(_cf)
-        if not isinstance(_cfg_data, dict):
-            _cfg_data = {}
-        _changed = False
-        if _cfg_data.get("precision") not in ("fp32", "bf16") and _cfg_data.get("nr_precision_initialized") is not True:
-            _cfg_data["precision"] = "fp32"
-            _cfg_data["nr_precision_initialized"] = True
-            _changed = True
-        if _cfg_data.get("discord_presence") is True and _cfg_data.get("nr_discord_initialized") is not True:
-            _cfg_data["discord_presence"] = False
-            _cfg_data["nr_discord_initialized"] = True
-            _changed = True
-        if _changed:
-            with open(CONFIG_PATH, "w", encoding="utf-8") as _cf:
-                json.dump(_cfg_data, _cf, indent=4, ensure_ascii=False)
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                return data
     except Exception:
         pass
+    return {}
+
+def _save_config(data: dict[str, Any]) -> None:
+    try:
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=4, ensure_ascii=False)
+    except Exception:
+        pass
+
+def _ensure_defaults_on_boot() -> None:
+    cfg = _load_config()
+    changed = False
+    if cfg.get("precision") not in ("fp32", "bf16") and cfg.get("nr_precision_initialized") is not True:
+        cfg["precision"] = "fp32"
+        cfg["nr_precision_initialized"] = True
+        changed = True
+    if cfg.get("discord_presence") is True and cfg.get("nr_discord_initialized") is not True:
+        cfg["discord_presence"] = False
+        cfg["nr_discord_initialized"] = True
+        changed = True
+    if changed:
+        _save_config(cfg)
+
+_ensure_defaults_on_boot()
 
 try:
     from rvc.lib.platform import platform_config
@@ -381,108 +146,69 @@ try:
 except Exception:
     pass
 
-import gradio as gr
-
-GRADIO_6 = int(gr.__version__.split(".")[0]) >= 6
-
-from assets.themes.NoRegretsRVC import NoRegretsRVCTheme
-${imports}
+st.set_page_config(
+    page_title="${BRAND_NAME} (Beta 0.0.0)",
+    page_icon="NR",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 CUSTOM_CSS = """
+<style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-:root, body, .gradio-container {
+:root {
   --app-bg: #0D0405;
   --app-surface: #160709;
   --app-panel: #100506;
   --app-border: #47161D;
   --app-text: #FDF7F7;
   --app-muted: #AD8288;
-  --app-heading: #FDF7F7;
-  --font: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif !important;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace !important;
-  --body-background-fill: #0D0405 !important;
-  --body-background-fill-dark: #0D0405 !important;
-  --background-fill-primary: #160709 !important;
-  --background-fill-secondary: #200B0E !important;
-  --block-background-fill: #160709 !important;
-  --block-border-color: #47161D !important;
-  --block-border-width: 1px !important;
-  --block-radius: 12px !important;
-  --block-label-background-fill: transparent !important;
-  --block-label-border-width: 0px !important;
-  --block-label-padding: 0px !important;
-  --block-label-text-color: #FDF7F7 !important;
-  --block-title-background-fill: transparent !important;
-  --block-title-border-width: 0px !important;
-  --block-title-padding: 0px !important;
-  --block-title-text-color: #FDF7F7 !important;
-  --block-info-text-color: #AD8288 !important;
-  --border-color-primary: #47161D !important;
-  --panel-background-fill: #160709 !important;
-  --panel-border-color: #47161D !important;
-  --input-background-fill: #100506 !important;
-  --input-background-fill-focus: #100506 !important;
-  --input-border-color: #47161D !important;
-  --input-border-color-focus: ${ACCENT_HEX} !important;
-  --input-radius: 8px !important;
-  --input-placeholder-color: #8A5E64 !important;
-  --form-gap-width: 14px !important;
-  --button-primary-background-fill: ${ACCENT_HEX} !important;
-  --button-primary-background-fill-hover: #FF2B35 !important;
-  --button-primary-text-color: #FFFFFF !important;
-  --button-primary-border-color: #9F1018 !important;
-  --button-secondary-background-fill: #200B0E !important;
-  --button-secondary-background-fill-hover: #331116 !important;
-  --button-secondary-border-color: #47161D !important;
-  --button-secondary-text-color: #FDF7F7 !important;
-  --button-large-radius: 8px !important;
-  --button-small-radius: 8px !important;
-  --checkbox-background-color: #100506 !important;
-  --checkbox-background-color-selected: ${ACCENT_HEX} !important;
-  --checkbox-border-color: #6E232D !important;
-  --checkbox-border-color-selected: ${ACCENT_HEX} !important;
-  --checkbox-label-background-fill: #100506 !important;
-  --checkbox-label-background-fill-selected: rgba(229, 25, 35, 0.14) !important;
-  --checkbox-label-text-color-selected: #FFFFFF !important;
-  --slider-color: ${ACCENT_HEX} !important;
-  --color-accent: ${ACCENT_HEX} !important;
-  color-scheme: dark;
-  background: #0D0405 !important;
+  --app-sub: #DFBFC3;
+  --app-accent: ${ACCENT_HEX};
+}
+
+html, body, [data-testid="stAppViewContainer"], .stApp {
+  background-color: #0D0405 !important;
   color: #FDF7F7 !important;
-  font-family: var(--font) !important;
+  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif !important;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Lock full width on every page so Models / Samples / Voice Blender / TTS never shrink */
-.gradio-container {
-  width: 100% !important;
-  max-width: 1280px !important;
-  margin: 0 auto !important;
-  padding: 20px 24px 40px !important;
-  box-sizing: border-box !important;
+header[data-testid="stHeader"],
+#MainMenu,
+footer,
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+.stDeployButton {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
 }
-.gradio-container > .main,
-.gradio-container > .main > .wrap,
-.gradio-container > .main > .wrap > .contain,
-.gradio-container .contain,
-.nr-page-col,
-.applio-card {
-  width: 100% !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-}
-footer { display: none !important; }
 
-/* Custom Red Side Scrollbar */
-* { scrollbar-width: thin; scrollbar-color: ${ACCENT_HEX} #100506; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: ${ACCENT_HEX} #100506;
+}
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #100506; }
-::-webkit-scrollbar-thumb { background: linear-gradient(180deg, ${ACCENT_HEX} 0%, #b91c1c 100%); border-radius: 999px; border: 2px solid #100506; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, ${ACCENT_HEX} 0%, #b91c1c 100%);
+  border-radius: 999px;
+  border: 2px solid #100506;
+}
 ::-webkit-scrollbar-thumb:hover { background: #FF2B35; }
 
-/* NoRegretsRVC Studio Top Header Card */
-.nr-header-wrap { width: 100% !important; padding: 0 !important; border: 0 !important; background: transparent !important; margin-bottom: 12px !important; box-shadow: none !important; }
+.main .block-container,
+[data-testid="stMainBlockContainer"] {
+  max-width: 1280px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  padding: 18px 24px 48px !important;
+}
+
+/* Header Card matching AI Studio Preview */
 .nr-header-card {
   display: flex;
   flex-wrap: wrap;
@@ -493,6 +219,7 @@ footer { display: none !important; }
   border: 1px solid #47161D;
   border-radius: 14px;
   padding: 14px 20px;
+  margin-bottom: 12px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -512,7 +239,14 @@ footer { display: none !important; }
   flex-shrink: 0;
 }
 .nr-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.nr-title-row h1 { margin: 0 !important; font-size: 20px !important; font-weight: 700 !important; color: #FDF7F7 !important; line-height: 1.2 !important; }
+.nr-title-row h1 {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  color: #FDF7F7 !important;
+  line-height: 1.2 !important;
+}
 .nr-version-badge {
   display: inline-flex;
   align-items: center;
@@ -533,115 +267,35 @@ footer { display: none !important; }
   text-align: right;
 }
 .nr-status-title { margin: 0; font-size: 13px; font-weight: 600; color: #FDF7F7; }
-.nr-status-meta { margin: 2px 0 0; font-size: 11px; color: #AD8288; font-family: var(--font-mono); }
+.nr-status-meta { margin: 2px 0 0; font-size: 11px; color: #AD8288; font-family: "JetBrains Mono", monospace; }
 
-/* Fixed Pill Navigation Bar (never collapses tabs into ... overflow) */
-#nr-nav-bar {
-  width: 100% !important;
+/* Card & Container styling */
+[data-testid="stVerticalBlockBorderWrapper"] {
   background: #160709 !important;
   border: 1px solid #47161D !important;
   border-radius: 12px !important;
-  padding: 6px !important;
-  gap: 6px !important;
+  padding: 18px 20px !important;
+  margin-bottom: 14px !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+  gap: 10px !important;
+}
+
+.nr-nav-shell [data-testid="stVerticalBlockBorderWrapper"],
+div.nr-nav-box {
+  background: #160709 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 12px !important;
+  padding: 6px 8px !important;
   margin-bottom: 18px !important;
-  display: flex !important;
-  flex-wrap: wrap !important;
-  align-items: center !important;
-  box-sizing: border-box !important;
-}
-#nr-nav-bar > button,
-#nr-nav-bar .nr-nav-btn {
-  flex: 0 0 auto !important;
-  width: auto !important;
-  min-width: 0 !important;
-  min-height: 36px !important;
-  padding: 7px 14px !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  border-radius: 8px !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  margin: 0 !important;
-}
-#nr-nav-bar > button.secondary,
-#nr-nav-bar .nr-nav-btn.secondary {
-  background: transparent !important;
-  color: #DFBFC3 !important;
-}
-#nr-nav-bar > button.secondary:hover,
-#nr-nav-bar .nr-nav-btn.secondary:hover {
-  background: #200B0E !important;
-  color: #FFFFFF !important;
-}
-#nr-nav-bar > button.primary,
-#nr-nav-bar .nr-nav-btn.primary {
-  background: ${ACCENT_HEX} !important;
-  color: #FFFFFF !important;
 }
 
-.nr-page-col {
-  padding: 0 !important;
-  gap: 16px !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-.nr-page-col > .row,
-.nr-page-col > .column,
-.applio-card > .row,
-.applio-card > .column {
-  flex: 0 0 auto !important;
-  width: 100% !important;
-}
-
-/* Page Section Heading inside each page */
-.nr-page-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  margin: 0 0 4px !important;
-  padding: 0 2px;
-}
-.nr-page-heading h2 { margin: 0 !important; font-size: 24px !important; font-weight: 700 !important; color: #FDF7F7 !important; letter-spacing: -0.02em; }
-.nr-page-heading p { margin: 4px 0 0 !important; font-size: 13px !important; color: #DFBFC3 !important; }
-.nr-readme-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #160709;
-  border: 1px solid #47161D;
-  border-radius: 8px;
-  padding: 7px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #DFBFC3 !important;
-  text-decoration: none !important;
-  white-space: nowrap;
-}
-.nr-readme-pill:hover { border-color: ${ACCENT_HEX}; color: #FFFFFF !important; }
-
-/* Applio Step Cards & Crimson Number Badges */
-.applio-card {
-  background: #160709 !important;
-  border: 1px solid #47161D !important;
-  border-radius: 12px !important;
-  padding: 20px !important;
-  gap: 16px !important;
-  margin-bottom: 16px !important;
-  box-shadow: none !important;
-}
-.applio-step-header, .applio-step-header .html-container {
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-.applio-card-head { display: flex; flex-direction: column; gap: 4px; margin: 0 0 4px; }
+.applio-card-head { display: flex; flex-direction: column; gap: 3px; margin: 0 0 8px; }
 .applio-card-heading {
   display: flex !important;
   align-items: center !important;
   margin: 0 !important;
+  padding: 0 !important;
   font-size: 17px !important;
   font-weight: 700 !important;
   line-height: 1.3 !important;
@@ -668,370 +322,1472 @@ footer { display: none !important; }
   font-size: 12px !important;
   line-height: 1.45 !important;
 }
-
-/* Proper Row Flex Sizing inside Cards (fixes cramped Model Name & overflowing sliders) */
-.applio-card .row {
-  width: 100% !important;
-  gap: 16px !important;
-  align-items: stretch !important;
-  flex-wrap: wrap !important;
-  overflow: visible !important;
+.nr-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #FDF7F7;
+  margin: 4px 0 1px;
 }
-.applio-card .row > *,
-.applio-card .row > .form,
-.applio-card .row > .column {
-  flex: 1 1 0% !important;
-  min-width: min(200px, 100%) !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
+.nr-field-help {
+  font-size: 12px;
+  color: #AD8288;
+  margin: 0 0 6px;
+  line-height: 1.4;
 }
-.applio-card .row > .form {
-  display: flex !important;
-  flex-direction: row !important;
-  flex-wrap: wrap !important;
-  gap: 16px !important;
-  width: 100% !important;
-}
-.applio-card .row > .form > .block {
-  flex: 1 1 0% !important;
-  min-width: min(200px, 100%) !important;
-  max-width: 100% !important;
-}
-.applio-card .row > button {
-  flex: 1 1 0% !important;
-  min-width: 140px !important;
-}
-
-/* Strip Gradio outer form/block boxes so only clean inset inputs have borders */
-.gradio-container .form {
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  gap: 14px !important;
-  overflow: visible !important;
-}
-.applio-card .block,
-.applio-card .form > .block {
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
+.nr-page-title {
+  margin: 0 !important;
   padding: 0 !important;
-  overflow: visible !important;
-}
-.applio-card .group,
-.applio-card .gr-group {
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-}
-.gradio-container .block > label > span:first-child,
-.gradio-container label[data-testid="block-label"] {
-  background: transparent !important;
-  border: 0 !important;
-  padding: 0 0 4px !important;
+  font-size: 26px !important;
+  font-weight: 700 !important;
   color: #FDF7F7 !important;
+  letter-spacing: -0.02em;
+}
+.nr-page-subtitle {
+  margin: 4px 0 0 !important;
   font-size: 13px !important;
-  font-weight: 600 !important;
+  color: #DFBFC3 !important;
 }
-.gradio-container .block span[data-testid="block-info"],
-.gradio-container .info {
-  color: #AD8288 !important;
-  font-size: 12px !important;
-  line-height: 1.4 !important;
+.nr-quote-box {
+  background: #160709;
+  border: 1px solid rgba(71, 22, 29, 0.85);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #DFBFC3;
+  line-height: 1.45;
+  margin: 6px 0 10px;
+}
+.nr-mono-badge {
+  display: inline-block;
+  border: 1px solid #47161D;
+  background: #160709;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: #DFBFC3;
+}
+.nr-log-box {
+  background: #100506;
+  border: 1px solid #47161D;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: #DFBFC3;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+  line-height: 1.45;
 }
 
-/* Single crisp border on Gradio Dropdown/Textbox .wrap (no triple nested borders!) */
-.gradio-container .wrap {
-  background: #100506 !important;
-  border: 1px solid #47161D !important;
-  border-radius: 8px !important;
-  box-shadow: none !important;
-}
-.gradio-container .wrap:focus-within {
-  border-color: ${ACCENT_HEX} !important;
-  box-shadow: 0 0 0 2px rgba(229, 25, 35, 0.18) !important;
-}
-.gradio-container .wrap .wrap-inner,
-.gradio-container .wrap .secondary-wrap,
-.gradio-container .wrap input,
-.gradio-container .wrap textarea {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: #FDF7F7 !important;
-}
-.gradio-container input[type="text"]:not(.wrap input),
-.gradio-container textarea:not(.wrap textarea),
-.gradio-container select {
-  background: #100506 !important;
+/* Inputs, Dropdowns, Sliders, Buttons, Expanders, Tabs */
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input,
+[data-baseweb="select"] > div,
+[data-baseweb="base-input"] {
+  background-color: #100506 !important;
   border: 1px solid #47161D !important;
   border-radius: 8px !important;
   color: #FDF7F7 !important;
+  box-shadow: none !important;
 }
-.gradio-container input[type="text"]:not(.wrap input):focus,
-.gradio-container textarea:not(.wrap textarea):focus {
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+[data-baseweb="select"] > div:focus-within {
   border-color: ${ACCENT_HEX} !important;
   box-shadow: 0 0 0 2px rgba(229, 25, 35, 0.18) !important;
 }
-.gradio-container ul.options {
-  background: #160709 !important;
+[data-baseweb="popover"] ul,
+[data-baseweb="menu"] {
+  background-color: #160709 !important;
   border: 1px solid #47161D !important;
-  border-radius: 8px !important;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55) !important;
 }
-.gradio-container ul.options li.item:hover,
-.gradio-container ul.options li.item.active {
-  background: #2D0F14 !important;
+[data-baseweb="menu"] li:hover {
+  background-color: #2D0F14 !important;
+}
+
+.stButton > button,
+.stDownloadButton > button,
+.stLinkButton > a,
+[data-testid="stPopover"] > button {
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  min-height: 38px !important;
+  padding: 6px 12px !important;
+  white-space: nowrap !important;
+  transition: all 140ms ease !important;
+}
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"] {
+  background-color: ${ACCENT_HEX} !important;
+  border: 1px solid #9F1018 !important;
+  color: #FFFFFF !important;
+}
+.stButton > button[kind="primary"]:hover,
+.stDownloadButton > button[kind="primary"]:hover {
+  background-color: #FF2B35 !important;
+  border-color: #FF2B35 !important;
+}
+.stButton > button[kind="secondary"],
+.stDownloadButton > button[kind="secondary"],
+.stLinkButton > a,
+[data-testid="stPopover"] > button {
+  background-color: #200B0E !important;
+  border: 1px solid #47161D !important;
+  color: #FDF7F7 !important;
+}
+.stButton > button[kind="secondary"]:hover,
+.stDownloadButton > button[kind="secondary"]:hover,
+.stLinkButton > a:hover,
+[data-testid="stPopover"] > button:hover {
+  border-color: ${ACCENT_HEX} !important;
+  background-color: #2D0F14 !important;
   color: #FFFFFF !important;
 }
 
-/* Settings, Extra & Card Segmented Sub-Tabs */
-.nr-subtabs > .tab-wrapper,
-.nr-subtabs > .tab-nav,
-.nr-subtabs > [role="tablist"],
-.applio-card .tab-wrapper,
-.applio-card .tab-nav,
-.applio-card [role="tablist"],
-.applio-card .tab-container[role="tablist"] {
+/* Expanders (Advanced Settings) */
+[data-testid="stExpander"] {
+  background: #100506 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+[data-testid="stExpander"] summary {
+  color: #FDF7F7 !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+/* File Uploader compact dark style */
+[data-testid="stFileUploaderDropzone"] {
+  background: #100506 !important;
+  border: 1px dashed #47161D !important;
+  border-radius: 10px !important;
+  padding: 12px 14px !important;
+}
+
+/* Segmented Tabs inside Settings / Samples / Extra */
+.stTabs [data-baseweb="tab-list"] {
   background: #100506 !important;
   border: 1px solid #47161D !important;
   border-radius: 9px !important;
   padding: 4px !important;
   gap: 4px !important;
 }
-.nr-subtabs > .tab-wrapper button,
-.nr-subtabs > .tab-nav button,
-.nr-subtabs > [role="tablist"] button,
-.applio-card .tab-wrapper button,
-.applio-card .tab-nav button,
-.applio-card [role="tablist"] button,
-.applio-card .tab-container[role="tablist"] button {
-  border: 0 !important;
+.stTabs [data-baseweb="tab"] {
   border-radius: 6px !important;
   color: #DFBFC3 !important;
-  background: transparent !important;
-}
-.nr-subtabs button.selected,
-.nr-subtabs button[aria-selected="true"],
-.applio-card .tab-wrapper button.selected,
-.applio-card .tab-wrapper button[aria-selected="true"],
-.applio-card .tab-nav button.selected,
-.applio-card [role="tablist"] button.selected,
-.applio-card [role="tablist"] button[aria-selected="true"],
-.applio-card .tab-container[role="tablist"] button.selected,
-.applio-card .tab-container[role="tablist"] button[aria-selected="true"] {
-  background: ${ACCENT_HEX} !important;
-  color: #FFFFFF !important;
-}
-.nr-subtabs button::after,
-.applio-card [role="tablist"] button::after,
-.applio-card .tab-container[role="tablist"] button::after { display: none !important; }
-.nr-subtabs > .tabitem { border: 0 !important; padding: 14px 0 0 !important; background: transparent !important; }
-
-/* Custom Checkboxes, Radios, Sliders, Compact File Dropzones & Accordions (zero red horizontal scrollbar!) */
-.gradio-container input[type="checkbox"] {
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  flex: 0 0 18px !important;
-  width: 18px !important;
-  min-width: 18px !important;
-  max-width: 18px !important;
-  height: 18px !important;
-  border-radius: 5px !important;
-  border: 1px solid #6E232D !important;
-  background: #100506 !important;
-  cursor: pointer !important;
-}
-.gradio-container input[type="checkbox"]:checked {
-  background-color: ${ACCENT_HEX} !important;
-  border-color: ${ACCENT_HEX} !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 6.2 2.6 2.6 5.4-5.6' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
-  background-size: 12px 12px !important;
-  background-position: center !important;
-  background-repeat: no-repeat !important;
-}
-.gradio-container input[type="radio"] {
-  appearance: none !important;
-  flex: 0 0 16px !important;
-  width: 16px !important;
-  min-width: 16px !important;
-  max-width: 16px !important;
-  height: 16px !important;
-  border-radius: 50% !important;
-  border: 1px solid #6E232D !important;
-  background: #100506 !important;
-}
-.gradio-container input[type="radio"]:checked {
-  border-color: ${ACCENT_HEX} !important;
-  background: radial-gradient(circle, #FFFFFF 0 3px, ${ACCENT_HEX} 3.5px) !important;
-}
-.gradio-container .tab-like-container {
-  background: #100506 !important;
-  border: 1px solid #47161D !important;
-  border-radius: 8px !important;
-}
-.gradio-container .tab-like-container input[type="number"] {
-  background: transparent !important;
-  border: 0 !important;
-  color: #FDF7F7 !important;
-}
-.gradio-container .tab-like-container .reset-button {
-  border-left: 1px solid #47161D !important;
-  color: #AD8288 !important;
-}
-.gradio-container input[type="range"] {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-  accent-color: ${ACCENT_HEX} !important;
-}
-.gr-accordion,
-.accordion {
-  background: #100506 !important;
-  border: 1px solid #47161D !important;
-  border-radius: 10px !important;
-  padding: 10px 14px !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-}
-.gr-accordion > button.label-wrap,
-.accordion > button.label-wrap,
-.gr-accordion > div,
-.accordion > div,
-[data-testid="accordion-content"] {
-  max-width: 100% !important;
-  overflow-x: hidden !important;
-  scrollbar-width: none !important;
-}
-.gr-accordion > button.label-wrap::-webkit-scrollbar,
-.accordion > button.label-wrap::-webkit-scrollbar,
-.gr-accordion > div::-webkit-scrollbar,
-.accordion > div::-webkit-scrollbar {
-  display: none !important;
-  height: 0 !important;
-}
-.file-preview,
-[data-testid="file"] .wrap,
-.upload-container {
-  min-height: 76px !important;
-  background: #100506 !important;
-  border: 1px dashed #47161D !important;
-  border-radius: 10px !important;
-}
-[data-testid="file"] button {
-  min-height: 68px !important;
-  padding: 12px !important;
-}
-button.primary {
-  background: ${ACCENT_HEX} !important;
-  border-color: #9F1018 !important;
-  color: #FFFFFF !important;
+  padding: 6px 14px !important;
   font-weight: 600 !important;
-  border-radius: 8px !important;
 }
-button.primary:hover { background: #FF2B35 !important; }
-button.secondary {
-  background: #200B0E !important;
-  border-color: #47161D !important;
-  color: #FDF7F7 !important;
-  border-radius: 8px !important;
+.stTabs [aria-selected="true"] {
+  background-color: ${ACCENT_HEX} !important;
+  color: #FFFFFF !important;
 }
-button.secondary:hover { border-color: ${ACCENT_HEX} !important; background: #2D0F14 !important; }
+.stTabs [data-baseweb="tab-highlight"],
+.stTabs [data-baseweb="tab-border"] {
+  display: none !important;
+}
+</style>
 """
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
-def _load_theme():
+# --- Helpers ---
+FREE_SAMPLES_CATALOG = [
+    ("Male Speaking 1", "MaleSpeakingTest-1_931b5ffd.wav", "Male", "Expressive Narration", "~9.5s", "If you need an expressive voice for comedic gaming, animation, weird science explainers, or just any other casual narration, this is the right voice."),
+    ("Male Speaking 2", "MaleSpeakingTest-2_c2e6e7fe.wav", "Male", "Conversational Voiceover", "~6.5s", "Need a great AI voice? Look no further than this conversational clone trained by a professional voice actor."),
+    ("Male Speaking 3", "MaleSpeakingTest-3_d78e8233.wav", "Male", "Casual Dialogue", "~6.6s", "Sure, I can get you in this week. I've got Thursday at 10 or Friday at 2:30. Which one works better for you?"),
+    ("Female Speaking 1", "FemaleSpeakingTest-1_bb3d674f.wav", "Female", "Calm Professional", "~7.1s", "Hi there, I'm here to help with questions, support requests, and quick answers. All delivered with a calm, friendly, professional touch."),
+    ("Female Speaking 2", "FemaleSpeakingTest-2_d1823132.wav", "Female", "Clear Narration", "~7.1s", "By repeating what students say, teachers can demonstrate that they are listening. By extending what students say..."),
+    ("Female Speaking 3", "FemaleSpeakingTest-3_458bd4fc.wav", "Female", "Friendly Assistant", "~7.1s", "I can help with appointments, reminders, and general questions. If you need a person, I'll make sure you reach the right team."),
+]
+
+def _step_head(num: int, title: str, desc: str) -> None:
+    st.markdown(
+        f'<div class="applio-card-head">'
+        f'<h2 class="applio-card-heading"><span class="applio-step">{num}</span>{html.escape(title)}</h2>'
+        f'<p class="applio-card-desc">{html.escape(desc)}</p>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+def _field_label(label: str, help_text: str = "") -> None:
+    h = f'<div class="nr-field-help">{html.escape(help_text)}</div>' if help_text else ""
+    st.markdown(f'<div class="nr-field-label">{html.escape(label)}</div>{h}', unsafe_allow_html=True)
+
+def _log_box(text: str) -> None:
+    safe = html.escape(text or "The output information will be displayed here.")
+    st.markdown(f'<div class="nr-log-box">{safe}</div>', unsafe_allow_html=True)
+
+def _get_gpu_summary() -> tuple[str, str]:
     try:
-        return NoRegretsRVCTheme()
+        from rvc.configs.config import get_gpu_info, get_number_of_gpus
+        return str(get_number_of_gpus()), str(get_gpu_info())
     except Exception:
-        return gr.themes.Base()
+        try:
+            import torch
+            n = torch.cuda.device_count()
+            if n > 0:
+                ids = "-".join(str(i) for i in range(n))
+                names = ", ".join(torch.cuda.get_device_name(i) for i in range(n))
+                return ids, names
+        except Exception:
+            pass
+    return "0", "CPU"
+
+def _list_models() -> list[str]:
+    logs_dir = Path(now_dir) / "logs"
+    if not logs_dir.is_dir():
+        return []
+    skip = {"mute", "mute_spin", "reference", "zips", "downloads"}
+    return sorted(p.name for p in logs_dir.iterdir() if p.is_dir() and p.name not in skip)
+
+def _list_datasets() -> list[str]:
+    found: list[str] = []
+    for base in (Path("/kaggle/input"), Path(now_dir) / "assets" / "datasets"):
+        if base.is_dir():
+            for p in sorted(base.rglob("*")):
+                if p.is_dir() and any(f.suffix.lower() in (".wav", ".mp3", ".flac", ".ogg", ".m4a") for f in p.iterdir() if f.is_file()):
+                    found.append(str(p))
+    return found
+
+def _list_pth_files(filter_q: str = "") -> list[str]:
+    logs_dir = Path(now_dir) / "logs"
+    if not logs_dir.is_dir():
+        return []
+    items = sorted(str(p.relative_to(now_dir)) for p in logs_dir.rglob("*.pth") if not p.name.startswith(("G_", "D_", "f0")))
+    if filter_q.strip():
+        q = filter_q.strip().lower()
+        items = [x for x in items if q in x.lower()]
+    return items
+
+def _list_index_files(filter_q: str = "") -> list[str]:
+    logs_dir = Path(now_dir) / "logs"
+    if not logs_dir.is_dir():
+        return []
+    items = sorted(str(p.relative_to(now_dir)) for p in logs_dir.rglob("*.index") if "trained" not in p.name)
+    if filter_q.strip():
+        q = filter_q.strip().lower()
+        items = [x for x in items if q in x.lower()]
+    return items
+
+def _match_index(pth_path: str, indexes: list[str]) -> str:
+    if not pth_path or not indexes:
+        return ""
+    parent = str(Path(pth_path).parent)
+    for idx in indexes:
+        if str(Path(idx).parent) == parent:
+            return idx
+    stem = Path(pth_path).stem.split("_")[0].lower()
+    for idx in indexes:
+        if stem and stem in idx.lower():
+            return idx
+    return indexes[0] if indexes else ""
+
+def _list_audio_inputs() -> list[str]:
+    au_dir = Path(now_dir) / "assets" / "audios"
+    if not au_dir.is_dir():
+        return []
+    return sorted(
+        str(p.relative_to(now_dir))
+        for p in au_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in (".wav", ".mp3", ".flac", ".ogg", ".m4a") and not p.name.startswith("output")
+    )
+
+def _list_custom_pretrains(prefix: str) -> list[str]:
+    cdir = Path(now_dir) / "rvc" / "models" / "pretraineds" / "custom"
+    if not cdir.is_dir():
+        return []
+    items = sorted(str(p.relative_to(now_dir)) for p in cdir.glob("*.pth"))
+    if prefix:
+        matched = [x for x in items if prefix in Path(x).name.upper()]
+        if matched:
+            return matched
+    return items
+
+def _load_tts_voices() -> list[str]:
+    vf = Path(now_dir) / "rvc" / "lib" / "tools" / "tts_voices.json"
+    if vf.is_file():
+        try:
+            data = json.loads(vf.read_text(encoding="utf-8"))
+            names = [v.get("ShortName", "") for v in data if v.get("ShortName")]
+            if names:
+                return names
+        except Exception:
+            pass
+    return ["en-US-AndrewNeural", "en-US-EmmaNeural", "en-US-BrianNeural", "en-GB-SoniaNeural"]
+
+def _run_core_sync(fn_name: str, kwargs: dict[str, Any], log_placeholder=None) -> tuple[int, str]:
+    payload = json.dumps({"fn": fn_name, "kwargs": kwargs})
+    py_code = (
+        "import json, os, sys; "
+        "d = json.loads(sys.argv[1]); "
+        "import core; "
+        "res = getattr(core, d['fn'])(**d['kwargs']); "
+        "print('__NR_RESULT__:' + json.dumps(res, default=str))"
+    )
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", py_code, payload],
+        cwd=now_dir,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    lines: list[str] = []
+    result_str = ""
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+        ln = raw.rstrip("\\r\\n")
+        if ln.startswith("__NR_RESULT__:"):
+            result_str = ln.split("__NR_RESULT__:", 1)[1]
+            continue
+        lines.append(ln)
+        print(ln, flush=True)
+        if log_placeholder is not None and len(lines) % 3 == 0:
+            log_placeholder.markdown(f'<div class="nr-log-box">{html.escape(chr(10).join(lines[-80:]))}</div>', unsafe_allow_html=True)
+    rc = proc.wait()
+    joined = "\\n".join(lines[-120:])
+    if result_str:
+        try:
+            parsed = json.loads(result_str)
+            if isinstance(parsed, list) and len(parsed) >= 1:
+                joined = (joined + "\\n" + str(parsed[0])).strip()
+            elif parsed:
+                joined = (joined + "\\n" + str(parsed)).strip()
+        except Exception:
+            pass
+    if log_placeholder is not None:
+        log_placeholder.markdown(f'<div class="nr-log-box">{html.escape(joined or "Completed.")}</div>', unsafe_allow_html=True)
+    return rc, joined or ("Completed." if rc == 0 else f"Process exited with code {rc}.")
+
+def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
+    model_dir = Path(now_dir) / "logs" / model_name
+    model_dir.mkdir(parents=True, exist_ok=True)
+    log_path = model_dir / "nr_train.log"
+    payload = json.dumps({"fn": "run_train_script", "kwargs": kwargs})
+    py_code = (
+        "import json, sys; "
+        "d = json.loads(sys.argv[1]); "
+        "import core; "
+        "res = getattr(core, d['fn'])(**d['kwargs']); "
+        "print(res, flush=True)"
+    )
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    log_fh = open(log_path, "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", py_code, payload],
+        cwd=now_dir,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        start_new_session=True,
+    )
+    with open(ACTIVE_TRAIN_META, "w", encoding="utf-8") as mf:
+        json.dump({"pid": proc.pid, "model_name": model_name, "log_path": str(log_path), "started": time.time()}, mf)
+
+    def _pump() -> None:
+        try:
+            assert proc.stdout is not None
+            for ln in proc.stdout:
+                log_fh.write(ln)
+                log_fh.flush()
+                print(ln, end="", flush=True)
+        finally:
+            proc.wait()
+            log_fh.close()
+
+    threading.Thread(target=_pump, daemon=True).start()
+    return str(log_path)
+
+def _stop_training(model_name: str) -> str:
+    killed = 0
+    for meta_path in (ACTIVE_TRAIN_META, os.path.join(now_dir, "logs", model_name, "config.json")):
+        if os.path.isfile(meta_path):
+            try:
+                data = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+                pids = []
+                if isinstance(data.get("pid"), int):
+                    pids.append(data["pid"])
+                pids.extend(p for p in data.get("process_pids", []) if isinstance(p, int))
+                for pid in pids:
+                    try:
+                        os.killpg(pid, signal.SIGTERM)
+                        killed += 1
+                    except Exception:
+                        try:
+                            os.kill(pid, signal.SIGTERM)
+                            killed += 1
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+    try:
+        from tabs.settings.sections.restart import stop_train
+        stop_train(model_name)
+    except Exception:
+        pass
+    return f"Stop signal sent to training ({killed} process group(s))."
+
+def _read_train_log(model_name: str) -> str:
+    candidates = []
+    if model_name.strip():
+        candidates.append(Path(now_dir) / "logs" / model_name.strip() / "nr_train.log")
+    if os.path.isfile(ACTIVE_TRAIN_META):
+        try:
+            lp = json.loads(Path(ACTIVE_TRAIN_META).read_text(encoding="utf-8")).get("log_path", "")
+            if lp:
+                candidates.append(Path(lp))
+        except Exception:
+            pass
+    for p in candidates:
+        if p.is_file():
+            txt = p.read_text(encoding="utf-8", errors="replace")
+            return "\\n".join(txt.splitlines()[-80:])
+    return ""
 
 
-def build_ui(theme=None) -> gr.Blocks:
-    if theme is None:
-        theme = _load_theme()
-    blocks_kwargs = {"title": "${BRAND_NAME} (Beta 0.0.0)"}
-    if not GRADIO_6:
-        blocks_kwargs["theme"] = theme
-        blocks_kwargs["css"] = CUSTOM_CSS
-    with gr.Blocks(**blocks_kwargs) as app:
-        gr.HTML(
-            '<div class="nr-header-card">'
-            '<div class="nr-brand-left">'
-            '<div class="nr-logo-box">NR</div>'
-            '<div>'
-            '<div class="nr-title-row">'
-            '<h1>${BRAND_NAME}</h1>'
-            '<span class="nr-version-badge">Beta version 0.0.0</span>'
-            '</div>'
-            '<p class="nr-brand-sub">RVC Voice Model Training, Inference &amp; Kaggle Studio</p>'
-            '</div>'
-            '</div>'
-            '<div class="nr-status-box">'
-            '<p class="nr-status-title">${safeHeaderName} (${project.samplingRate})</p>'
-            '<p class="nr-status-meta">${project.vocoder} · Batch ${project.batchSize} (${effBatch} eff.) · ${project.totalEpoch} ep</p>'
-            '</div>'
-            '</div>',
-            elem_classes="nr-header-wrap",
-        )
-        nav_btns = []
-        page_cols = []
-        with gr.Row(elem_id="nr-nav-bar"):
-${navBtnInits}
-${pageColBlocks}
-
-        def _make_nav_handler(target_idx: int):
-            def _switch():
-                vis_updates = [gr.update(visible=(i == target_idx)) for i in range(len(page_cols))]
-                btn_updates = [gr.update(variant=("primary" if i == target_idx else "secondary")) for i in range(len(nav_btns))]
-                return (*vis_updates, *btn_updates)
-            return _switch
-
-        for _idx, _btn in enumerate(nav_btns):
-            _btn.click(
-                fn=_make_nav_handler(_idx),
-                inputs=[],
-                outputs=[*page_cols, *nav_btns],
-                queue=False,
+# --- Auth Gate (matches APPLIO_AUTH_USERNAME / APPLIO_AUTH_PASSWORD) ---
+_auth_user = os.environ.get("APPLIO_AUTH_USERNAME", "").strip()
+_auth_pass = os.environ.get("APPLIO_AUTH_PASSWORD", "").strip()
+if _auth_pass and not st.session_state.get("nr_authed", False):
+    _, col_mid, _ = st.columns([1, 1.4, 1])
+    with col_mid:
+        with st.container(border=True):
+            st.markdown(
+                '<div class="nr-header-card" style="margin-bottom:14px">'
+                '<div class="nr-brand-left">'
+                '<div class="nr-logo-box">NR</div>'
+                '<div><div class="nr-title-row"><h1>${BRAND_NAME}</h1><span class="nr-version-badge">Beta version 0.0.0</span></div>'
+                '<p class="nr-brand-sub">Sign in with the credentials shown in your Kaggle Live Monitor</p></div>'
+                '</div></div>',
+                unsafe_allow_html=True,
             )
-    return app
+            u_in = st.text_input("Username", value=_auth_user or "noregrets")
+            p_in = st.text_input("Password", type="password", placeholder="Paste WebUI password from Kaggle output")
+            if st.button("Sign In", type="primary", use_container_width=True):
+                u_ok = hmac.compare_digest(u_in.strip(), _auth_user or "noregrets")
+                p_ok = hmac.compare_digest(p_in.strip(), _auth_pass)
+                if u_ok and p_ok:
+                    st.session_state["nr_authed"] = True
+                    st.rerun()
+                else:
+                    st.error("Invalid WebUI username or password.")
+    st.stop()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="${BRAND_NAME} WebUI")
-    parser.add_argument("--server-name", "--host", dest="server_name", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=6969)
-    parser.add_argument("--share", action="store_true")
-    parser.add_argument("--client", action="store_true")
-    args, _ = parser.parse_known_args()
+# --- Session Defaults ---
+NAV_TABS = ${JSON.stringify(enabledNav)}
+if "nr_active_tab" not in st.session_state or st.session_state["nr_active_tab"] not in NAV_TABS:
+    st.session_state["nr_active_tab"] = NAV_TABS[0]
+st.session_state.setdefault("nr_model_name", "${safeDefaultName}")
+st.session_state.setdefault("nr_sr", "${defaultSr}")
+st.session_state.setdefault("nr_vocoder", "${defaultVocoder}")
+st.session_state.setdefault("nr_batch_size", ${defaultBatch})
+st.session_state.setdefault("nr_save_every", ${defaultSaveEvery})
+st.session_state.setdefault("nr_total_epoch", ${defaultTotalEpoch})
+st.session_state.setdefault("nr_silent_files", 0)
+st.session_state.setdefault("nr_pre_log", "The output information will be displayed here.")
+st.session_state.setdefault("nr_ext_log", "The output information will be displayed here.")
+st.session_state.setdefault("nr_trn_log", "The output information will be displayed here.")
+st.session_state.setdefault("nr_dl_log", "The output information will be displayed here.")
+st.session_state.setdefault("nr_inf_log", "The output information will be displayed here.")
+st.session_state.setdefault("nr_inf_out", "")
+st.session_state.setdefault("nr_tts_log", "The output information will be displayed here.")
+st.session_state.setdefault("nr_tts_out", "")
+st.session_state.setdefault("nr_blend_log", "")
+st.session_state.setdefault("nr_blend_out", "")
+st.session_state.setdefault("nr_selected_sample_path", "")
+st.session_state.setdefault("nr_free_gender", "All")
 
-    auth = None
-    username = os.environ.get("APPLIO_AUTH_USERNAME", "").strip()
-    password = os.environ.get("APPLIO_AUTH_PASSWORD", "").strip()
-    if username and password:
-        auth = (username, password)
+gpu_ids_default, gpu_desc_default = _get_gpu_summary()
+gpu_count = max(1, len([g for g in gpu_ids_default.split("-") if g.strip()]))
+active_model_display = st.session_state["nr_model_name"].strip() or "Untitled Model"
+eff_batch = int(st.session_state["nr_batch_size"]) * gpu_count
 
-    theme = _load_theme()
-    app = build_ui(theme)
-    launch_kwargs = {
-        "server_name": args.server_name,
-        "server_port": args.port,
-        "share": args.share,
-        "auth": auth,
-        "inbrowser": args.client,
-        "show_error": True,
-        "allowed_paths": ["logs", "assets"],
-    }
-    if GRADIO_6:
-        launch_kwargs["theme"] = theme
-        launch_kwargs["css"] = CUSTOM_CSS
-    app.queue(default_concurrency_limit=40).launch(**launch_kwargs)
+# --- Top Brand Header Card ---
+st.markdown(
+    '<div class="nr-header-card">'
+    '<div class="nr-brand-left">'
+    '<div class="nr-logo-box">NR</div>'
+    '<div>'
+    '<div class="nr-title-row">'
+    '<h1>${BRAND_NAME}</h1>'
+    '<span class="nr-version-badge">Beta version 0.0.0</span>'
+    '</div>'
+    '<p class="nr-brand-sub">RVC Voice Model Training, Inference &amp; Kaggle Studio</p>'
+    '</div>'
+    '</div>'
+    '<div class="nr-status-box">'
+    f'<p class="nr-status-title">{html.escape(active_model_display)} ({html.escape(str(st.session_state["nr_sr"]))})</p>'
+    f'<p class="nr-status-meta">{html.escape(str(st.session_state["nr_vocoder"]))} · Batch {st.session_state["nr_batch_size"]} ({eff_batch} eff.) · {st.session_state["nr_total_epoch"]} ep</p>'
+    '</div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
+# --- Horizontal Pill Navigation Bar ---
+with st.container(border=True):
+    nav_weights = [max(7, len(lbl) + 4) for lbl in NAV_TABS]
+    nav_cols = st.columns(nav_weights, gap="small")
+    for idx, tab_label in enumerate(NAV_TABS):
+        is_active = st.session_state["nr_active_tab"] == tab_label
+        with nav_cols[idx]:
+            if st.button(
+                tab_label,
+                key=f"nr_nav_{idx}",
+                type=("primary" if is_active else "secondary"),
+                use_container_width=True,
+            ):
+                if not is_active:
+                    st.session_state["nr_active_tab"] = tab_label
+                    st.rerun()
+
+active_tab = st.session_state["nr_active_tab"]
+cfg_now = _load_config()
+list_filter_on = bool(cfg_now.get("filter", False))
 
 
-if __name__ == "__main__":
-    main()
+def _page_banner(title: str, subtitle: str, show_vram_info: bool = False) -> None:
+    if show_vram_info:
+        c_title, c_vram, c_readme = st.columns([6, 1.8, 1.7])
+    else:
+        c_title, c_readme = st.columns([7.8, 1.7])
+        c_vram = None
+    with c_title:
+        st.markdown(
+            f'<h2 class="nr-page-title">{html.escape(title)}</h2>'
+            f'<p class="nr-page-subtitle">{html.escape(subtitle)}</p>',
+            unsafe_allow_html=True,
+        )
+    if c_vram is not None:
+        with c_vram:
+            with st.popover("Model & VRAM Info", use_container_width=True):
+                sr_val = st.session_state["nr_sr"]
+                bs_val = int(st.session_state["nr_batch_size"])
+                voc_val = st.session_state["nr_vocoder"]
+                prec_val = cfg_now.get("precision", "fp32")
+                est_vram = round(4.2 + (bs_val * 0.65) + (1.2 if sr_val == "48000" else 0.4) + (2.4 if voc_val == "RefineGAN" else 0.0), 1)
+                st.markdown(f"**Detected GPUs:** \`{gpu_desc_default}\`")
+                st.markdown(f"**Precision:** \`{prec_val.upper()}\` · **Effective Batch:** \`{bs_val * gpu_count}\`")
+                st.markdown(f"**Estimated Peak VRAM:** \`{est_vram} GB / 15.0 GB T4\`")
+    with c_readme:
+        st.link_button("GitHub README ↗", "${REPO_README_URL}", use_container_width=True)
+
+
+# ==============================================================================
+# TAB 1: TRAINING
+# ==============================================================================
+if active_tab == "Training":
+    _page_banner(
+        "Training",
+        "Set up your voice dataset, extract acoustic features, and run RVC training.",
+        show_vram_info=True,
+    )
+
+    # [1] Model Settings
+    with st.container(border=True):
+        _step_head(1, "Model Settings", "Give your voice project a name, select target sample fidelity, and assign your synthesis vocoder.")
+        col1, col2 = st.columns(2, gap="medium")
+        with col1:
+            _field_label("Model Name", "Identifier used for saved checkpoints, index files, and log directories.")
+            existing_models = _list_models()
+            model_name_val = st.text_input(
+                "Model Name",
+                value=st.session_state["nr_model_name"],
+                placeholder="Enter model name (e.g. VocalModel-32k)",
+                label_visibility="collapsed",
+                key="nr_model_name_input",
+            )
+            if existing_models:
+                picked_existing = st.selectbox(
+                    "Or resume existing model",
+                    options=[""] + existing_models,
+                    index=0,
+                    format_func=lambda x: "Pick existing log folder..." if x == "" else x,
+                    label_visibility="collapsed",
+                    key="nr_pick_existing_model",
+                )
+                if picked_existing:
+                    model_name_val = picked_existing
+            st.session_state["nr_model_name"] = model_name_val
+        with col2:
+            _field_label("Sampling Rate", "Target audio resolution in Hz for preprocessed slices and model synthesis.")
+            sr_opts = ["32000", "40000", "48000"]
+            st.session_state["nr_sr"] = st.selectbox(
+                "Sampling Rate",
+                options=sr_opts,
+                index=sr_opts.index(st.session_state["nr_sr"]) if st.session_state["nr_sr"] in sr_opts else 0,
+                label_visibility="collapsed",
+            )
+
+        _field_label(
+            "Vocoder",
+            "Waveform synthesizer architecture: HiFi-GAN works across all RVC players; MRF HiFi-GAN boosts harmonic detail for Applio clients; RefineGAN maximizes clarity with extra VRAM demand.",
+        )
+        voc_opts = ["HiFi-GAN", "MRF HiFi-GAN", "RefineGAN"]
+        st.session_state["nr_vocoder"] = st.selectbox(
+            "Vocoder",
+            options=voc_opts,
+            index=voc_opts.index(st.session_state["nr_vocoder"]) if st.session_state["nr_vocoder"] in voc_opts else 0,
+            label_visibility="collapsed",
+        )
+
+        with st.expander("Advanced Settings", expanded=False):
+            a1, a2 = st.columns(2, gap="medium")
+            with a1:
+                cpu_cores = st.slider("CPU Cores", min_value=1, max_value=max(4, os.cpu_count() or 4), value=min(4, os.cpu_count() or 4))
+            with a2:
+                gpu_ids = st.text_input("GPU Number", value=gpu_ids_default, help="Separate GPU indices with - for multi-GPU (e.g. 0-1).")
+                st.caption(f"Detected Hardware: {gpu_desc_default}")
+
+    # [2] Prepare Dataset
+    with st.container(border=True):
+        _step_head(2, "Prepare Dataset", "Link your Kaggle dataset folder and split clean vocal segments for training.")
+        _field_label("Dataset Path", "Mounted Kaggle input path containing your dry vocal recordings.")
+        found_ds = _list_datasets()
+        ds_path = st.text_input(
+            "Dataset Path",
+            value=st.session_state.get("nr_ds_path", found_ds[0] if found_ds else ""),
+            placeholder="/kaggle/input/datasets/your-username/voice-dataset",
+            label_visibility="collapsed",
+        )
+        st.session_state["nr_ds_path"] = ds_path
+        if found_ds:
+            ds_pick = st.selectbox(
+                "Detected Datasets",
+                options=[""] + found_ds,
+                format_func=lambda x: "Pick discovered Kaggle/local dataset..." if x == "" else x,
+                label_visibility="collapsed",
+            )
+            if ds_pick:
+                ds_path = ds_pick
+                st.session_state["nr_ds_path"] = ds_pick
+
+        ds_row_l, ds_row_r = st.columns([3, 1.3], gap="small")
+        with ds_row_l:
+            dataset_creator = st.checkbox("Dataset Creator", value=False)
+        with ds_row_r:
+            if st.button("Refresh models and datasets", use_container_width=True):
+                st.rerun()
+        if dataset_creator:
+            dc_name = st.text_input("Dataset Name", value="my-dataset", placeholder="Folder name under assets/datasets/")
+            uploaded_audio = st.file_uploader(
+                "Upload audio clips for your dataset",
+                type=["wav", "mp3", "flac", "ogg", "m4a"],
+                accept_multiple_files=True,
+            )
+            if uploaded_audio and st.button("Save Uploaded Audio to Dataset", type="secondary"):
+                target_ds = Path(now_dir) / "assets" / "datasets" / (re.sub(r"[^a-zA-Z0-9_-]+", "_", dc_name) or "my-dataset")
+                target_ds.mkdir(parents=True, exist_ok=True)
+                for uf in uploaded_audio:
+                    (target_ds / uf.name).write_bytes(uf.getvalue())
+                st.session_state["nr_ds_path"] = str(target_ds)
+                st.success(f"Saved {len(uploaded_audio)} clip(s) to {target_ds}")
+
+        with st.expander("Advanced Settings", expanded=False):
+            p1, p2, p3 = st.columns(3, gap="medium")
+            with p1:
+                cut_preprocess = st.selectbox("Audio Cutting", ["Automatic", "Simple", "Skip"], index=0)
+            with p2:
+                chunk_len = st.slider("Chunk Length (s)", 0.5, 5.0, 3.0, step=0.1)
+            with p3:
+                overlap_len = st.slider("Overlap Length (s)", 0.0, 0.4, 0.3, step=0.05)
+            pe_col1, pe_col2 = st.columns(2, gap="medium")
+            with pe_col1:
+                process_effects = st.checkbox("Process Audio Effects / Noise Filter", value=False)
+            with pe_col2:
+                norm_mode = st.selectbox("Loudness Normalization Mode", ["post", "none", "none_strict"], index=0)
+
+        _field_label("Preprocess output")
+        pre_box = st.empty()
+        pre_box.markdown(f'<div class="nr-log-box">{html.escape(st.session_state["nr_pre_log"])}</div>', unsafe_allow_html=True)
+        if st.button("Preprocess Dataset", type="primary", use_container_width=True, key="btn_preprocess"):
+            m_clean = st.session_state["nr_model_name"].strip()
+            if not m_clean:
+                st.warning("Enter a Model Name in Step 1 first.")
+            elif not st.session_state["nr_ds_path"].strip():
+                st.warning("Enter a Dataset Path first.")
+            else:
+                _, out_txt = _run_core_sync(
+                    "run_preprocess_script",
+                    {
+                        "model_name": m_clean,
+                        "dataset_path": st.session_state["nr_ds_path"].strip(),
+                        "sample_rate": int(st.session_state["nr_sr"]),
+                        "cpu_cores": int(cpu_cores),
+                        "cut_preprocess": cut_preprocess,
+                        "process_effects": bool(process_effects),
+                        "chunk_len": float(chunk_len),
+                        "overlap_len": float(overlap_len),
+                        "normalization_mode": norm_mode if process_effects else "none",
+                    },
+                    pre_box,
+                )
+                st.session_state["nr_pre_log"] = out_txt
+
+    # [3] Extract Features
+    with st.container(border=True):
+        _step_head(3, "Extract Features", "Compute pitch tracks and speaker embeddings from your sliced vocals.")
+        e1, e2 = st.columns(2, gap="medium")
+        with e1:
+            _field_label("Pitch extraction algorithm", "F0 tracker used to capture vocal melody. RMVPE offers the sharpest accuracy across speech and singing.")
+            f0_method = st.selectbox("F0 Method", ["rmvpe", "fcpe", "swift-f0", "crepe"], index=0, label_visibility="collapsed")
+        with e2:
+            _field_label("Embedder Model", "Speech encoder that extracts phonetic timbre representations from audio.")
+            embedder_model = st.selectbox("Embedder Model", ["contentvec", "spin", "chinese-hubert-base"], index=0, label_visibility="collapsed")
+
+        _field_label(
+            "Silent training files",
+            "Injects blank silent samples to help prevent breath artifacts during pauses. Leave at 0 if your dataset already includes natural quiet gaps.",
+        )
+        include_mutes = st.slider("Silent training files", 0, 10, int(st.session_state["nr_silent_files"]), step=1, label_visibility="collapsed")
+        st.session_state["nr_silent_files"] = include_mutes
+
+        _field_label("Feature extraction output")
+        ext_box = st.empty()
+        ext_box.markdown(f'<div class="nr-log-box">{html.escape(st.session_state["nr_ext_log"])}</div>', unsafe_allow_html=True)
+        if st.button("Extract Features", type="primary", use_container_width=True, key="btn_extract"):
+            m_clean = st.session_state["nr_model_name"].strip()
+            if not m_clean:
+                st.warning("Enter a Model Name in Step 1 first.")
+            else:
+                _, out_txt = _run_core_sync(
+                    "run_extract_script",
+                    {
+                        "model_name": m_clean,
+                        "f0_method": f0_method,
+                        "cpu_cores": int(cpu_cores),
+                        "gpu": gpu_ids.strip() or "0",
+                        "sample_rate": int(st.session_state["nr_sr"]),
+                        "embedder_model": embedder_model,
+                        "embedder_model_custom": None,
+                        "include_mutes": int(include_mutes),
+                    },
+                    ext_box,
+                )
+                st.session_state["nr_ext_log"] = out_txt
+
+    # [4] Train Model
+    with st.container(border=True):
+        _step_head(4, "Train Model", "Dial in batch size, checkpoint frequency, and total training epochs before launching.")
+        t1, t2, t3 = st.columns(3, gap="medium")
+        with t1:
+            _field_label("Batch Size", "Per-GPU slice batch size. Default is 2 (effective batch 4 across 2x T4).")
+            st.session_state["nr_batch_size"] = st.slider("Batch Size", 1, 64, int(st.session_state["nr_batch_size"]), step=1, label_visibility="collapsed")
+        with t2:
+            _field_label("Save Every Epoch", "Interval of completed epochs between saved checkpoint snapshots.")
+            st.session_state["nr_save_every"] = st.slider("Save Every Epoch", 1, 100, int(st.session_state["nr_save_every"]), step=1, label_visibility="collapsed")
+        with t3:
+            _field_label("Total Epoch", "Target number of full dataset passes before training stops automatically.")
+            st.session_state["nr_total_epoch"] = st.slider("Total Epoch", 1, 10000, int(st.session_state["nr_total_epoch"]), step=1, label_visibility="collapsed")
+
+        with st.expander("Advanced Settings", expanded=False):
+            ac1, ac2 = st.columns(2, gap="medium")
+            with ac1:
+                save_only_latest = st.checkbox("Save Only Latest", value=True)
+                save_every_weights = st.checkbox("Save Every Weights", value=True)
+                pretrained = st.checkbox("Pretrained", value=True)
+                fresh_cleanup = st.checkbox("Fresh Training (Cleanup)", value=False)
+            with ac2:
+                cache_gpu = st.checkbox("Cache Dataset in GPU", value=False)
+                checkpointing = st.checkbox("Gradient Checkpointing", value=False)
+                shutdown_check = st.checkbox("Shutdown After Finish", value=False)
+                index_algo = st.selectbox("Index Algorithm", ["Auto", "Faiss", "KMeans"], index=0)
+
+            custom_pretrained = st.checkbox("Custom Pretrained", value=False)
+            g_pre_path = ""
+            d_pre_path = ""
+            if custom_pretrained:
+                g_choices = _list_custom_pretrains("G")
+                d_choices = _list_custom_pretrains("D")
+                gp_col, dp_col = st.columns(2, gap="medium")
+                with gp_col:
+                    g_pre_path = st.text_input("G Pretrained Path (.pth)", value=g_choices[0] if g_choices else "", placeholder="rvc/models/pretraineds/custom/G.pth")
+                with dp_col:
+                    d_pre_path = st.text_input("D Pretrained Path (.pth)", value=d_choices[0] if d_choices else "", placeholder="rvc/models/pretraineds/custom/D.pth")
+
+        terms_ok = st.checkbox(
+            "I agree to the terms of use — Confirm that your training audio follows the usage guidelines for NoRegretsRVC.",
+            value=True,
+            key="nr_train_terms",
+        )
+
+        _field_label("Training output")
+        live_tail = _read_train_log(st.session_state["nr_model_name"])
+        if live_tail:
+            st.session_state["nr_trn_log"] = live_tail
+        _log_box(st.session_state["nr_trn_log"])
+
+        b1, b2, b3, b4 = st.columns([2, 1.3, 1.5, 1.2], gap="small")
+        with b1:
+            if st.button("Start Training", type="primary", use_container_width=True):
+                m_clean = st.session_state["nr_model_name"].strip()
+                if not terms_ok:
+                    st.warning("Confirm the terms of use checkbox first.")
+                elif not m_clean:
+                    st.warning("Enter a Model Name in Step 1 first.")
+                else:
+                    lp = _start_training_bg(
+                        m_clean,
+                        {
+                            "model_name": m_clean,
+                            "save_every_epoch": int(st.session_state["nr_save_every"]),
+                            "save_only_latest": bool(save_only_latest),
+                            "save_every_weights": bool(save_every_weights),
+                            "total_epoch": int(st.session_state["nr_total_epoch"]),
+                            "sample_rate": int(st.session_state["nr_sr"]),
+                            "batch_size": int(st.session_state["nr_batch_size"]),
+                            "gpu": gpu_ids.strip() or "0",
+                            "pretrained": bool(pretrained),
+                            "cleanup": bool(fresh_cleanup),
+                            "index_algorithm": index_algo,
+                            "cache_data_in_gpu": bool(cache_gpu),
+                            "custom_pretrained": bool(custom_pretrained),
+                            "g_pretrained_path": g_pre_path.strip() or None,
+                            "d_pretrained_path": d_pre_path.strip() or None,
+                            "vocoder": st.session_state["nr_vocoder"],
+                            "checkpointing": bool(checkpointing),
+                            "shutdown_check": bool(shutdown_check),
+                        },
+                    )
+                    st.session_state["nr_trn_log"] = f"Started training '{m_clean}' -> streaming log to {lp} and Kaggle Live Monitor."
+                    st.rerun()
+        with b2:
+            if st.button("Stop Training", type="secondary", use_container_width=True):
+                st.session_state["nr_trn_log"] = _stop_training(st.session_state["nr_model_name"].strip())
+                st.rerun()
+        with b3:
+            if st.button("Generate Index", type="secondary", use_container_width=True):
+                m_clean = st.session_state["nr_model_name"].strip()
+                if not m_clean:
+                    st.warning("Enter a Model Name in Step 1 first.")
+                else:
+                    _, out_txt = _run_core_sync("run_index_script", {"model_name": m_clean, "index_algorithm": index_algo})
+                    st.session_state["nr_trn_log"] = out_txt
+                    st.rerun()
+        with b4:
+            if st.button("Refresh Log", type="secondary", use_container_width=True):
+                st.rerun()
+
+    # [5] Export Model
+    with st.container(border=True):
+        _step_head(5, "Export Model", "Select trained .pth and .index files to download from Kaggle.")
+        pths = _list_pth_files()
+        idxs = _list_index_files()
+        ex1, ex2 = st.columns(2, gap="medium")
+        with ex1:
+            sel_pth = st.selectbox("Pth file", options=[""] + pths, format_func=lambda x: "Select exported .pth..." if x == "" else x)
+            if sel_pth and os.path.isfile(os.path.join(now_dir, sel_pth)):
+                st.download_button(
+                    f"Download {Path(sel_pth).name}",
+                    data=Path(os.path.join(now_dir, sel_pth)).read_bytes(),
+                    file_name=Path(sel_pth).name,
+                    mime="application/octet-stream",
+                    type="primary",
+                    use_container_width=True,
+                )
+        with ex2:
+            sel_idx = st.selectbox("Index file", options=[""] + idxs, format_func=lambda x: "Select exported .index..." if x == "" else x)
+            if sel_idx and os.path.isfile(os.path.join(now_dir, sel_idx)):
+                st.download_button(
+                    f"Download {Path(sel_idx).name}",
+                    data=Path(os.path.join(now_dir, sel_idx)).read_bytes(),
+                    file_name=Path(sel_idx).name,
+                    mime="application/octet-stream",
+                    type="primary",
+                    use_container_width=True,
+                )
+        if st.button("Refresh trained models and indexes", use_container_width=True):
+            st.rerun()
+
+
+# ==============================================================================
+# TAB 2: MODELS
+# ==============================================================================
+elif active_tab == "Models":
+    _page_banner("Models", "Fetch remote voice archives, drop local weights, and manage pretrained bases for Kaggle runs.")
+
+    with st.container(border=True):
+        _step_head(1, "Download Model", "Paste a model link to download it into your library.")
+        dl_link = st.text_input("Model Link", placeholder="Introduce the model link (HuggingFace / Drive / Pixeldrain / MediaFire)")
+        dl_box = st.empty()
+        dl_box.markdown(f'<div class="nr-log-box">{html.escape(st.session_state["nr_dl_log"])}</div>', unsafe_allow_html=True)
+        if st.button("Download Model", type="primary", use_container_width=True):
+            if not dl_link.strip():
+                st.warning("Paste a model link first.")
+            else:
+                _, res = _run_core_sync("run_download_script", {"model_link": dl_link.strip()}, dl_box)
+                st.session_state["nr_dl_log"] = res
+
+    with st.container(border=True):
+        _step_head(2, "Drop Files", "Drop .pth, .index, or .zip model archives to import them into logs/downloads.")
+        dropped = st.file_uploader("Drop your .pth, .index, or .zip files", type=["pth", "index", "zip"], accept_multiple_files=True)
+        if dropped and st.button("Save Dropped Model Files", type="primary"):
+            dl_dir = Path(now_dir) / "logs" / "downloads"
+            dl_dir.mkdir(parents=True, exist_ok=True)
+            saved_names: list[str] = []
+            for f in dropped:
+                out_p = dl_dir / f.name
+                out_p.write_bytes(f.getvalue())
+                if f.name.lower().endswith(".zip"):
+                    try:
+                        with zipfile.ZipFile(out_p, "r") as zf:
+                            for m in zf.namelist():
+                                if not m.endswith("/") and Path(m).name and m.lower().endswith((".pth", ".index")):
+                                    dest = dl_dir / Path(m).name
+                                    dest.write_bytes(zf.read(m))
+                                    saved_names.append(dest.name)
+                    except Exception:
+                        pass
+                else:
+                    saved_names.append(f.name)
+            st.success(f"Imported {', '.join(saved_names) or 'files'} into logs/downloads/")
+
+    with st.container(border=True):
+        _step_head(3, "Download Pretrained Models", "Install custom G/D pretrains or Hugging Face pretrain repositories into rvc/models/pretraineds/custom.")
+        use_custom_pre = st.checkbox("Download from Custom URL / Hugging Face Repo / ZIP", value=True)
+        if use_custom_pre:
+            cu1, cu2 = st.columns(2, gap="medium")
+            with cu1:
+                g_url = st.text_input("Repository, pretrained ZIP or G .pth link", placeholder="https://huggingface.co/author/pretrained")
+            with cu2:
+                d_url = st.text_input("Matching D .pth link (optional)", placeholder="Leave empty for automatic discovery")
+            if st.button("Download Pretrained Pair", type="primary", use_container_width=True):
+                cdir = Path(now_dir) / "rvc" / "models" / "pretraineds" / "custom"
+                cdir.mkdir(parents=True, exist_ok=True)
+                downloaded: list[str] = []
+                urls = [u.strip() for u in (g_url, d_url) if u.strip()]
+                if g_url.strip() and not d_url.strip() and "G_" in g_url:
+                    urls.append(g_url.strip().replace("G_", "D_"))
+                for u in urls:
+                    try:
+                        parsed = urllib.parse.urlsplit(u)
+                        if "huggingface.co/" in u.lower() and "/resolve/" not in u and not parsed.path.lower().endswith((".pth", ".zip")):
+                            parts = [p for p in parsed.path.strip("/").split("/") if p]
+                            if len(parts) >= 2:
+                                owner_repo = f"{parts[0]}/{parts[1]}"
+                                tree = json.loads(urllib.request.urlopen(f"https://huggingface.co/api/models/{owner_repo}/tree/main", timeout=20).read().decode("utf-8"))
+                                for node in tree:
+                                    fp = node.get("path", "")
+                                    if fp.lower().endswith(".pth"):
+                                        fn = Path(fp).name
+                                        urllib.request.urlretrieve(f"https://huggingface.co/{owner_repo}/resolve/main/{urllib.parse.quote(fp)}?download=true", cdir / fn)
+                                        downloaded.append(fn)
+                        elif parsed.path.lower().endswith(".zip"):
+                            ztmp = cdir / "tmp_pretrains.zip"
+                            urllib.request.urlretrieve(u, ztmp)
+                            with zipfile.ZipFile(ztmp, "r") as zf:
+                                for mem in zf.namelist():
+                                    if not mem.endswith("/") and Path(mem).name and mem.lower().endswith(".pth"):
+                                        outp = cdir / Path(mem).name
+                                        outp.write_bytes(zf.read(mem))
+                                        downloaded.append(outp.name)
+                            ztmp.unlink(missing_ok=True)
+                        else:
+                            fn = urllib.parse.unquote(parsed.path.split("/")[-1]) or "custom_pretrained.pth"
+                            urllib.request.urlretrieve(u, cdir / fn)
+                            downloaded.append(fn)
+                    except Exception as exc:
+                        st.error(f"Failed {u}: {exc}")
+                if downloaded:
+                    st.success(f"Installed into rvc/models/pretraineds/custom/: {', '.join(downloaded)}")
+        else:
+            if st.button("Download Default Applio Prerequisites", type="primary", use_container_width=True):
+                _, msg = _run_core_sync("run_prerequisites_script", {"pretraineds_hifigan": True, "models": True, "exe": True})
+                st.info(msg)
+
+
+# ==============================================================================
+# TAB 3: SAMPLES (INFERENCE)
+# ==============================================================================
+elif active_tab == "Samples":
+    _page_banner("Samples", "Run single or batch RVC voice conversion inference with full pitch, index, and audio controls.")
+
+    filter_q = ""
+    if list_filter_on:
+        filter_q = st.text_input("Filter models & indexes", placeholder="Type to filter...")
+
+    pth_choices = _list_pth_files(filter_q)
+    idx_choices = _list_index_files(filter_q)
+
+    with st.container(border=True):
+        _step_head(1, "Voice Model", "Select the .pth voice model and .index feature file for conversion.")
+        m1, m2 = st.columns(2, gap="medium")
+        with m1:
+            _field_label("Voice Model", "Select the trained .pth checkpoint.")
+            sel_voice = st.selectbox("Voice Model", options=[""] + pth_choices, format_func=lambda x: "Select voice model..." if x == "" else x, label_visibility="collapsed")
+        with m2:
+            _field_label("Index File", "Automatically matched when available.")
+            auto_idx = _match_index(sel_voice, idx_choices)
+            idx_default = (idx_choices.index(auto_idx) + 1) if auto_idx in idx_choices else 0
+            sel_index = st.selectbox("Index File", options=[""] + idx_choices, index=idx_default, format_func=lambda x: "None / Optional..." if x == "" else x, label_visibility="collapsed")
+        if st.button("Refresh models and indexes", use_container_width=True):
+            st.rerun()
+
+    inf_mode = st.tabs(["Single", "Batch"])
+    with inf_mode[0]:
+        with st.container(border=True):
+            _step_head(2, "Audio Input", "Upload an audio recording or pick an existing/free sample clip from assets/audios.")
+            au_choices = _list_audio_inputs()
+            pre_selected = st.session_state.get("nr_selected_sample_path", "")
+            au_idx = (au_choices.index(pre_selected) + 1) if pre_selected in au_choices else (1 if au_choices else 0)
+            chosen_au = st.selectbox("Audio path", options=[""] + au_choices, index=au_idx, format_func=lambda x: "Pick audio file in assets/audios..." if x == "" else x)
+            up_au = st.file_uploader("Or upload audio clip", type=["wav", "mp3", "flac", "ogg", "m4a"], key="inf_up_au")
+            if up_au is not None:
+                au_dir = Path(now_dir) / "assets" / "audios"
+                au_dir.mkdir(parents=True, exist_ok=True)
+                dest_au = au_dir / up_au.name
+                dest_au.write_bytes(up_au.getvalue())
+                chosen_au = str(dest_au.relative_to(now_dir))
+                st.session_state["nr_selected_sample_path"] = chosen_au
+            if chosen_au and os.path.isfile(os.path.join(now_dir, chosen_au)):
+                st.audio(os.path.join(now_dir, chosen_au))
+
+        with st.container(border=True):
+            _step_head(3, "Conversion Parameters", "Tune pitch (-32..+32), index influence, volume envelope, and consonant protection.")
+            c1, c2 = st.columns(2, gap="medium")
+            with c1:
+                pitch = st.slider("Pitch", -32, 32, 0, step=1)
+                vol_env = st.slider("Volume Envelope", 0.0, 1.0, 1.0, step=0.05)
+            with c2:
+                idx_rate = st.slider("Search Feature Ratio (Index Rate)", 0.0, 1.0, 0.75, step=0.05)
+                protect = st.slider("Protect Voiceless Consonants", 0.0, 0.5, 0.5, step=0.05)
+
+            with st.expander("Models, Pitch Tuning & Output Settings", expanded=False):
+                pa1, pa2, pa3 = st.columns(3, gap="medium")
+                with pa1:
+                    f0_inf = st.selectbox("Pitch Extractor", ["rmvpe", "fcpe", "swift-f0", "crepe"], index=0)
+                    sid_inf = st.number_input("Speaker ID", min_value=0, max_value=200, value=0, step=1)
+                with pa2:
+                    emb_inf = st.selectbox("Embedder Model", ["contentvec", "spin", "chinese-hubert-base"], index=0)
+                    exp_fmt = st.selectbox("Export Format", ["WAV", "MP3", "FLAC", "OGG"], index=0)
+                with pa3:
+                    autotune = st.checkbox("F0 Autotune", value=False)
+                    proposed_pitch = st.checkbox("Proposed Pitch", value=False)
+                    clean_mode = st.selectbox("Audio Cleanup", ["off", "mild", "balanced", "aggressive"], index=0)
+                    out_inf_path = st.text_input("Output Path", value=os.path.join(now_dir, "assets", "audios", "output.wav"))
+
+            terms_inf = st.checkbox(
+                "I agree to the terms of use — Confirm that your conversion audio follows the usage guidelines for NoRegretsRVC.",
+                value=True,
+                key="nr_inf_terms",
+            )
+            inf_box = st.empty()
+            inf_box.markdown(f'<div class="nr-log-box">{html.escape(st.session_state["nr_inf_log"])}</div>', unsafe_allow_html=True)
+            if st.button("Convert", type="primary", use_container_width=True, key="btn_inf_single"):
+                if not terms_inf:
+                    st.warning("Confirm the terms of use checkbox first.")
+                elif not sel_voice or not chosen_au:
+                    st.warning("Select both a Voice Model and an input audio clip.")
+                else:
+                    rc, msg = _run_core_sync(
+                        "run_infer_script",
+                        {
+                            "pitch": int(pitch),
+                            "index_rate": float(idx_rate),
+                            "volume_envelope": float(vol_env),
+                            "protect": float(protect),
+                            "f0_method": f0_inf,
+                            "input_path": os.path.join(now_dir, chosen_au),
+                            "output_path": out_inf_path.strip(),
+                            "pth_path": os.path.join(now_dir, sel_voice),
+                            "index_path": os.path.join(now_dir, sel_index) if sel_index else "",
+                            "f0_autotune": bool(autotune),
+                            "f0_autotune_strength": 1.0,
+                            "proposed_pitch": bool(proposed_pitch),
+                            "proposed_pitch_threshold": 155.0,
+                            "export_format": exp_fmt,
+                            "embedder_model": emb_inf,
+                            "sid": int(sid_inf),
+                            "cleanup_mode": clean_mode,
+                            "cleanup_strength": 12,
+                        },
+                        inf_box,
+                    )
+                    st.session_state["nr_inf_log"] = msg
+                    expected = str(Path(out_inf_path.strip()).with_suffix(f".{exp_fmt.lower()}"))
+                    if rc == 0 and os.path.isfile(expected):
+                        st.session_state["nr_inf_out"] = expected
+            if st.session_state["nr_inf_out"] and os.path.isfile(st.session_state["nr_inf_out"]):
+                st.audio(st.session_state["nr_inf_out"])
+                out_p = Path(st.session_state["nr_inf_out"])
+                st.download_button(f"Download {out_p.name}", data=out_p.read_bytes(), file_name=out_p.name, type="secondary")
+
+    with inf_mode[1]:
+        with st.container(border=True):
+            _step_head(2, "Batch Folder Conversion", "Convert every audio file inside a folder at once.")
+            b_in = st.text_input("Input Folder", value=os.path.join(now_dir, "assets", "audios"))
+            b_out = st.text_input("Output Folder", value=os.path.join(now_dir, "assets", "audios", "batch_out"))
+            b_pitch = st.slider("Batch Pitch", -32, 32, 0, step=1)
+            b_terms = st.checkbox("I agree to the terms of use — Confirm that your conversion audio follows the usage guidelines for NoRegretsRVC.", value=True, key="nr_inf_batch_terms")
+            if st.button("Convert Batch", type="primary", use_container_width=True):
+                if not b_terms or not sel_voice:
+                    st.warning("Select a Voice Model and confirm terms first.")
+                else:
+                    os.makedirs(b_out.strip(), exist_ok=True)
+                    _, msg = _run_core_sync(
+                        "run_batch_infer_script",
+                        {
+                            "pitch": int(b_pitch),
+                            "index_rate": 0.75,
+                            "volume_envelope": 1.0,
+                            "protect": 0.5,
+                            "f0_method": "rmvpe",
+                            "input_folder": b_in.strip(),
+                            "output_folder": b_out.strip(),
+                            "pth_path": os.path.join(now_dir, sel_voice),
+                            "index_path": os.path.join(now_dir, sel_index) if sel_index else "",
+                            "f0_autotune": False,
+                            "f0_autotune_strength": 1.0,
+                            "proposed_pitch": False,
+                            "proposed_pitch_threshold": 155.0,
+                            "export_format": "WAV",
+                            "embedder_model": "contentvec",
+                        },
+                    )
+                    st.info(msg)
+
+
+# ==============================================================================
+# TAB 4: FREE SAMPLES
+# ==============================================================================
+elif active_tab == "Free Samples":
+    _page_banner("Free Samples", "Six dry 32 kHz mono speaking clips (3 male, 3 female) ready to preview, download, or use in Samples.")
+
+    with st.container(border=True):
+        fc1, fc2, fc3 = st.columns([3, 1.4, 1.5], gap="small")
+        with fc1:
+            fs_repo = st.text_input("GitHub Repo URL", value="${defaultRepo}", label_visibility="collapsed")
+        with fc2:
+            if st.button("Fetch 6 from GitHub", type="primary", use_container_width=True):
+                fs_dir = Path(now_dir) / "assets" / "free_samples"
+                au_dir = Path(now_dir) / "assets" / "audios"
+                fs_dir.mkdir(parents=True, exist_ok=True)
+                au_dir.mkdir(parents=True, exist_ok=True)
+                slug = fs_repo.strip().rstrip("/").removesuffix(".git").split("github.com/")[-1]
+                parts = [p for p in slug.split("/") if p]
+                ok_cnt = 0
+                if len(parts) >= 2:
+                    owner_repo = f"{parts[0]}/{parts[1]}"
+                    for _, fname, *_ in FREE_SAMPLES_CATALOG:
+                        for br in ("main", "master"):
+                            try:
+                                urllib.request.urlretrieve(f"https://raw.githubusercontent.com/{owner_repo}/{br}/public/assets/aistudio/{fname}", fs_dir / fname)
+                                shutil.copy2(fs_dir / fname, au_dir / fname)
+                                ok_cnt += 1
+                                break
+                            except Exception:
+                                continue
+                st.success(f"Fetched {ok_cnt}/6 free samples into assets/free_samples/ & assets/audios/.")
+        with fc3:
+            st.session_state["nr_free_gender"] = st.selectbox("Filter", ["All", "Male", "Female"], label_visibility="collapsed")
+
+    for group_name, gender_key in [("Male Speaking Samples (3)", "Male"), ("Female Speaking Samples (3)", "Female")]:
+        if st.session_state["nr_free_gender"] not in ("All", gender_key):
+            continue
+        group_items = [x for x in FREE_SAMPLES_CATALOG if x[2] == gender_key]
+        with st.container(border=True):
+            st.markdown(f"**{group_name}**")
+            cols = st.columns(3, gap="medium")
+            for idx, (title, fname, _, style, dur, quote) in enumerate(group_items):
+                with cols[idx]:
+                    st.markdown(
+                        f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                        f'<div><strong style="font-size:14px;color:#FDF7F7">{html.escape(title)}</strong><br/>'
+                        f'<span style="font-size:11px;color:#AD8288">{html.escape(style)} · {html.escape(dur)}</span></div>'
+                        f'<span class="nr-mono-badge">Mono 32k WAV</span></div>'
+                        f'<div class="nr-quote-box">&ldquo;{html.escape(quote)}&rdquo;</div>',
+                        unsafe_allow_html=True,
+                    )
+                    wav_path = None
+                    for d in ("assets/free_samples", "assets/audios"):
+                        cand = Path(now_dir) / d / fname
+                        if cand.is_file():
+                            wav_path = cand
+                            break
+                    if wav_path is not None:
+                        st.audio(str(wav_path))
+                        ub1, ub2 = st.columns(2, gap="small")
+                        with ub1:
+                            if st.button("Use in Samples", key=f"use_fs_{fname}", type="primary", use_container_width=True):
+                                au_dst = Path(now_dir) / "assets" / "audios" / fname
+                                au_dst.parent.mkdir(parents=True, exist_ok=True)
+                                if wav_path != au_dst:
+                                    shutil.copy2(wav_path, au_dst)
+                                st.session_state["nr_selected_sample_path"] = f"assets/audios/{fname}"
+                                st.session_state["nr_active_tab"] = "Samples"
+                                st.rerun()
+                        with ub2:
+                            st.download_button("Download", data=wav_path.read_bytes(), file_name=fname, mime="audio/wav", key=f"dl_fs_{fname}", use_container_width=True)
+                    else:
+                        st.caption("Click Fetch 6 from GitHub above to download this WAV.")
+
+
+# ==============================================================================
+# TAB 5: DIAGNOSTICS
+# ==============================================================================
+elif active_tab == "Diagnostics":
+    _page_banner("Diagnostics", "Inspect training loss curves, sweet-spot checkpoints, and launch TensorBoard.")
+
+    with st.container(border=True):
+        _step_head(1, "Live Training Loss Analyzer", "Parses logs/<model>/nr_train.log or pasted Kaggle console output.")
+        raw_log = _read_train_log(st.session_state["nr_model_name"])
+        pasted_log = st.text_area("Training Log Output", value=raw_log, height=160, placeholder="Paste training lines containing epoch=X | step=Y | lowest_value=...")
+        points: list[dict[str, Any]] = []
+        for ln in pasted_log.splitlines():
+            m = re.search(r"epoch=(\\d+)\\s*\\|\\s*step=(\\d+).*?lowest_value=([0-9.]+)", ln)
+            if m:
+                points.append({"Epoch": int(m.group(1)), "Step": int(m.group(2)), "Lowest Loss": float(m.group(3))})
+        if points:
+            best_pt = min(points, key=lambda x: x["Lowest Loss"])
+            d1, d2, d3 = st.columns(3, gap="medium")
+            d1.metric("Latest Epoch", points[-1]["Epoch"])
+            d2.metric("Latest Step", points[-1]["Step"])
+            d3.metric("Lowest Loss", f"{best_pt['Lowest Loss']:.3f} (ep {best_pt['Epoch']})")
+            chart_rows = [{"Epoch": p["Epoch"], "Lowest Loss": p["Lowest Loss"]} for p in points]
+            st.line_chart(chart_rows, x="Epoch", y="Lowest Loss", color="${ACCENT_HEX}")
+        else:
+            st.caption("No completed epoch loss points detected yet. Start training or paste training stdout above.")
+        if st.button("Launch TensorBoard (Port 25565)", type="secondary"):
+            threading.Thread(target=lambda: _run_core_sync("run_tensorboard_script", {}), daemon=True).start()
+            st.info("TensorBoard launch triggered.")
+
+
+# ==============================================================================
+# TAB 6: VOICE BLENDER
+# ==============================================================================
+elif active_tab == "Voice Blender":
+    _page_banner("Voice Blender", "Merge two compatible RVC .pth checkpoints into a single hybrid voice weights file.")
+
+    pths = _list_pth_files()
+    with st.container(border=True):
+        _step_head(1, "Blend Checkpoints", "Choose Model A, Model B, blend ratio, and output name.")
+        vb1, vb2 = st.columns(2, gap="medium")
+        with vb1:
+            pth_a = st.selectbox("Model A (.pth)", options=[""] + pths, format_func=lambda x: "Select Model A..." if x == "" else x)
+        with vb2:
+            pth_b = st.selectbox("Model B (.pth)", options=[""] + pths, format_func=lambda x: "Select Model B..." if x == "" else x)
+        vb3, vb4 = st.columns(2, gap="medium")
+        with vb3:
+            blend_name = st.text_input("Blended Output Name", value="BlendedVoice")
+        with vb4:
+            blend_ratio = st.slider("Blend Ratio (Model A weight)", 0.0, 1.0, 0.5, step=0.05)
+
+        if st.button("Blend Models", type="primary", use_container_width=True):
+            if not pth_a or not pth_b or not blend_name.strip():
+                st.warning("Select both Model A and Model B and enter an output name.")
+            else:
+                _, msg = _run_core_sync(
+                    "run_model_blender_script",
+                    {
+                        "model_name": blend_name.strip(),
+                        "pth_path_1": os.path.join(now_dir, pth_a),
+                        "pth_path_2": os.path.join(now_dir, pth_b),
+                        "ratio": float(blend_ratio),
+                    },
+                )
+                st.session_state["nr_blend_log"] = msg
+                out_candidate = Path(now_dir) / "logs" / f"{blend_name.strip()}.pth"
+                if out_candidate.is_file():
+                    st.session_state["nr_blend_out"] = str(out_candidate)
+        if st.session_state["nr_blend_log"]:
+            _log_box(st.session_state["nr_blend_log"])
+        if st.session_state["nr_blend_out"] and os.path.isfile(st.session_state["nr_blend_out"]):
+            bp = Path(st.session_state["nr_blend_out"])
+            st.download_button(f"Download {bp.name}", data=bp.read_bytes(), file_name=bp.name, type="secondary")
+
+
+# ==============================================================================
+# TAB 7: TTS
+# ==============================================================================
+elif active_tab == "TTS":
+    _page_banner("TTS", "Synthesize spoken dialogue with Edge-TTS and route it through your RVC voice model.")
+
+    pths = _list_pth_files()
+    idxs = _list_index_files()
+    voices = _load_tts_voices()
+
+    with st.container(border=True):
+        _step_head(1, "Voice Model & Speech Input", "Select your RVC voice model, Edge-TTS speaker, and script.")
+        t1, t2 = st.columns(2, gap="medium")
+        with t1:
+            tts_pth = st.selectbox("Voice Model", options=[""] + pths, format_func=lambda x: "Optional: Edge-TTS only..." if x == "" else x)
+        with t2:
+            tts_idx = st.selectbox("Index File", options=[""] + idxs, format_func=lambda x: "Optional index..." if x == "" else x)
+        tv1, tv2 = st.columns(2, gap="medium")
+        with tv1:
+            tts_voice = st.selectbox("TTS Voice", options=voices, index=0)
+        with tv2:
+            tts_rate = st.slider("TTS Speed", -100, 100, 0, step=1)
+        tts_text = st.text_area("Text to Speak", value="", placeholder="Enter text to synthesize...")
+
+    with st.container(border=True):
+        _step_head(2, "Conversion Parameters & Generate", "Tune pitch, index rate, volume envelope, and generate audio.")
+        tp1, tp2 = st.columns(2, gap="medium")
+        with tp1:
+            tts_pitch = st.slider("Pitch", -32, 32, 0, step=1, key="tts_pitch")
+            tts_vol = st.slider("Volume Envelope", 0.0, 1.0, 1.0, step=0.05, key="tts_vol")
+        with tp2:
+            tts_idx_r = st.slider("Index Rate", 0.0, 1.0, 0.75, step=0.05, key="tts_idx_r")
+            tts_prot = st.slider("Protect", 0.0, 0.5, 0.5, step=0.05, key="tts_prot")
+
+        tts_terms = st.checkbox("I agree to the terms of use — Confirm that your conversion audio follows the usage guidelines for NoRegretsRVC.", value=True, key="nr_tts_terms")
+        tts_box = st.empty()
+        tts_box.markdown(f'<div class="nr-log-box">{html.escape(st.session_state["nr_tts_log"])}</div>', unsafe_allow_html=True)
+        if st.button("Convert TTS", type="primary", use_container_width=True):
+            if not tts_terms or not tts_text.strip():
+                st.warning("Enter text to speak and confirm terms first.")
+            else:
+                out_tts = os.path.join(now_dir, "assets", "audios", "tts_output.wav")
+                out_rvc = os.path.join(now_dir, "assets", "audios", "tts_rvc_output.wav")
+                rc, msg = _run_core_sync(
+                    "run_tts_script",
+                    {
+                        "tts_file": "",
+                        "tts_text": tts_text.strip(),
+                        "tts_voice": tts_voice,
+                        "tts_rate": int(tts_rate),
+                        "pitch": int(tts_pitch),
+                        "index_rate": float(tts_idx_r),
+                        "volume_envelope": float(tts_vol),
+                        "protect": float(tts_prot),
+                        "f0_method": "rmvpe",
+                        "output_tts_path": out_tts,
+                        "output_rvc_path": out_rvc,
+                        "pth_path": os.path.join(now_dir, tts_pth) if tts_pth else "",
+                        "index_path": os.path.join(now_dir, tts_idx) if tts_idx else "",
+                        "f0_autotune": False,
+                        "f0_autotune_strength": 1.0,
+                        "proposed_pitch": False,
+                        "proposed_pitch_threshold": 155.0,
+                        "export_format": "WAV",
+                        "embedder_model": "contentvec",
+                    },
+                    tts_box,
+                )
+                st.session_state["nr_tts_log"] = msg
+                target_audio = out_rvc if (tts_pth and os.path.isfile(out_rvc)) else out_tts
+                if rc == 0 and os.path.isfile(target_audio):
+                    st.session_state["nr_tts_out"] = target_audio
+        if st.session_state["nr_tts_out"] and os.path.isfile(st.session_state["nr_tts_out"]):
+            st.audio(st.session_state["nr_tts_out"])
+            tp = Path(st.session_state["nr_tts_out"])
+            st.download_button(f"Download {tp.name}", data=tp.read_bytes(), file_name=tp.name, type="secondary")
+
+
+# ==============================================================================
+# TAB 8: EXTRA
+# ==============================================================================
+elif active_tab == "Extra":
+    _page_banner("Extra", "Inspect model checkpoint metadata, analyze audio tracks, and export ONNX weights.")
+    ex_tabs = st.tabs(["Model information", "Audio Analyzer", "ONNX Export"])
+    pths = _list_pth_files()
+
+    with ex_tabs[0]:
+        with st.container(border=True):
+            _step_head(1, "Model Information", "Inspect epoch, sampling rate, architecture, and author metadata inside a .pth file.")
+            info_pth = st.selectbox("Checkpoint (.pth)", options=[""] + pths, format_func=lambda x: "Select .pth..." if x == "" else x)
+            if st.button("View Model Information", type="primary") and info_pth:
+                _, res = _run_core_sync("run_model_information_script", {"pth_path": os.path.join(now_dir, info_pth)})
+                _log_box(res)
+
+    with ex_tabs[1]:
+        with st.container(border=True):
+            _step_head(2, "Audio Analyzer", "Inspect waveform duration, sample rate, and spectrum plot.")
+            au_list = _list_audio_inputs()
+            an_au = st.selectbox("Audio File", options=[""] + au_list, format_func=lambda x: "Select audio..." if x == "" else x)
+            if st.button("Analyze Audio", type="primary") and an_au:
+                plot_dst = os.path.join(now_dir, "logs", "audio_analysis.png")
+                _, res = _run_core_sync("run_audio_analyzer_script", {"input_path": os.path.join(now_dir, an_au), "save_plot_path": plot_dst})
+                _log_box(res)
+                if os.path.isfile(plot_dst):
+                    st.image(plot_dst)
+
+    with ex_tabs[2]:
+        with st.container(border=True):
+            _step_head(3, "ONNX Export", "Export a .pth checkpoint into an optimized .onnx file.")
+            ox_pth = st.selectbox("Source .pth", options=[""] + pths, format_func=lambda x: "Select .pth..." if x == "" else x, key="ox_pth")
+            if st.button("Export to ONNX", type="primary") and ox_pth:
+                src = os.path.join(now_dir, ox_pth)
+                _, res = _run_core_sync("run_model_onnx_export_script", {"pth_path": src, "output_path": src.replace(".pth", ".onnx")})
+                _log_box(res)
+
+
+# ==============================================================================
+# TAB 9: SETTINGS
+# ==============================================================================
+elif active_tab == "Settings":
+    _page_banner("Settings", "Customize engine preferences, training precision, and language defaults.")
+    st_tabs = st.tabs(["General", "Training"])
+
+    with st_tabs[0]:
+        with st.container(border=True):
+            _step_head(1, "List Filtering", "Display a search bar to quickly filter long checkpoint and index dropdowns.")
+            new_filter = st.checkbox("Enable model/index list filter", value=bool(cfg_now.get("filter", False)))
+            if new_filter != bool(cfg_now.get("filter", False)):
+                cfg_now["filter"] = bool(new_filter)
+                _save_config(cfg_now)
+                st.success("Filter setting saved.")
+
+        with st.container(border=True):
+            _step_head(2, "Pitch Correction & Discord Integration", "Configure RMVPE octave correction and Discord Rich Presence.")
+            rmvpe_cfg = cfg_now.get("rmvpe_high_register", {}) if isinstance(cfg_now.get("rmvpe_high_register"), dict) else {}
+            rmvpe_on = st.checkbox("RMVPE high-register correction", value=bool(rmvpe_cfg.get("enabled", False)))
+            disc_on = st.checkbox("Enable Discord Rich Presence", value=bool(cfg_now.get("discord_presence", False)))
+            if st.button("Save General Preferences", type="primary"):
+                cfg_now["rmvpe_high_register"] = {**rmvpe_cfg, "enabled": bool(rmvpe_on)}
+                cfg_now["discord_presence"] = bool(disc_on)
+                cfg_now["nr_discord_initialized"] = True
+                _save_config(cfg_now)
+                st.success("General preferences saved.")
+
+        with st.container(border=True):
+            _step_head(3, "Language & System", "Pick interface language or check version status.")
+            lang_cfg = cfg_now.get("lang", {}) if isinstance(cfg_now.get("lang"), dict) else {}
+            langs = ["en_US", "es_ES", "pt_BR", "fr_FR", "it_IT", "nl_NL", "ja_JP", "zh_CN", "ar_SA"]
+            cur_lang = lang_cfg.get("selected_lang", "en_US")
+            sel_lang = st.selectbox("Language", langs, index=langs.index(cur_lang) if cur_lang in langs else 0)
+            st.caption("${BRAND_NAME} Beta version 0.0.0")
+            if st.button("Save Language", type="secondary"):
+                cfg_now["lang"] = {"override": True, "selected_lang": sel_lang}
+                _save_config(cfg_now)
+                st.success("Language saved.")
+
+    with st_tabs[1]:
+        with st.container(border=True):
+            _step_head(1, "Model Author", "Set the name written into exported model metadata headers.")
+            cur_author = str(cfg_now.get("model_author", "None"))
+            new_author = st.text_input("Model Author Name", value=cur_author)
+            if st.button("Set name", type="primary"):
+                cfg_now["model_author"] = new_author.strip() or "None"
+                _save_config(cfg_now)
+                st.success(f"Model author set to {cfg_now['model_author']}.")
+
+        with st.container(border=True):
+            _step_head(2, "Training Precision", "Choose numeric precision for training and inference (defaults to FP32 for Kaggle T4 safety).")
+            prec_opts = ["fp32", "fp16", "bf16"]
+            cur_prec = str(cfg_now.get("precision", "fp32"))
+            new_prec = st.selectbox("Precision", options=prec_opts, index=prec_opts.index(cur_prec) if cur_prec in prec_opts else 0)
+            if st.button("Update precision", type="primary"):
+                cfg_now["precision"] = new_prec
+                cfg_now["nr_precision_initialized"] = True
+                _save_config(cfg_now)
+                st.success(f"Precision set to {new_prec}.")
 `;
 }
 
@@ -1208,37 +1964,33 @@ def _patch_tensorboard_images() -> None:
 
 
 def _patch_ram_cache() -> None:
-    global _CACHE_BYTES
+    import numpy as np
 
-    try:
-        import numpy as np
-
-        orig_np_load = np.load
-        if not getattr(orig_np_load, "_noregrets_patched", False):
-            def fast_np_load(file: Any, *args: Any, **kwargs: Any) -> Any:
-                global _CACHE_BYTES
-                if args or kwargs:
-                    return orig_np_load(file, *args, **kwargs)
-                key = _is_cacheable_dataset_path(file)
-                if key is None:
-                    return orig_np_load(file)
+    orig_np_load = np.load
+    if not getattr(orig_np_load, "_noregrets_patched", False):
+        def fast_np_load(file: Any, *args: Any, **kwargs: Any) -> Any:
+            global _CACHE_BYTES
+            if args or kwargs:
+                return orig_np_load(file, *args, **kwargs)
+            key = _is_cacheable_dataset_path(file)
+            if key is None:
+                return orig_np_load(file)
+            cache_key = f"np::{key}"
+            with _CACHE_LOCK:
+                cached = _ARRAY_CACHE.get(cache_key)
+            if cached is not None:
+                return cached.copy()
+            arr = orig_np_load(file)
+            nbytes = int(getattr(arr, "nbytes", 0))
+            if nbytes > 0 and isinstance(arr, np.ndarray):
                 with _CACHE_LOCK:
-                    cached = _ARRAY_CACHE.get(key)
-                if cached is not None:
-                    return cached.copy()
-                arr = orig_np_load(file)
-                nbytes = int(getattr(arr, "nbytes", 0))
-                if nbytes > 0:
-                    with _CACHE_LOCK:
-                        if key not in _ARRAY_CACHE and _has_safe_ram(nbytes):
-                            _ARRAY_CACHE[key] = arr.copy()
-                            _CACHE_BYTES += nbytes
-                return arr
+                    if cache_key not in _ARRAY_CACHE and _has_safe_ram(nbytes):
+                        _ARRAY_CACHE[cache_key] = arr.copy()
+                        _CACHE_BYTES += nbytes
+            return arr
 
-            fast_np_load._noregrets_patched = True  # type: ignore[attr-defined]
-            np.load = fast_np_load  # type: ignore[assignment]
-    except Exception:
-        pass
+        fast_np_load._noregrets_patched = True  # type: ignore[attr-defined]
+        np.load = fast_np_load  # type: ignore[assignment]
 
     try:
         import scipy.io.wavfile as wavfile
@@ -1433,13 +2185,13 @@ export function generateKaggleNotebookJson(
       `    subprocess.run([uv_bin, "venv", "/kaggle/.venv", "--python", "3.12", "--seed"], check=True)`,
       `py_exec = str(venv_python)`,
       `subprocess.run([uv_bin, "pip", "install", "-q", "-r", str(repo_dir / "requirements.txt"), "--extra-index-url", "https://download.pytorch.org/whl/cu128", "--index-strategy", "unsafe-best-match", "--python", py_exec], check=True)`,
-      `subprocess.run([uv_bin, "pip", "install", "-q", "matplotlib-inline", "websockets", "--python", py_exec], check=True)`
+      `subprocess.run([uv_bin, "pip", "install", "-q", "streamlit>=1.40.0", "matplotlib-inline", "websockets", "--python", py_exec], check=True)`
     );
   } else {
     installLines.push(
       `py_exec = sys.executable`,
       `subprocess.run([uv_bin, "pip", "install", "-q", "-r", str(repo_dir / "requirements.txt"), "--extra-index-url", "https://download.pytorch.org/whl/cu128", "--index-strategy", "unsafe-best-match", "--system"], check=True)`,
-      `subprocess.run([uv_bin, "pip", "install", "-q", "matplotlib-inline", "websockets", "--system"], check=True)`
+      `subprocess.run([uv_bin, "pip", "install", "-q", "streamlit>=1.40.0", "matplotlib-inline", "websockets", "--system"], check=True)`
     );
   }
 
@@ -1452,11 +2204,11 @@ export function generateKaggleNotebookJson(
 
   installLines.push(
     ``,
-    `# Reset previously patched Applio UI files & config so re-runs stay clean`,
+    `# Reset previously patched config so re-runs stay clean`,
     `if (repo_dir / ".git").is_dir():`,
-    `    subprocess.run(["git", "-C", str(repo_dir), "checkout", "--", "tabs", "assets/app_links.py", "assets/app_shell.py", "assets/config_template.json"], check=False)`,
+    `    subprocess.run(["git", "-C", str(repo_dir), "checkout", "--", "assets/config_template.json"], check=False)`,
     ``,
-    `# Enforce NoRegretsRVC engine defaults (fp32 precision, Discord presence off)`,
+    `# Enforce ${BRAND_NAME} engine defaults (fp32 precision, Discord presence off)`,
     `import json as _cfg_json`,
     `for _cfg_rel in ("assets/config_template.json", "assets/config.json"):`,
     `    _cfg_p = repo_dir / _cfg_rel`,
@@ -1469,87 +2221,10 @@ export function generateKaggleNotebookJson(
     `        except Exception:`,
     `            pass`,
     ``,
-    `# Write ${BRAND_NAME} custom WebUI, locked red theme, and UI overrides`,
-    `(repo_dir / "assets" / "themes").mkdir(parents=True, exist_ok=True)`,
-    `(repo_dir / "assets" / "themes" / "NoRegretsRVC.py").write_bytes(base64.b64decode("${themeB64}"))`,
-    `(repo_dir / "app.py").write_bytes(base64.b64decode("${appB64}"))`,
-    ``,
-    `# Patch Applio tabs to match ${BRAND_NAME} defaults (-32..+32 pitch, hide Preset Settings, dual-T4 defaults)`,
-    `import re as _re`,
-    `inf_tab_py = repo_dir / "tabs" / "inference" / "inference.py"`,
-    `if inf_tab_py.is_file():`,
-    `    _inf = inf_tab_py.read_text(encoding="utf-8", errors="replace").replace("\\r\\n", "\\n")`,
-    `    _inf = _inf.replace("minimum=-24,\\n                    maximum=24,", "minimum=-32,\\n                    maximum=32,")`,
-    `    _inf = _inf.replace("minimum=-24, maximum=24,", "minimum=-32, maximum=32,")`,
-    `    _inf = _inf.replace('with gr.Accordion(i18n("Preset Settings"), open=False):', 'with gr.Accordion(i18n("Preset Settings"), open=False, visible=False):')`,
-    `    _inf = _re.sub(`,
-    `        r'(terms_checkbox(?:_batch)?\\s*=\\s*gr\\.Checkbox\\([\\s\\S]*?info=i18n\\(\\s*)"[^"]*"(\\s*\\),\\s*)value=False,',`,
-    `        r'\\g<1>"Confirm that your conversion audio follows the usage guidelines for NoRegretsRVC."\\g<2>value=True,',`,
-    `        _inf,`,
-    `    )`,
-    `    inf_tab_py.write_text(_inf, encoding="utf-8")`,
-    ``,
-    `tts_tab_py = repo_dir / "tabs" / "tts" / "tts.py"`,
-    `if tts_tab_py.is_file():`,
-    `    _tts = tts_tab_py.read_text(encoding="utf-8", errors="replace").replace("\\r\\n", "\\n")`,
-    `    _tts = _re.sub(`,
-    `        r'(terms_checkbox\\s*=\\s*gr\\.Checkbox\\([\\s\\S]*?info=i18n\\(\\s*)"[^"]*"(\\s*\\),\\s*)value=False,',`,
-    `        r'\\g<1>"Confirm that your conversion audio follows the usage guidelines for NoRegretsRVC."\\g<2>value=True,',`,
-    `        _tts,`,
-    `        count=1,`,
-    `    )`,
-    `    tts_tab_py.write_text(_tts, encoding="utf-8")`,
-    ``,
-    `train_tab_py = repo_dir / "tabs" / "train" / "train.py"`,
-    `if train_tab_py.is_file():`,
-    `    _tr = train_tab_py.read_text(encoding="utf-8", errors="replace").replace("\\r\\n", "\\n")`,
-    `    _tr = _tr.replace('choices=["32000", "40000", "48000"],\\n                    value="40000",', 'choices=["32000", "40000", "48000"],\\n                    value="32000",')`,
-    `    _tr = _tr.replace("batch_size = gr.Slider(\\n                1,\\n                64,\\n                4,", "batch_size = gr.Slider(\\n                1,\\n                64,\\n                2,")`,
-    `    _tr = _tr.replace("save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                10,", "save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                5,")`,
-    `    _tr = _tr.replace('value="my-project",', 'value="",')`,
-    `    _tr = _re.sub(`,
-    `        r'(include_mutes\\s*=\\s*gr\\.Slider\\(\\s*0,\\s*10,\\s*)2,(?=[\\s\\S]*?value=)(?P<body>[\\s\\S]*?)value=True,',`,
-    `        r'\\g<1>0,\\g<body>value=0,',`,
-    `        _tr,`,
-    `        count=1,`,
-    `    )`,
-    `    _tr = _re.sub(`,
-    `        r'(terms_checkbox\\s*=\\s*gr\\.Checkbox\\([\\s\\S]*?info=i18n\\(\\s*)"[^"]*"(\\s*\\),\\s*)value=False,',`,
-    `        r'\\g<1>"Confirm that your training audio follows the usage guidelines for NoRegretsRVC."\\g<2>value=True,',`,
-    `        _tr,`,
-    `        count=1,`,
-    `    )`,
-    `    if 'if os.getenv("COLAB_RELEASE_TAG"):' not in _tr:`,
-    `        _tr = _re.sub(`,
-    `            r'([ \\t]*)gr\\.Markdown\\(\\s*i18n\\(\\s*"The \\'Upload\\' button packages the model[^"]*"\\s*\\)\\s*\\)',`,
-    `            r'\\1if os.getenv("COLAB_RELEASE_TAG"):\\n\\1    gr.Markdown(i18n("The \\'Upload\\' button packages the model into a .zip and saves it to the ApplioExported folder in your Google Drive."))',`,
-    `            _tr,`,
-    `            count=1,`,
-    `        )`,
-    `    _ms_pat = _re.compile(`,
-    `        r'(?P<head>with step_card\\(1, "Model Settings"[^\\n]*\\n)'`,
-    `        r'        with gr\\.Row\\(\\):\\n'`,
-    `        r'            with gr\\.Column\\(\\):\\n'`,
-    `        r'(?P<mname>                model_name = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)'`,
-    `        r'(?P<arch>                architecture = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)'`,
-    `        r'            with gr\\.Column\\(\\):\\n'`,
-    `        r'(?P<srate>                sampling_rate = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)'`,
-    `        r'(?P<voc>                vocoder = gr\\.Dropdown\\([\\s\\S]*?\\n                \\)\\n)',`,
-    `    )`,
-    `    def _reindent_step(_blk, _from="                ", _to="            "):`,
-    `        return "\\n".join((_to + _ln[len(_from):]) if _ln.startswith(_from) else _ln for _ln in _blk.splitlines()) + "\\n"`,
-    `    _ms_m = _ms_pat.search(_tr)`,
-    `    if _ms_m:`,
-    `        _new_ms = (`,
-    `            _ms_m.group("head")`,
-    `            + "        with gr.Row():\\n"`,
-    `            + _reindent_step(_ms_m.group("mname"), "                ", "            ")`,
-    `            + _reindent_step(_ms_m.group("srate"), "                ", "            ")`,
-    `            + _reindent_step(_ms_m.group("voc"), "                ", "        ")`,
-    `            + _reindent_step(_ms_m.group("arch"), "                ", "        ")`,
-    `        )`,
-    `        _tr = _tr[:_ms_m.start()] + _new_ms + _tr[_ms_m.end():]`,
-    `    train_tab_py.write_text(_tr, encoding="utf-8")`,
+    `# Write ${BRAND_NAME} Streamlit WebUI and locked crimson theme`,
+    `(repo_dir / ".streamlit").mkdir(parents=True, exist_ok=True)`,
+    `(repo_dir / ".streamlit" / "config.toml").write_bytes(base64.b64decode("${themeB64}"))`,
+    `(repo_dir / "streamlit_app.py").write_bytes(base64.b64decode("${appB64}"))`,
     ...(turboEnabled
       ? [
           `(repo_dir / "noregrets_turbo.py").write_bytes(base64.b64decode("${turboB64}"))`,
@@ -1567,19 +2242,6 @@ export function generateKaggleNotebookJson(
           `        train_py.write_text("".join(_lines), encoding="utf-8")`,
         ]
       : []),
-    ``,
-    `app_links_py = repo_dir / "assets" / "app_links.py"`,
-    `if app_links_py.is_file():`,
-    `    _al = app_links_py.read_text(encoding="utf-8", errors="replace")`,
-    `    _al = _al.replace('return urljoin(ECOSYSTEM["links"]["docs"], ECOSYSTEM["guides"][guide])', 'return "${REPO_README_URL}"')`,
-    `    _al = _al.replace('"User guide"', '"GitHub README"')`,
-    `    app_links_py.write_text(_al, encoding="utf-8")`,
-    ``,
-    `app_shell_py = repo_dir / "assets" / "app_shell.py"`,
-    `if app_shell_py.is_file():`,
-    `    _as = app_shell_py.read_text(encoding="utf-8", errors="replace")`,
-    `    _as = _as.replace('translate("User guide")', '"GitHub README"')`,
-    `    app_shell_py.write_text(_as, encoding="utf-8")`,
     ``,
     `# Best-effort prefetch of the 6 Free Samples WAVs from ${REPO_URL}`,
     `fs_dir = repo_dir / "assets" / "free_samples"`,
@@ -1672,7 +2334,7 @@ export function generateKaggleNotebookJson(
       `            urllib.request.urlretrieve(_url, _zip_tmp)`,
       `            with _zipfile.ZipFile(_zip_tmp, "r") as _zf:`,
       `                for _member in _zf.namelist():`,
-      `                    if _member.lower().endswith(".pth"):`,
+      `                    if not _member.endswith("/") and Path(_member).name and _member.lower().endswith(".pth"):`,
       `                        _out_pth = _target_dir / Path(_member).name`,
       `                        _out_pth.write_bytes(_zf.read(_member))`,
       `                        print("Extracted", _out_pth.name)`,
@@ -1702,7 +2364,7 @@ export function generateKaggleNotebookJson(
     `    os.replace(tmp, cloudflared_path)`,
     `cloudflared_path.chmod(0o755)`,
     `clear_output()`,
-    `print("${BRAND_NAME} setup complete! Model: ${sanitizeModelName(project.name)} (${project.samplingRate} · ${project.vocoder})")`
+    `print("${BRAND_NAME} Streamlit setup complete! Model: ${sanitizeModelName(project.name)} (${project.samplingRate} · ${project.vocoder})")`
   );
 
   const pyExecutableExpr = config.useUvVenv ? '"/kaggle/.venv/bin/python"' : 'sys.executable';
@@ -1758,15 +2420,14 @@ export function generateKaggleNotebookJson(
     `    subprocess.run(["npm", "install", "-g", "@hrzn/cli"], check=True)`,
     `    subprocess.run(["hrzn", "login", horizon_id], check=True)`,
     ``,
-    `# --- ${BRAND_NAME} Kaggle Live Monitor (pinned URLs/creds + mid-epoch + Speed|Step|Epoch table) ---`,
+    `# --- ${BRAND_NAME} Kaggle Live Monitor (spaced rows + mid-epoch + Speed|Step|Epoch table) ---`,
     `BOLD = "\\033[1m"`,
     `RESET = "\\033[0m"`,
     `ANSI_RE = re.compile(r"\\x1B\\[[0-?]*[ -/]*[@-~]")`,
     `EPOCH_RE = re.compile(r"epoch=(\\d+)\\s*\\|\\s*step=(\\d+).*?training_speed=(\\d+:\\d{2}:\\d{2})(?:.*?lowest_value=([0-9.]+))?")`,
     `TQDM_RE = re.compile(r"(\\d+)%\\|[^|]*\\|\\s*(\\d+)/(\\d+)\\s*\\[([^,\\]]+),\\s*([0-9.]+\\s*(?:it/s|s/it))")`,
-    `PUBLIC_URL_RE = re.compile(r"Running on public URL:\\s*(https?://\\S+)")`,
-    `LOCAL_URL_RE = re.compile(r"Running on local URL:\\s*(https?://\\S+)")`,
-    `NOISE_RE = re.compile(r"(FutureWarning|UserWarning|DeprecationWarning|RuntimeWarning|pkg_resources|warnings\\.warn|oneDNN|tensorflow/core|computation_placer|numa_node|Successfully opened dynamic library|weights_only|gradio\\.analytics|HTTP Request:|Checking out|libpng warning|ALSA|jack server|To create a public link)", re.IGNORECASE)`,
+    `LOCAL_URL_RE = re.compile(r"(?:Running on local URL|Local URL|Network URL):\\s*(https?://\\S+)")`,
+    `NOISE_RE = re.compile(r"(FutureWarning|UserWarning|DeprecationWarning|RuntimeWarning|pkg_resources|warnings\\.warn|oneDNN|tensorflow/core|computation_placer|numa_node|Successfully opened dynamic library|weights_only|HTTP Request:|Checking out|libpng warning|ALSA|jack server|You can now view your Streamlit)", re.IGNORECASE)`,
     `MILESTONE_RE = re.compile(r"(Starting preprocess|Preprocess completed|preprocessed successfully|Starting pitch extraction|Pitch extraction completed|Starting embedding extraction|Embedding extraction completed|Saved index file|Starting training|Saving checkpoint|Saving model|Training finished|Training completed|Index file.*generated|Using .* vocoder|Using .* for training)", re.IGNORECASE)`,
     `ERROR_START_RE = re.compile(r"(Traceback \\(most recent call last\\)|RuntimeError:|ValueError:|FileNotFoundError:|OSError:|ModuleNotFoundError:|ImportError:|CUDA out of memory|OutOfMemoryError|Exception:|\\bERROR:)")`,
     ``,
@@ -1784,7 +2445,7 @@ export function generateKaggleNotebookJson(
     `        if k.strip() == label.strip():`,
     `            session_links[idx] = (label, value)`,
     `            return`,
-    `    session_links.insert(0, (label, value))`,
+    `    session_links.append((label, value))`,
     ``,
     `def render_monitor(status="Running"):`,
     `    w_speed = max(9, max((len(r[0]) for r in epoch_rows), default=0))`,
@@ -1793,13 +2454,17 @@ export function generateKaggleNotebookJson(
     `    lines = [`,
     `        f"{BOLD}${BRAND_NAME} Live Monitor (Beta 0.0.0){RESET}  [{status}]",`,
     `        "=" * 64,`,
+    `        "",`,
     `    ]`,
     `    if app_pass:`,
     `        lines.append(f"WebUI Login      : {app_user} / {app_pass}")`,
+    `        lines.append("")`,
     `    for label, val in session_links:`,
     `        if val:`,
     `            lines.append(f"{label:<17}: {val}")`,
+    `            lines.append("")`,
     `    lines.append("-" * 64)`,
+    `    lines.append("")`,
     `    if milestones:`,
     `        for m in milestones:`,
     `            lines.append(f"[Stage] {m}")`,
@@ -1837,14 +2502,20 @@ export function generateKaggleNotebookJson(
     ``,
     `    if Tunnel == "Gradio + Cloudflare":`,
     `        cf_url = start_tunnel([str(cloudflared_path), "tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://127.0.0.1:6969"], "webui-cf", cf_pattern)`,
+    `        upsert_link("${BRAND_NAME} URL", cf_url)`,
     `        upsert_link("Cloudflare URL", cf_url)`,
     `    else:`,
     `        web_url = start_tunnel(["hrzn", "tunnel", "http://localhost:6969"], "webui-hrzn", hz_pattern)`,
     `        upsert_link("${BRAND_NAME} URL", web_url)`,
     ``,
-    `    app_cmd = [py_exec, "-u", "app.py", "--server-name", "0.0.0.0", "--port", "6969"]`,
-    `    if Tunnel == "Gradio + Cloudflare":`,
-    `        app_cmd.append("--share")`,
+    `    app_cmd = [`,
+    `        py_exec, "-u", "-m", "streamlit", "run", "streamlit_app.py",`,
+    `        "--server.address", "0.0.0.0",`,
+    `        "--server.port", "6969",`,
+    `        "--server.headless", "true",`,
+    `        "--server.enableCORS", "false",`,
+    `        "--server.enableXsrfProtection", "false",`,
+    `    ]`,
     `    render_monitor("Starting ${BRAND_NAME} WebUI")`,
     `    app_proc = subprocess.Popen(app_cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)`,
     `    assert app_proc.stdout is not None`,
@@ -1852,13 +2523,8 @@ export function generateKaggleNotebookJson(
     `        line = ANSI_RE.sub("", raw_line).replace("\\r", "").strip()`,
     `        if not line:`,
     `            continue`,
-    `        pub_m = PUBLIC_URL_RE.search(line)`,
-    `        if pub_m:`,
-    `            upsert_link("${BRAND_NAME} URL", pub_m.group(1))`,
-    `            render_monitor("Ready")`,
-    `            continue`,
     `        loc_m = LOCAL_URL_RE.search(line)`,
-    `        if loc_m and not any(k.strip() == "${BRAND_NAME} URL" for k, _ in session_links):`,
+    `        if loc_m:`,
     `            upsert_link("Local UI URL", loc_m.group(1))`,
     `            render_monitor("Ready")`,
     `            continue`,
@@ -1936,7 +2602,7 @@ export function generateKaggleNotebookJson(
         metadata: {},
         source: [
           `## **${BRAND_NAME}**\n`,
-          `Custom RVC voice model training environment built on Applio (${project.samplingRate} · ${project.vocoder} · ${project.pitchExtractor.toUpperCase()}).\n\n`,
+          `Custom RVC voice model training environment built on Applio + Streamlit (${project.samplingRate} · ${project.vocoder} · ${project.pitchExtractor.toUpperCase()}).\n\n`,
           `- **Dataset Path**: \`${project.datasetPath || '/kaggle/input/datasets/your-username/dataset'}\`\n`,
           `- **Included Tabs**: ${Object.entries(config.activeTabs).filter(([, v]) => v).map(([k]) => k).join(', ')}\n`,
           `- **Tunnel & Auth**: ${config.tunnelMode} with ${config.randomAuthEnabled ? 'auto-generated 24-byte WebUI password' : 'standard access'}\n`,
@@ -1945,7 +2611,7 @@ export function generateKaggleNotebookJson(
       {
         cell_type: 'markdown',
         metadata: {},
-        source: ['## 1. Install Dependencies & Apply NoRegretsRVC Patches\n'],
+        source: ['## 1. Install Dependencies & Apply NoRegretsRVC Streamlit WebUI\n'],
       },
       {
         cell_type: 'code',
@@ -1958,7 +2624,7 @@ export function generateKaggleNotebookJson(
         cell_type: 'markdown',
         metadata: {},
         source: [
-          '## 2. Launch WebUI\n',
+          '## 2. Launch Streamlit WebUI & Live Monitor\n',
         ],
       },
       {
@@ -1998,25 +2664,25 @@ export function generateForkBundle(
       zipPath: `assets/${BRAND_NAME}_Kaggle.ipynb`,
       language: 'json',
       description:
-        'Kaggle-ready notebook preconfigured with SHA-256 verified tunnels, randomized WebUI password, and dual-T4 Turbo setup.',
+        'Kaggle-ready notebook launching the crimson NoRegretsRVC Streamlit WebUI with SHA-256 verified tunnels, randomized password, and dual-T4 Turbo setup.',
       content: generateKaggleNotebookJson(config, project, downloads),
     },
     {
       id: 'app-py',
-      filename: 'app.py',
-      zipPath: 'app.py',
+      filename: 'streamlit_app.py',
+      zipPath: 'streamlit_app.py',
       language: 'python',
       description:
-        'NoRegretsRVC launcher registering Training, Models, Samples, Voice Blender, TTS, Extra, and Settings.',
+        'NoRegretsRVC Streamlit WebUI registering Training, Models, Samples, Free Samples, Diagnostics, Voice Blender, TTS, Extra, and Settings.',
       content: generateAppPython(config, project),
     },
     {
       id: 'theme-py',
-      filename: `${BRAND_NAME}.py`,
-      zipPath: `assets/themes/${BRAND_NAME}.py`,
-      language: 'python',
+      filename: 'config.toml',
+      zipPath: '.streamlit/config.toml',
+      language: 'json',
       description:
-        'Fixed crimson-red Gradio styling sheet built specifically for NoRegretsRVC.',
+        'Fixed crimson-red Streamlit theme configuration built specifically for NoRegretsRVC.',
       content: generateThemePython(),
     },
     {
