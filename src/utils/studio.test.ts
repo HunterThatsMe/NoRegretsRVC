@@ -167,7 +167,11 @@ test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samp
   assert.match(nbFile.content, /NoRegretsRVC Live Monitor/);
   assert.match(nbFile.content, /Lowest Loss/);
   assert.match(nbFile.content, /deque\(maxlen=25\)/);
-  assert.match(nbFile.content, /Model Settings/);
+  const cell1Py = parsedNb.cells[2].source.join('');
+  assert.match(cell1Py, /Model Settings/);
+  assert.match(cell1Py, /_cfg_d\["precision"\] = "fp32"/);
+  assert.match(cell1Py, /include_mutes/);
+  assert.match(cell1Py, /terms_checkbox/);
   assert.doesNotMatch(nbFile.content, /placeholder=\\"Enter model name/);
   assert.doesNotMatch(nbFile.content, /core_backup\.py/);
   assert.doesNotMatch(nbFile.content, /filebrowser/i);
@@ -195,15 +199,21 @@ test('generateForkBundle produces locked NoRegretsRVC theme, turbo trainer, Samp
 
   const appFile = files.find((f) => f.id === 'app-py');
   assert.ok(appFile);
-  assert.match(appFile.content, /with gr\.TabItem\("Samples"\):/);
-  assert.match(appFile.content, /with gr\.TabItem\("Free Samples"\):/);
-  assert.match(appFile.content, /with gr\.TabItem\("Models"\):/);
+  assert.match(appFile.content, /gr\.Button\("Samples"/);
+  assert.match(appFile.content, /gr\.Button\("Free Samples"/);
+  assert.match(appFile.content, /gr\.Button\("Models"/);
   assert.match(appFile.content, /nr-header-card/);
-  assert.match(appFile.content, /elem_id="nr-main-tabs"/);
+  assert.match(appFile.content, /elem_id="nr-nav-bar"/);
+  assert.match(appFile.content, /elem_classes="nr-page-col"/);
   assert.match(appFile.content, /\.applio-step/);
   assert.match(appFile.content, /--block-label-background-fill/);
   assert.match(appFile.content, /input\[type="checkbox"\]:checked/);
+  assert.match(appFile.content, /nr_precision_initialized/);
   assert.match(appFile.content, /GRADIO_6/);
+  assert.match(appFile.content, /with gr\.Tabs\(elem_classes="nr-subtabs"\):\s+extra_tab\(\)/);
+  assert.match(appFile.content, /with gr\.Tabs\(elem_classes="nr-subtabs"\):\s+settings_tab\(\)/);
+  assert.match(cell1Py, /tts_tab_py/);
+  assert.match(cell1Py, /terms_checkbox\(\?:_batch\)\?/);
 
   const zipBytes = buildZipArchive(files.map((f) => ({ path: f.zipPath, content: f.content })));
   assert.equal(zipBytes[0], 0x50);

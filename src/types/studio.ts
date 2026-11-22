@@ -284,6 +284,7 @@ export interface ValidationIssue {
 export type StudioSection =
   | 'training'
   | 'samples'
+  | 'free_samples'
   | 'blender'
   | 'tts'
   | 'models'

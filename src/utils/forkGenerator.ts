@@ -181,21 +181,22 @@ export function generateAppPython(
   );
   const imports = enabledTabs.map((id) => tabDefs[id].importLine).join('\n');
 
-  const freeSamplesTabBlock = `            with gr.TabItem("Free Samples"):
+  const freeSamplesCardBody = `            with gr.Column(scale=0, min_width=0, elem_classes="applio-card"):
                 gr.HTML(
-                    '<div class="nr-page-heading">'
-                    '<div><h2>Free Samples</h2>'
-                    '<p>Six dry 32 kHz mono speaking clips (3 male, 3 female) ready for testing in Samples.</p></div>'
-                    '<a class="nr-readme-pill" href="${REPO_README_URL}" target="_blank" rel="noopener noreferrer">GitHub README ↗</a>'
-                    '</div>'
+                    '<div class="applio-card-head">'
+                    '<h2 class="applio-card-heading"><span class="applio-step">1</span>Free Voice Samples</h2>'
+                    '<p class="applio-card-desc">Download and audition six dry 32 kHz mono speaking clips directly inside Kaggle.</p>'
+                    '</div>',
+                    elem_classes="applio-step-header",
+                )
+                fs_repo_box = gr.Textbox(
+                    label="GitHub Repo URL (to fetch the 6 WAV samples into Kaggle)",
+                    placeholder="${REPO_URL}",
+                    value="${config.customRepoUrl.trim() || REPO_URL}",
                 )
                 with gr.Row():
-                    fs_repo_box = gr.Textbox(
-                        label="GitHub Repo URL (to fetch the 6 WAV samples into Kaggle)",
-                        placeholder="${REPO_URL}",
-                        value="${config.customRepoUrl.trim() || REPO_URL}",
-                    )
                     fs_fetch_btn = gr.Button("Fetch 6 Free Samples from GitHub", variant="primary")
+                    fs_copy_btn = gr.Button("Copy Available Free Samples into Samples Tab")
                 fs_status = gr.Markdown("Ready. Pick a clip below or fetch from your GitHub repo.")
                 fs_catalog = [
                     ("Male Speaking Test 1", "MaleSpeakingTest-1_931b5ffd.wav", "Male · Dry 32 kHz mono speaking clip 1"),
@@ -205,14 +206,12 @@ export function generateAppPython(
                     ("Female Speaking Test 2", "FemaleSpeakingTest-2_d1823132.wav", "Female · Dry 32 kHz mono speaking clip 2"),
                     ("Female Speaking Test 3", "FemaleSpeakingTest-3_458bd4fc.wav", "Female · Dry 32 kHz mono speaking clip 3"),
                 ]
-                with gr.Row():
-                    fs_selector = gr.Dropdown(
-                        label="Select Free Sample",
-                        choices=[f"{title} ({fname})" for title, fname, _ in fs_catalog],
-                        value=f"{fs_catalog[0][0]} ({fs_catalog[0][1]})",
-                    )
+                fs_selector = gr.Dropdown(
+                    label="Select Free Sample",
+                    choices=[f"{title} ({fname})" for title, fname, _ in fs_catalog],
+                    value=f"{fs_catalog[0][0]} ({fs_catalog[0][1]})",
+                )
                 fs_player = gr.Audio(label="Sample Preview & Download", type="filepath", interactive=False)
-                fs_copy_btn = gr.Button("Copy Available Free Samples into Samples Tab")
 
                 def _resolve_sample_path(choice_label: str):
                     for title, fname, _ in fs_catalog:
@@ -273,32 +272,70 @@ export function generateAppPython(
                 fs_fetch_btn.click(_fetch_from_github, inputs=[fs_repo_box], outputs=[fs_status, fs_player])
                 fs_copy_btn.click(_copy_to_audios, outputs=[fs_status])`;
 
-  const tabBlocksList: string[] = [];
+  interface PageSpec {
+    key: string;
+    title: string;
+    subtitle: string;
+    body: string;
+  }
+  const orderedPages: PageSpec[] = [];
   for (const id of enabledTabs) {
     const def = tabDefs[id];
-    tabBlocksList.push(
-      `            with gr.TabItem("${def.tabTitle}"):\n` +
-        `                gr.HTML(\n` +
-        `                    '<div class="nr-page-heading">'\n` +
-        `                    '<div><h2>${def.tabTitle}</h2><p>${def.subtitle}</p></div>'\n` +
-        `                    '<a class="nr-readme-pill" href="${REPO_README_URL}" target="_blank" rel="noopener noreferrer">GitHub README ↗</a>'\n` +
-        `                    '</div>'\n` +
-        `                )\n` +
-        `                ${def.fnCall}`
-    );
+    const body =
+      id === 'settings' || id === 'extra'
+        ? `            with gr.Tabs(elem_classes="nr-subtabs"):\n                ${def.fnCall}`
+        : `            ${def.fnCall}`;
+    orderedPages.push({
+      key: id,
+      title: def.tabTitle,
+      subtitle: def.subtitle,
+      body,
+    });
     if (id === 'samples') {
-      tabBlocksList.push(freeSamplesTabBlock);
+      orderedPages.push({
+        key: 'free_samples',
+        title: 'Free Samples',
+        subtitle: 'Six dry 32 kHz mono speaking clips (3 male, 3 female) ready for testing in Samples.',
+        body: freeSamplesCardBody,
+      });
     }
   }
   if (!enabledTabs.includes('samples')) {
-    tabBlocksList.push(freeSamplesTabBlock);
+    orderedPages.push({
+      key: 'free_samples',
+      title: 'Free Samples',
+      subtitle: 'Six dry 32 kHz mono speaking clips (3 male, 3 female) ready for testing in Samples.',
+      body: freeSamplesCardBody,
+    });
   }
-  const tabBlocks = tabBlocksList.join('\n');
+
+  const navBtnInits = orderedPages
+    .map(
+      (p, idx) =>
+        `            nav_btns.append(gr.Button("${p.title}", variant="${idx === 0 ? 'primary' : 'secondary'}", size="sm", elem_classes="nr-nav-btn"))`
+    )
+    .join('\n');
+
+  const pageColBlocks = orderedPages
+    .map(
+      (p, idx) =>
+        `        with gr.Column(visible=${idx === 0 ? 'True' : 'False'}, elem_classes="nr-page-col") as _page_${idx}:\n` +
+        `            gr.HTML(\n` +
+        `                '<div class="nr-page-heading">'\n` +
+        `                '<div><h2>${p.title}</h2><p>${p.subtitle}</p></div>'\n` +
+        `                '<a class="nr-readme-pill" href="${REPO_README_URL}" target="_blank" rel="noopener noreferrer">GitHub README ↗</a>'\n` +
+        `                '</div>'\n` +
+        `            )\n` +
+        `${p.body}\n` +
+        `        page_cols.append(_page_${idx})`
+    )
+    .join('\n');
 
   const safeHeaderName = (project.name.trim() || 'Untitled Model').replace(/[<>&"']/g, '');
   const effBatch = project.batchSize * Math.max(1, project.gpuCount || 2);
 
   return `import argparse
+import json
 import os
 import shutil
 import sys
@@ -312,6 +349,26 @@ os.environ.setdefault("APPLIO_CONFIG_FILE", CONFIG_PATH)
 CONFIG_TEMPLATE_PATH = os.path.join(now_dir, "assets", "config_template.json")
 if not os.path.exists(CONFIG_PATH) and os.path.exists(CONFIG_TEMPLATE_PATH):
     shutil.copy(CONFIG_TEMPLATE_PATH, CONFIG_PATH)
+if os.path.exists(CONFIG_PATH):
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as _cf:
+            _cfg_data = json.load(_cf)
+        if not isinstance(_cfg_data, dict):
+            _cfg_data = {}
+        _changed = False
+        if _cfg_data.get("precision") not in ("fp32", "bf16") and _cfg_data.get("nr_precision_initialized") is not True:
+            _cfg_data["precision"] = "fp32"
+            _cfg_data["nr_precision_initialized"] = True
+            _changed = True
+        if _cfg_data.get("discord_presence") is True and _cfg_data.get("nr_discord_initialized") is not True:
+            _cfg_data["discord_presence"] = False
+            _cfg_data["nr_discord_initialized"] = True
+            _changed = True
+        if _changed:
+            with open(CONFIG_PATH, "w", encoding="utf-8") as _cf:
+                json.dump(_cfg_data, _cf, indent=4, ensure_ascii=False)
+    except Exception:
+        pass
 
 try:
     from rvc.lib.platform import platform_config
@@ -383,7 +440,7 @@ CUSTOM_CSS = """
   --button-small-radius: 8px !important;
   --checkbox-background-color: #100506 !important;
   --checkbox-background-color-selected: ${ACCENT_HEX} !important;
-  --checkbox-border-color: #47161D !important;
+  --checkbox-border-color: #6E232D !important;
   --checkbox-border-color-selected: ${ACCENT_HEX} !important;
   --checkbox-label-background-fill: #100506 !important;
   --checkbox-label-background-fill-selected: rgba(229, 25, 35, 0.14) !important;
@@ -396,7 +453,25 @@ CUSTOM_CSS = """
   font-family: var(--font) !important;
   -webkit-font-smoothing: antialiased;
 }
-.gradio-container { max-width: 1280px !important; margin: 0 auto !important; padding: 20px 24px 40px !important; }
+
+/* Lock full width on every page so Models / Samples / Voice Blender / TTS never shrink */
+.gradio-container {
+  width: 100% !important;
+  max-width: 1280px !important;
+  margin: 0 auto !important;
+  padding: 20px 24px 40px !important;
+  box-sizing: border-box !important;
+}
+.gradio-container > .main,
+.gradio-container > .main > .wrap,
+.gradio-container > .main > .wrap > .contain,
+.gradio-container .contain,
+.nr-page-col,
+.applio-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
 footer { display: none !important; }
 
 /* Custom Red Side Scrollbar */
@@ -407,7 +482,7 @@ footer { display: none !important; }
 ::-webkit-scrollbar-thumb:hover { background: #FF2B35; }
 
 /* NoRegretsRVC Studio Top Header Card */
-.nr-header-wrap { padding: 0 !important; border: 0 !important; background: transparent !important; margin-bottom: 12px !important; box-shadow: none !important; }
+.nr-header-wrap { width: 100% !important; padding: 0 !important; border: 0 !important; background: transparent !important; margin-bottom: 12px !important; box-shadow: none !important; }
 .nr-header-card {
   display: flex;
   flex-wrap: wrap;
@@ -418,6 +493,8 @@ footer { display: none !important; }
   border: 1px solid #47161D;
   border-radius: 14px;
   padding: 14px 20px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .nr-brand-left { display: flex; align-items: center; gap: 14px; }
 .nr-logo-box {
@@ -458,11 +535,9 @@ footer { display: none !important; }
 .nr-status-title { margin: 0; font-size: 13px; font-weight: 600; color: #FDF7F7; }
 .nr-status-meta { margin: 2px 0 0; font-size: 11px; color: #AD8288; font-family: var(--font-mono); }
 
-/* Main Navigation Bar matching AI Studio Preview */
-#nr-main-tabs { border: 0 !important; background: transparent !important; box-shadow: none !important; }
-#nr-main-tabs > .tab-wrapper,
-#nr-main-tabs > .tab-nav,
-#nr-main-tabs > [role="tablist"] {
+/* Fixed Pill Navigation Bar (never collapses tabs into ... overflow) */
+#nr-nav-bar {
+  width: 100% !important;
   background: #160709 !important;
   border: 1px solid #47161D !important;
   border-radius: 12px !important;
@@ -472,63 +547,61 @@ footer { display: none !important; }
   display: flex !important;
   flex-wrap: wrap !important;
   align-items: center !important;
-  height: auto !important;
-  min-height: 0 !important;
+  box-sizing: border-box !important;
 }
-#nr-main-tabs > .tab-wrapper .tab-container[role="tablist"] {
-  background: transparent !important;
-  border: 0 !important;
-  padding: 0 !important;
-  gap: 6px !important;
-  display: flex !important;
-  flex-wrap: wrap !important;
-  width: 100% !important;
-}
-#nr-main-tabs > .tab-nav button,
-#nr-main-tabs > .tab-wrapper button[role="tab"],
-#nr-main-tabs > [role="tablist"] button[role="tab"] {
-  border: 0 !important;
-  border-radius: 8px !important;
-  padding: 8px 14px !important;
+#nr-nav-bar > button,
+#nr-nav-bar .nr-nav-btn {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 36px !important;
+  padding: 7px 14px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
-  color: #DFBFC3 !important;
-  background: transparent !important;
-  transition: background-color 0.15s, color 0.15s !important;
+  border-radius: 8px !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
 }
-#nr-main-tabs > .tab-nav button:hover,
-#nr-main-tabs > .tab-wrapper button[role="tab"]:hover,
-#nr-main-tabs > [role="tablist"] button[role="tab"]:hover {
+#nr-nav-bar > button.secondary,
+#nr-nav-bar .nr-nav-btn.secondary {
+  background: transparent !important;
+  color: #DFBFC3 !important;
+}
+#nr-nav-bar > button.secondary:hover,
+#nr-nav-bar .nr-nav-btn.secondary:hover {
   background: #200B0E !important;
   color: #FFFFFF !important;
 }
-#nr-main-tabs > .tab-nav button.selected,
-#nr-main-tabs > .tab-wrapper button[role="tab"].selected,
-#nr-main-tabs > .tab-wrapper button[aria-selected="true"],
-#nr-main-tabs > [role="tablist"] button[aria-selected="true"] {
+#nr-nav-bar > button.primary,
+#nr-nav-bar .nr-nav-btn.primary {
   background: ${ACCENT_HEX} !important;
   color: #FFFFFF !important;
-  font-weight: 600 !important;
-}
-#nr-main-tabs > .tab-nav button::after,
-#nr-main-tabs > .tab-wrapper button::after,
-#nr-main-tabs > [role="tablist"] button::after {
-  display: none !important;
-}
-#nr-main-tabs > .tabitem {
-  border: 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
 }
 
-/* Page Section Heading inside each tab */
+.nr-page-col {
+  padding: 0 !important;
+  gap: 16px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.nr-page-col > .row,
+.nr-page-col > .column,
+.applio-card > .row,
+.applio-card > .column {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+}
+
+/* Page Section Heading inside each page */
 .nr-page-heading {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 18px !important;
+  width: 100%;
+  margin: 0 0 4px !important;
   padding: 0 2px;
 }
 .nr-page-heading h2 { margin: 0 !important; font-size: 24px !important; font-weight: 700 !important; color: #FDF7F7 !important; letter-spacing: -0.02em; }
@@ -558,11 +631,6 @@ footer { display: none !important; }
   gap: 16px !important;
   margin-bottom: 16px !important;
   box-shadow: none !important;
-}
-.applio-card > .row,
-.applio-card > .column,
-.applio-card .form {
-  flex: 0 0 auto !important;
 }
 .applio-step-header, .applio-step-header .html-container {
   padding: 0 !important;
@@ -601,6 +669,39 @@ footer { display: none !important; }
   line-height: 1.45 !important;
 }
 
+/* Proper Row Flex Sizing inside Cards (fixes cramped Model Name & overflowing sliders) */
+.applio-card .row {
+  width: 100% !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+}
+.applio-card .row > *,
+.applio-card .row > .form,
+.applio-card .row > .column {
+  flex: 1 1 0% !important;
+  min-width: min(200px, 100%) !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.applio-card .row > .form {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  gap: 16px !important;
+  width: 100% !important;
+}
+.applio-card .row > .form > .block {
+  flex: 1 1 0% !important;
+  min-width: min(200px, 100%) !important;
+  max-width: 100% !important;
+}
+.applio-card .row > button {
+  flex: 1 1 0% !important;
+  min-width: 140px !important;
+}
+
 /* Strip Gradio outer form/block boxes so only clean inset inputs have borders */
 .gradio-container .form {
   border: 0 !important;
@@ -615,6 +716,7 @@ footer { display: none !important; }
   background: transparent !important;
   box-shadow: none !important;
   padding: 0 !important;
+  overflow: visible !important;
 }
 .applio-card .group,
 .applio-card .gr-group {
@@ -638,28 +740,59 @@ footer { display: none !important; }
   font-size: 12px !important;
   line-height: 1.4 !important;
 }
-.gradio-container input[type="text"],
-.gradio-container input[type="number"],
-.gradio-container textarea,
-.gradio-container select,
-.gradio-container .wrap-inner,
-.gradio-container .secondary-wrap {
+
+/* Single crisp border on Gradio Dropdown/Textbox .wrap (no triple nested borders!) */
+.gradio-container .wrap {
+  background: #100506 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+.gradio-container .wrap:focus-within {
+  border-color: ${ACCENT_HEX} !important;
+  box-shadow: 0 0 0 2px rgba(229, 25, 35, 0.18) !important;
+}
+.gradio-container .wrap .wrap-inner,
+.gradio-container .wrap .secondary-wrap,
+.gradio-container .wrap input,
+.gradio-container .wrap textarea {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #FDF7F7 !important;
+}
+.gradio-container input[type="text"]:not(.wrap input),
+.gradio-container textarea:not(.wrap textarea),
+.gradio-container select {
   background: #100506 !important;
   border: 1px solid #47161D !important;
   border-radius: 8px !important;
   color: #FDF7F7 !important;
 }
-.gradio-container input[type="text"]:focus,
-.gradio-container input[type="number"]:focus,
-.gradio-container textarea:focus,
-.gradio-container .wrap-inner:focus-within,
-.gradio-container .secondary-wrap:focus-within {
+.gradio-container input[type="text"]:not(.wrap input):focus,
+.gradio-container textarea:not(.wrap textarea):focus {
   border-color: ${ACCENT_HEX} !important;
   box-shadow: 0 0 0 2px rgba(229, 25, 35, 0.18) !important;
 }
+.gradio-container ul.options {
+  background: #160709 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55) !important;
+}
+.gradio-container ul.options li.item:hover,
+.gradio-container ul.options li.item.active {
+  background: #2D0F14 !important;
+  color: #FFFFFF !important;
+}
 
-/* Segmented nested tabs inside cards (e.g. Audio vs Batch) */
+/* Settings, Extra & Card Segmented Sub-Tabs */
+.nr-subtabs > .tab-wrapper,
+.nr-subtabs > .tab-nav,
+.nr-subtabs > [role="tablist"],
+.applio-card .tab-wrapper,
 .applio-card .tab-nav,
+.applio-card [role="tablist"],
 .applio-card .tab-container[role="tablist"] {
   background: #100506 !important;
   border: 1px solid #47161D !important;
@@ -667,28 +800,44 @@ footer { display: none !important; }
   padding: 4px !important;
   gap: 4px !important;
 }
+.nr-subtabs > .tab-wrapper button,
+.nr-subtabs > .tab-nav button,
+.nr-subtabs > [role="tablist"] button,
+.applio-card .tab-wrapper button,
 .applio-card .tab-nav button,
+.applio-card [role="tablist"] button,
 .applio-card .tab-container[role="tablist"] button {
   border: 0 !important;
   border-radius: 6px !important;
   color: #DFBFC3 !important;
   background: transparent !important;
 }
+.nr-subtabs button.selected,
+.nr-subtabs button[aria-selected="true"],
+.applio-card .tab-wrapper button.selected,
+.applio-card .tab-wrapper button[aria-selected="true"],
 .applio-card .tab-nav button.selected,
+.applio-card [role="tablist"] button.selected,
+.applio-card [role="tablist"] button[aria-selected="true"],
 .applio-card .tab-container[role="tablist"] button.selected,
 .applio-card .tab-container[role="tablist"] button[aria-selected="true"] {
   background: ${ACCENT_HEX} !important;
   color: #FFFFFF !important;
 }
+.nr-subtabs button::after,
+.applio-card [role="tablist"] button::after,
 .applio-card .tab-container[role="tablist"] button::after { display: none !important; }
+.nr-subtabs > .tabitem { border: 0 !important; padding: 14px 0 0 !important; background: transparent !important; }
 
-/* Custom Checkboxes, Radios, Sliders, Accordions, Audio & Buttons */
+/* Custom Checkboxes, Radios, Sliders, Compact File Dropzones & Accordions (zero red horizontal scrollbar!) */
 .gradio-container input[type="checkbox"] {
   appearance: none !important;
   -webkit-appearance: none !important;
+  flex: 0 0 18px !important;
   width: 18px !important;
-  height: 18px !important;
   min-width: 18px !important;
+  max-width: 18px !important;
+  height: 18px !important;
   border-radius: 5px !important;
   border: 1px solid #6E232D !important;
   background: #100506 !important;
@@ -704,7 +853,10 @@ footer { display: none !important; }
 }
 .gradio-container input[type="radio"] {
   appearance: none !important;
+  flex: 0 0 16px !important;
   width: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
   height: 16px !important;
   border-radius: 50% !important;
   border: 1px solid #6E232D !important;
@@ -714,12 +866,63 @@ footer { display: none !important; }
   border-color: ${ACCENT_HEX} !important;
   background: radial-gradient(circle, #FFFFFF 0 3px, ${ACCENT_HEX} 3.5px) !important;
 }
-.gradio-container input[type="range"] { accent-color: ${ACCENT_HEX} !important; }
-.accordion, .gradio-accordion {
+.gradio-container .tab-like-container {
+  background: #100506 !important;
+  border: 1px solid #47161D !important;
+  border-radius: 8px !important;
+}
+.gradio-container .tab-like-container input[type="number"] {
+  background: transparent !important;
+  border: 0 !important;
+  color: #FDF7F7 !important;
+}
+.gradio-container .tab-like-container .reset-button {
+  border-left: 1px solid #47161D !important;
+  color: #AD8288 !important;
+}
+.gradio-container input[type="range"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  accent-color: ${ACCENT_HEX} !important;
+}
+.gr-accordion,
+.accordion {
   background: #100506 !important;
   border: 1px solid #47161D !important;
   border-radius: 10px !important;
-  padding: 2px 12px !important;
+  padding: 10px 14px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+.gr-accordion > button.label-wrap,
+.accordion > button.label-wrap,
+.gr-accordion > div,
+.accordion > div,
+[data-testid="accordion-content"] {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important;
+}
+.gr-accordion > button.label-wrap::-webkit-scrollbar,
+.accordion > button.label-wrap::-webkit-scrollbar,
+.gr-accordion > div::-webkit-scrollbar,
+.accordion > div::-webkit-scrollbar {
+  display: none !important;
+  height: 0 !important;
+}
+.file-preview,
+[data-testid="file"] .wrap,
+.upload-container {
+  min-height: 76px !important;
+  background: #100506 !important;
+  border: 1px dashed #47161D !important;
+  border-radius: 10px !important;
+}
+[data-testid="file"] button {
+  min-height: 68px !important;
+  padding: 12px !important;
 }
 button.primary {
   background: ${ACCENT_HEX} !important;
@@ -773,8 +976,26 @@ def build_ui(theme=None) -> gr.Blocks:
             '</div>',
             elem_classes="nr-header-wrap",
         )
-        with gr.Tabs(elem_id="nr-main-tabs"):
-${tabBlocks || '            with gr.TabItem("Training"):\n                gr.Markdown("Enable at least one tab.")'}
+        nav_btns = []
+        page_cols = []
+        with gr.Row(elem_id="nr-nav-bar"):
+${navBtnInits}
+${pageColBlocks}
+
+        def _make_nav_handler(target_idx: int):
+            def _switch():
+                vis_updates = [gr.update(visible=(i == target_idx)) for i in range(len(page_cols))]
+                btn_updates = [gr.update(variant=("primary" if i == target_idx else "secondary")) for i in range(len(nav_btns))]
+                return (*vis_updates, *btn_updates)
+            return _switch
+
+        for _idx, _btn in enumerate(nav_btns):
+            _btn.click(
+                fn=_make_nav_handler(_idx),
+                inputs=[],
+                outputs=[*page_cols, *nav_btns],
+                queue=False,
+            )
     return app
 
 
@@ -1231,9 +1452,22 @@ export function generateKaggleNotebookJson(
 
   installLines.push(
     ``,
-    `# Reset previously patched Applio UI files so re-runs stay clean`,
+    `# Reset previously patched Applio UI files & config so re-runs stay clean`,
     `if (repo_dir / ".git").is_dir():`,
-    `    subprocess.run(["git", "-C", str(repo_dir), "checkout", "--", "tabs", "assets/app_links.py", "assets/app_shell.py"], check=False)`,
+    `    subprocess.run(["git", "-C", str(repo_dir), "checkout", "--", "tabs", "assets/app_links.py", "assets/app_shell.py", "assets/config_template.json"], check=False)`,
+    ``,
+    `# Enforce NoRegretsRVC engine defaults (fp32 precision, Discord presence off)`,
+    `import json as _cfg_json`,
+    `for _cfg_rel in ("assets/config_template.json", "assets/config.json"):`,
+    `    _cfg_p = repo_dir / _cfg_rel`,
+    `    if _cfg_p.is_file():`,
+    `        try:`,
+    `            _cfg_d = _cfg_json.loads(_cfg_p.read_text(encoding="utf-8"))`,
+    `            _cfg_d["precision"] = "fp32"`,
+    `            _cfg_d["discord_presence"] = False`,
+    `            _cfg_p.write_text(_cfg_json.dumps(_cfg_d, indent=4, ensure_ascii=False), encoding="utf-8")`,
+    `        except Exception:`,
+    `            pass`,
     ``,
     `# Write ${BRAND_NAME} custom WebUI, locked red theme, and UI overrides`,
     `(repo_dir / "assets" / "themes").mkdir(parents=True, exist_ok=True)`,
@@ -1241,22 +1475,57 @@ export function generateKaggleNotebookJson(
     `(repo_dir / "app.py").write_bytes(base64.b64decode("${appB64}"))`,
     ``,
     `# Patch Applio tabs to match ${BRAND_NAME} defaults (-32..+32 pitch, hide Preset Settings, dual-T4 defaults)`,
+    `import re as _re`,
     `inf_tab_py = repo_dir / "tabs" / "inference" / "inference.py"`,
     `if inf_tab_py.is_file():`,
-    `    _inf = inf_tab_py.read_text(encoding="utf-8", errors="replace")`,
+    `    _inf = inf_tab_py.read_text(encoding="utf-8", errors="replace").replace("\\r\\n", "\\n")`,
     `    _inf = _inf.replace("minimum=-24,\\n                    maximum=24,", "minimum=-32,\\n                    maximum=32,")`,
     `    _inf = _inf.replace("minimum=-24, maximum=24,", "minimum=-32, maximum=32,")`,
     `    _inf = _inf.replace('with gr.Accordion(i18n("Preset Settings"), open=False):', 'with gr.Accordion(i18n("Preset Settings"), open=False, visible=False):')`,
+    `    _inf = _re.sub(`,
+    `        r'(terms_checkbox(?:_batch)?\\s*=\\s*gr\\.Checkbox\\([\\s\\S]*?info=i18n\\(\\s*)"[^"]*"(\\s*\\),\\s*)value=False,',`,
+    `        r'\\g<1>"Confirm that your conversion audio follows the usage guidelines for NoRegretsRVC."\\g<2>value=True,',`,
+    `        _inf,`,
+    `    )`,
     `    inf_tab_py.write_text(_inf, encoding="utf-8")`,
+    ``,
+    `tts_tab_py = repo_dir / "tabs" / "tts" / "tts.py"`,
+    `if tts_tab_py.is_file():`,
+    `    _tts = tts_tab_py.read_text(encoding="utf-8", errors="replace").replace("\\r\\n", "\\n")`,
+    `    _tts = _re.sub(`,
+    `        r'(terms_checkbox\\s*=\\s*gr\\.Checkbox\\([\\s\\S]*?info=i18n\\(\\s*)"[^"]*"(\\s*\\),\\s*)value=False,',`,
+    `        r'\\g<1>"Confirm that your conversion audio follows the usage guidelines for NoRegretsRVC."\\g<2>value=True,',`,
+    `        _tts,`,
+    `        count=1,`,
+    `    )`,
+    `    tts_tab_py.write_text(_tts, encoding="utf-8")`,
     ``,
     `train_tab_py = repo_dir / "tabs" / "train" / "train.py"`,
     `if train_tab_py.is_file():`,
-    `    import re as _re`,
-    `    _tr = train_tab_py.read_text(encoding="utf-8", errors="replace")`,
+    `    _tr = train_tab_py.read_text(encoding="utf-8", errors="replace").replace("\\r\\n", "\\n")`,
     `    _tr = _tr.replace('choices=["32000", "40000", "48000"],\\n                    value="40000",', 'choices=["32000", "40000", "48000"],\\n                    value="32000",')`,
     `    _tr = _tr.replace("batch_size = gr.Slider(\\n                1,\\n                64,\\n                4,", "batch_size = gr.Slider(\\n                1,\\n                64,\\n                2,")`,
     `    _tr = _tr.replace("save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                10,", "save_every_epoch = gr.Slider(\\n                1,\\n                100,\\n                5,")`,
     `    _tr = _tr.replace('value="my-project",', 'value="",')`,
+    `    _tr = _re.sub(`,
+    `        r'(include_mutes\\s*=\\s*gr\\.Slider\\(\\s*0,\\s*10,\\s*)2,(?=[\\s\\S]*?value=)(?P<body>[\\s\\S]*?)value=True,',`,
+    `        r'\\g<1>0,\\g<body>value=0,',`,
+    `        _tr,`,
+    `        count=1,`,
+    `    )`,
+    `    _tr = _re.sub(`,
+    `        r'(terms_checkbox\\s*=\\s*gr\\.Checkbox\\([\\s\\S]*?info=i18n\\(\\s*)"[^"]*"(\\s*\\),\\s*)value=False,',`,
+    `        r'\\g<1>"Confirm that your training audio follows the usage guidelines for NoRegretsRVC."\\g<2>value=True,',`,
+    `        _tr,`,
+    `        count=1,`,
+    `    )`,
+    `    if 'if os.getenv("COLAB_RELEASE_TAG"):' not in _tr:`,
+    `        _tr = _re.sub(`,
+    `            r'([ \\t]*)gr\\.Markdown\\(\\s*i18n\\(\\s*"The \\'Upload\\' button packages the model[^"]*"\\s*\\)\\s*\\)',`,
+    `            r'\\1if os.getenv("COLAB_RELEASE_TAG"):\\n\\1    gr.Markdown(i18n("The \\'Upload\\' button packages the model into a .zip and saves it to the ApplioExported folder in your Google Drive."))',`,
+    `            _tr,`,
+    `            count=1,`,
+    `        )`,
     `    _ms_pat = _re.compile(`,
     `        r'(?P<head>with step_card\\(1, "Model Settings"[^\\n]*\\n)'`,
     `        r'        with gr\\.Row\\(\\):\\n'`,

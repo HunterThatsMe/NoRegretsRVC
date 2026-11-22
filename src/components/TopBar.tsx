@@ -7,6 +7,7 @@ import {
   Mic,
   Settings,
   Sliders,
+  Volume2,
 } from 'lucide-react';
 import { ACCENT_HEX, APP_VERSION, BRAND_NAME } from '../data/defaults';
 import { StudioSection, VoiceModelProject } from '../types/studio';
@@ -27,6 +28,7 @@ const TOP_TABS: {
   { id: 'training', labelKey: 'nav.training', icon: AudioWaveform },
   { id: 'models', labelKey: 'nav.models', icon: Download },
   { id: 'samples', labelKey: 'nav.samples', icon: Mic },
+  { id: 'free_samples', labelKey: 'nav.free_samples', icon: Volume2 },
   { id: 'tensorboard', labelKey: 'nav.diagnostics', icon: Activity },
   { id: 'blender', labelKey: 'nav.blender', icon: Combine },
   { id: 'tts', labelKey: 'nav.tts', icon: Sliders },
