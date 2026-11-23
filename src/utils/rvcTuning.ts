@@ -281,7 +281,7 @@ export function sanitizeModelName(name: string): string {
     .trim()
     .replace(/[^a-zA-Z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return cleaned || 'NoRegretsVoice';
+  return cleaned || 'MyVoice';
 }
 
 export function extractPthFilenameFromUrl(

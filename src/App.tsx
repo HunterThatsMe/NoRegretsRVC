@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_PROJECTS, DEFAULT_STUDIO_STATE } from './data/defaults';
+import { CheckCircle2, XCircle } from 'lucide-react';
+import { DEFAULT_STUDIO_STATE } from './data/defaults';
 import {
   ApplioGeneralSettings,
   ApplioTrainingSettings,
@@ -20,6 +21,13 @@ import { FreeSampleItem } from './data/freeSamples';
 import { I18nProvider, resolveLocale } from './utils/i18n';
 import { TopBar } from './components/TopBar';
 import { TrainWorkspaceView } from './components/TrainWorkspaceView';
+
+interface ToastNotice {
+  id: string;
+  title: string;
+  message: string;
+  tone: 'success' | 'error';
+}
 
 const loadConvertAudioView = () =>
   import('./components/ConvertAudioView').then((m) => ({ default: m.ConvertAudioView }));
@@ -155,11 +163,23 @@ const SectionSkeleton = () => (
 export default function App() {
   const [state, setState] = useState<StudioState>(loadInitialState);
   const [sampleQueue, setSampleQueue] = useState<SampleClipItem[]>([]);
+  const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const sampleQueueRef = useRef<SampleClipItem[]>(sampleQueue);
   sampleQueueRef.current = sampleQueue;
   const createdBlobUrlsRef = useRef<Set<string>>(new Set());
   const latestStateRef = useRef<StudioState>(state);
   latestStateRef.current = state;
+
+  const handleNotify = useCallback(
+    (title: string, message: string, tone: 'success' | 'error' = 'success') => {
+      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      setToasts((prev) => [...prev.slice(-2), { id, title, message, tone }]);
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((item) => item.id !== id));
+      }, 5100);
+    },
+    []
+  );
 
   useEffect(() => {
     const urls = createdBlobUrlsRef.current;
@@ -379,6 +399,35 @@ export default function App() {
   return (
     <I18nProvider language={state.generalSettings.language}>
       <div className="min-h-screen flex flex-col bg-[#0D0405] text-[#FDF7F7]">
+        {toasts.length > 0 && (
+          <div
+            aria-live="polite"
+            className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 w-[min(340px,calc(100vw-2rem))] pointer-events-none"
+          >
+            {toasts.map((toast) => (
+              <div
+                key={toast.id}
+                role="status"
+                className="nr-toast-fade flex items-start gap-2.5 rounded-xl border border-[#E51923]/75 border-l-4 border-l-[#E51923] bg-[#1C090C] px-4 py-3 shadow-[0_14px_38px_rgba(0,0,0,0.88)]"
+              >
+                {toast.tone === 'error' ? (
+                  <XCircle className="h-4 w-4 text-[#FF2B35] shrink-0 mt-0.5" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 text-[#E51923] shrink-0 mt-0.5" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-[#FDF7F7] leading-tight">
+                    {toast.title}
+                  </p>
+                  <p className="text-xs text-[#DFBFC3] mt-0.5 leading-snug">
+                    {toast.message}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <TopBar
           activeSection={state.activeSection}
           onSelectSection={handleSelectSection}
@@ -391,6 +440,7 @@ export default function App() {
             <TrainWorkspaceView
               activeProject={activeProject}
               onUpdateProject={handleUpdateProject}
+              onNotify={handleNotify}
             />
           )}
 

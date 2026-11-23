@@ -386,10 +386,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div className="flex items-start gap-3">
             <StepBadge num={1} />
             <div>
-              <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+              <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                 Source Models
               </h3>
-              <p className="text-xs text-[#AD8288] mt-0.5">
+              <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                 Load two .pth checkpoints via file drop or direct filesystem paths.
               </p>
             </div>
@@ -416,18 +416,18 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
                 <p className="text-xs font-semibold text-[#FDF7F7]">
                   Select primary .pth checkpoint
                 </p>
-                <p className="text-[11px] text-[#AD8288] mt-0.5">
+                <p className="text-[13px] text-[#C89EA4] mt-0.5">
                   Drag and drop or click to choose Model A
                 </p>
               </button>
               <div>
                 <label
                   htmlFor="blend-model-a"
-                  className="block text-xs font-semibold text-[#FDF7F7]"
+                  className="block text-[13.5px] font-semibold text-[#FDF7F7]"
                 >
                   Path to first model
                 </label>
-                <p className="text-[11px] text-[#AD8288] mb-1.5">
+                <p className="text-[13px] text-[#C89EA4] mb-1.5">
                   Or type a relative logs/ path directly.
                 </p>
                 <input
@@ -463,18 +463,18 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
                 <p className="text-xs font-semibold text-[#FDF7F7]">
                   Select secondary .pth checkpoint
                 </p>
-                <p className="text-[11px] text-[#AD8288] mt-0.5">
+                <p className="text-[13px] text-[#C89EA4] mt-0.5">
                   Drag and drop or click to choose Model B
                 </p>
               </button>
               <div>
                 <label
                   htmlFor="blend-model-b"
-                  className="block text-xs font-semibold text-[#FDF7F7]"
+                  className="block text-[13.5px] font-semibold text-[#FDF7F7]"
                 >
                   Path to second model
                 </label>
-                <p className="text-[11px] text-[#AD8288] mb-1.5">
+                <p className="text-[13px] text-[#C89EA4] mb-1.5">
                   Or type a relative logs/ path directly.
                 </p>
                 <input
@@ -497,10 +497,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div className="flex items-start gap-3">
             <StepBadge num={2} />
             <div>
-              <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+              <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                 Blend Settings
               </h3>
-              <p className="text-xs text-[#AD8288] mt-0.5">
+              <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                 Define the merged checkpoint filename and weight mixing balance.
               </p>
             </div>
@@ -510,11 +510,11 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
             <div>
               <label
                 htmlFor="blend-output-name"
-                className="block text-xs font-semibold text-[#FDF7F7]"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
                 Model Name
               </label>
-              <p className="text-[11px] text-[#AD8288] mb-1.5">
+              <p className="text-[13px] text-[#C89EA4] mb-1.5">
                 Identifier assigned to the merged .pth export.
               </p>
               <input
@@ -532,11 +532,11 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
             <div>
               <label
                 htmlFor="blend-sample-rate"
-                className="block text-xs font-semibold text-[#FDF7F7]"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
                 Sampling Rate
               </label>
-              <p className="text-[11px] text-[#AD8288] mb-1.5">
+              <p className="text-[13px] text-[#C89EA4] mb-1.5">
                 Must match the target rate of both source checkpoints.
               </p>
               <select
@@ -560,10 +560,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
               <div>
-                <label htmlFor="blend-ratio-slider" className="block text-xs font-semibold text-[#FDF7F7]">
+                <label htmlFor="blend-ratio-slider" className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                   Blend Ratio
                 </label>
-                <p className="text-[11px] text-[#AD8288] mt-0.5">
+                <p className="text-[13px] text-[#C89EA4] mt-0.5">
                   Balance influence between checkpoints: 0 leans 100% toward Model B, while 1 leans 100% toward Model A.
                 </p>
               </div>
@@ -593,7 +593,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
               }
               className="w-full scarlet-slider"
             />
-            <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+            <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
               <span>0</span>
               <span>1</span>
             </div>
@@ -605,10 +605,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div className="flex items-start gap-3">
             <StepBadge num={3} />
             <div>
-              <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+              <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                 Blend &amp; Export
               </h3>
-              <p className="text-xs text-[#AD8288] mt-0.5">
+              <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                 Execute the blend and download the packaged recipe or shell command.
               </p>
             </div>
@@ -684,7 +684,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
             <div>
               <label
                 htmlFor="tts-voice-select"
-                className="block text-xs font-semibold text-[#FDF7F7] mb-1.5"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7] mb-1.5"
               >
                 Base Edge-TTS Speaker
               </label>
@@ -707,7 +707,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
             <div>
               <label
                 htmlFor="tts-target-rvc"
-                className="block text-xs font-semibold text-[#FDF7F7] mb-1.5"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7] mb-1.5"
               >
                 Target RVC Voice Model (Synced with Models)
               </label>
@@ -732,7 +732,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div>
             <label
               htmlFor="tts-target-index"
-              className="block text-xs font-semibold text-[#FDF7F7] mb-1.5"
+              className="block text-[13.5px] font-semibold text-[#FDF7F7] mb-1.5"
             >
               Index File (Optional)
             </label>
@@ -756,7 +756,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div>
             <label
               htmlFor="tts-text-input"
-              className="block text-xs font-semibold text-[#FDF7F7] mb-1.5"
+              className="block text-[13.5px] font-semibold text-[#FDF7F7] mb-1.5"
             >
               Text to Speak
             </label>
@@ -909,10 +909,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
         <div className="flex items-start gap-3">
           <StepBadge num={1} />
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               {t('models.sec1.title')}
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
               Add a remote archive or checkpoint URL to sync into your Samples and TTS library.
             </p>
           </div>
@@ -921,11 +921,11 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
         <div>
           <label
             htmlFor="models-link-input"
-            className="block text-xs font-semibold text-[#FDF7F7]"
+            className="block text-[13.5px] font-semibold text-[#FDF7F7]"
           >
             Model Link
           </label>
-          <p className="text-[11px] text-[#AD8288] mb-1.5">
+          <p className="text-[13px] text-[#C89EA4] mb-1.5">
             Direct URL from Hugging Face, Pixeldrain, or Google Drive.
           </p>
           <input
@@ -960,10 +960,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
         <div className="flex items-start gap-3">
           <StepBadge num={2} />
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               {t('models.sec2.title')}
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
               Load local .pth weights and .index files directly from your computer.
             </p>
           </div>
@@ -1004,10 +1004,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
         <div className="flex items-start gap-3">
           <StepBadge num={3} />
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               {t('models.sec3.title')}
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
               Queue base pretrained architectures or custom Hugging Face weights for Kaggle setup.
             </p>
           </div>
@@ -1021,11 +1021,11 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div>
             <label
               htmlFor="pretrained-select"
-              className="block text-xs font-semibold text-[#FDF7F7]"
+              className="block text-[13.5px] font-semibold text-[#FDF7F7]"
             >
               Pretrained
             </label>
-            <p className="text-[11px] text-[#AD8288] mb-1.5">
+            <p className="text-[13px] text-[#C89EA4] mb-1.5">
               Choose a base pretrained voice architecture.
             </p>
             <select
@@ -1045,11 +1045,11 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
           <div>
             <label
               htmlFor="pretrained-sr-select"
-              className="block text-xs font-semibold text-[#FDF7F7]"
+              className="block text-[13.5px] font-semibold text-[#FDF7F7]"
             >
               Sampling Rate
             </label>
-            <p className="text-[11px] text-[#AD8288] mb-1.5">
+            <p className="text-[13px] text-[#C89EA4] mb-1.5">
               Match the target sample rate used for training.
             </p>
             <select
@@ -1098,7 +1098,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
 
         {customPretrained && (
           <div>
-            <p className="text-xs font-semibold text-[#FDF7F7] mb-1.5">
+            <p className="text-[13.5px] font-semibold text-[#FDF7F7] mb-1.5">
               {t('models.downloadLog')}
             </p>
             <pre
@@ -1124,7 +1124,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
         <div className="pt-3 border-t border-[#47161D] overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-[#47161D] text-[11px] text-[#AD8288]">
+              <tr className="border-b border-[#47161D] text-[13px] text-[#C89EA4]">
                 <th className="py-2 pr-4 font-medium">Name</th>
                 <th className="py-2 pr-4 font-medium">Type</th>
                 <th className="py-2 pr-4 font-medium">Source URL</th>
@@ -1140,7 +1140,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
                   <td className="py-2 pr-4 text-[#DFBFC3] capitalize whitespace-nowrap">
                     {item.category}
                   </td>
-                  <td className="py-2 pr-4 font-mono text-[11px] text-[#AD8288] max-w-md truncate">
+                  <td className="py-2 pr-4 font-mono text-[13px] text-[#C89EA4] max-w-md truncate">
                     {item.url}
                   </td>
                   <td className="py-2 text-right">

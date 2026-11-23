@@ -67,10 +67,10 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
         <div className="flex items-start gap-3">
           <StepBadge num={1} />
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               {t('train.step1.title')}
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
               {t('train.step1.desc')}
             </p>
           </div>
@@ -80,11 +80,11 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
           <div>
             <label
               htmlFor="train-model-name"
-              className="block text-xs font-semibold text-[#FDF7F7]"
+              className="block text-[13.5px] font-semibold text-[#FDF7F7]"
             >
               Model Name
             </label>
-            <p className="text-[11px] text-[#AD8288] mb-1.5">
+            <p className="text-[13px] text-[#C89EA4] mb-1.5">
               Identifier used for saved checkpoints, index files, and log directories.
             </p>
             <input
@@ -100,11 +100,11 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
           <div>
             <label
               htmlFor="train-sampling-rate"
-              className="block text-xs font-semibold text-[#FDF7F7]"
+              className="block text-[13.5px] font-semibold text-[#FDF7F7]"
             >
               Sampling Rate
             </label>
-            <p className="text-[11px] text-[#AD8288] mb-1.5">
+            <p className="text-[13px] text-[#C89EA4] mb-1.5">
               Target audio resolution in Hz for preprocessed slices and model synthesis.
             </p>
             <select
@@ -125,11 +125,11 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
         <div>
           <label
             htmlFor="train-vocoder"
-            className="block text-xs font-semibold text-[#FDF7F7]"
+            className="block text-[13.5px] font-semibold text-[#FDF7F7]"
           >
             Vocoder
           </label>
-          <p className="text-[11px] text-[#AD8288] mt-0.5 mb-2 leading-relaxed">
+          <p className="text-[13px] text-[#C89EA4] mt-0.5 mb-2 leading-relaxed">
             Waveform synthesizer architecture: HiFi-GAN works across all RVC players; MRF HiFi-GAN boosts harmonic detail for Applio clients; RefineGAN maximizes clarity with extra VRAM demand.
           </p>
           <select
@@ -169,11 +169,11 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
                   <div>
                     <label
                       htmlFor="train-cpu-cores"
-                      className="block text-xs font-semibold text-[#FDF7F7]"
+                      className="block text-[13.5px] font-semibold text-[#FDF7F7]"
                     >
                       CPU Cores
                     </label>
-                    <p className="text-[11px] text-[#AD8288] mt-0.5">
+                    <p className="text-[13px] text-[#C89EA4] mt-0.5">
                       Parallel CPU worker threads allocated for audio slicing and pitch extraction. Using all 4 Kaggle vCPUs keeps preprocessing fast.
                     </p>
                   </div>
@@ -209,7 +209,7 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
                   }
                   className="w-full scarlet-slider"
                 />
-                <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+                <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
                   <span>1</span>
                   <span>4</span>
                 </div>
@@ -219,11 +219,11 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
                 <div>
                   <label
                     htmlFor="train-gpu-number"
-                    className="block text-xs font-semibold text-[#FDF7F7]"
+                    className="block text-[13.5px] font-semibold text-[#FDF7F7]"
                   >
                     GPU Number
                   </label>
-                  <p className="text-[11px] text-[#AD8288] mb-1.5">
+                  <p className="text-[13px] text-[#C89EA4] mb-1.5">
                     Target CUDA device IDs separated by hyphens (for dual T4 sessions keep 0-1).
                   </p>
                   <input
@@ -243,7 +243,7 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
                   <p className="text-xs font-semibold text-[#FDF7F7]">
                     GPU Information
                   </p>
-                  <p className="text-[11px] text-[#AD8288] mb-1.5">
+                  <p className="text-[13px] text-[#C89EA4] mb-1.5">
                     Detected CUDA accelerator allocation for this session.
                   </p>
                   <pre className="rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2 text-xs font-mono text-[#DFBFC3] leading-relaxed">
@@ -303,10 +303,10 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
         <div className="flex items-start gap-3">
           <StepBadge num={2} />
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               {t('train.step2.title')}
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
               {t('train.step2.desc')}
             </p>
           </div>
@@ -315,11 +315,11 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
         <div>
           <label
             htmlFor="train-dataset-path"
-            className="block text-xs font-semibold text-[#FDF7F7]"
+            className="block text-[13.5px] font-semibold text-[#FDF7F7]"
           >
             Dataset Path
           </label>
-          <p className="text-[11px] text-[#AD8288] mb-1.5">
+          <p className="text-[13px] text-[#C89EA4] mb-1.5">
             Mounted Kaggle input path containing your dry vocal recordings.
           </p>
           <input
@@ -381,11 +381,11 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
               <div>
                 <label
                   htmlFor="train-audio-cutting"
-                  className="block text-xs font-semibold text-[#FDF7F7]"
+                  className="block text-[13.5px] font-semibold text-[#FDF7F7]"
                 >
                   Audio cutting
                 </label>
-                <p className="text-[11px] text-[#AD8288] mt-0.5 mb-1.5">
+                <p className="text-[13px] text-[#C89EA4] mt-0.5 mb-1.5">
                   Choose how long recordings are divided: Automatic detects quiet gaps dynamically, Simple cuts fixed chunks, and Skip leaves pre-split clips untouched.
                 </p>
                 <select
@@ -410,11 +410,11 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                     <div>
                       <label
                         htmlFor="train-chunk-len"
-                        className="block text-xs font-semibold text-[#FDF7F7]"
+                        className="block text-[13.5px] font-semibold text-[#FDF7F7]"
                       >
                         Chunk length (sec)
                       </label>
-                      <p className="text-[11px] text-[#AD8288]">
+                      <p className="text-[13px] text-[#C89EA4]">
                         Duration of each split audio window when Simple cutting is selected.
                       </p>
                     </div>
@@ -444,7 +444,7 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                     }
                     className="w-full scarlet-slider"
                   />
-                  <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+                  <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
                     <span>0.5</span>
                     <span>5</span>
                   </div>
@@ -455,11 +455,11 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                     <div>
                       <label
                         htmlFor="train-overlap-len"
-                        className="block text-xs font-semibold text-[#FDF7F7]"
+                        className="block text-[13.5px] font-semibold text-[#FDF7F7]"
                       >
                         Overlap length (sec)
                       </label>
-                      <p className="text-[11px] text-[#AD8288]">
+                      <p className="text-[13px] text-[#C89EA4]">
                         Crossfade overlap between consecutive Simple slices to avoid abrupt cuts.
                       </p>
                     </div>
@@ -493,7 +493,7 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                     }
                     className="w-full scarlet-slider"
                   />
-                  <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+                  <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
                     <span>0</span>
                     <span>0.4</span>
                   </div>
@@ -519,7 +519,7 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                 <div className="flex items-center gap-2">
                   <label
                     htmlFor="train-silence-duration"
-                    className="text-[11px] text-[#AD8288]"
+                    className="text-[13px] text-[#C89EA4]"
                   >
                     Silence duration (ms)
                   </label>
@@ -552,10 +552,10 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                     className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                   />
                   <div>
-                    <span className="block text-xs font-semibold text-[#FDF7F7]">
+                    <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                       Noise filter
                     </span>
-                    <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                    <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                       Applies spectral denoising to raw clips. Keep unchecked if your vocals are already clean or denoised.
                     </span>
                   </div>
@@ -571,10 +571,10 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                     className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                   />
                   <div>
-                    <span className="block text-xs font-semibold text-[#FDF7F7]">
+                    <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                       Loudness normalization ({loudnessTargetLufs} LUFS)
                     </span>
-                    <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                    <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                       Levels every clip to a punchy, consistent -14 LUFS loudness without introducing clipping.
                     </span>
                   </div>
@@ -630,10 +630,10 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
       <div className="flex items-start gap-3">
         <StepBadge num={3} />
         <div>
-          <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+          <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
             {t('train.step3.title')}
           </h3>
-          <p className="text-xs text-[#AD8288] mt-0.5">
+          <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
             {t('train.step3.desc')}
           </p>
         </div>
@@ -643,11 +643,11 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
         <div>
           <label
             htmlFor="train-pitch-extractor"
-            className="block text-xs font-semibold text-[#FDF7F7]"
+            className="block text-[13.5px] font-semibold text-[#FDF7F7]"
           >
             Pitch extraction algorithm
           </label>
-          <p className="text-[11px] text-[#AD8288] mb-1.5">
+          <p className="text-[13px] text-[#C89EA4] mb-1.5">
             F0 tracker used to capture vocal melody. RMVPE offers the sharpest accuracy across speech and singing.
           </p>
           <select
@@ -670,11 +670,11 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
         <div>
           <label
             htmlFor="train-embedder"
-            className="block text-xs font-semibold text-[#FDF7F7]"
+            className="block text-[13.5px] font-semibold text-[#FDF7F7]"
           >
             Embedder Model
           </label>
-          <p className="text-[11px] text-[#AD8288] mb-1.5">
+          <p className="text-[13px] text-[#C89EA4] mb-1.5">
             Speech encoder that extracts phonetic timbre representations from audio.
           </p>
           <select
@@ -697,11 +697,11 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
           <div>
             <label
               htmlFor="train-silent-files"
-              className="block text-xs font-semibold text-[#FDF7F7]"
+              className="block text-[13.5px] font-semibold text-[#FDF7F7]"
             >
               Silent training files
             </label>
-            <p className="text-[11px] text-[#AD8288] mt-0.5">
+            <p className="text-[13px] text-[#C89EA4] mt-0.5">
               Injects blank silent samples to help prevent breath artifacts during pauses. Leave at 0 if your dataset already includes natural quiet gaps.
             </p>
           </div>
@@ -731,7 +731,7 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
           }
           className="w-full scarlet-slider"
         />
-        <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+        <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
           <span>0</span>
           <span>10</span>
         </div>
@@ -915,10 +915,10 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
       <div className="flex items-start gap-3">
         <StepBadge num={4} />
         <div>
-          <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+          <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
             {t('train.step4.title')}
           </h3>
-          <p className="text-xs text-[#AD8288] mt-0.5">
+          <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
             {t('train.step4.desc')}
           </p>
         </div>
@@ -931,11 +931,11 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             <div>
               <label
                 htmlFor="train-batch-size"
-                className="block text-xs font-semibold text-[#FDF7F7]"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
                 Batch Size
               </label>
-              <p className="text-[11px] text-[#AD8288] mt-0.5">
+              <p className="text-[13px] text-[#C89EA4] mt-0.5">
                 Per-GPU slice batch size. Default is 2 because dual Kaggle T4 GPUs double it to an effective batch of 4 (4 runs at 8, etc.).
               </p>
             </div>
@@ -971,7 +971,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             }
             className="w-full scarlet-slider"
           />
-          <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+          <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
             <span>1</span>
             <span>64</span>
           </div>
@@ -983,11 +983,11 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             <div>
               <label
                 htmlFor="train-save-every"
-                className="block text-xs font-semibold text-[#FDF7F7]"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
                 Save Every Epoch
               </label>
-              <p className="text-[11px] text-[#AD8288] mt-0.5">
+              <p className="text-[13px] text-[#C89EA4] mt-0.5">
                 Interval of completed epochs between saved checkpoint snapshots.
               </p>
             </div>
@@ -1023,7 +1023,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             }
             className="w-full scarlet-slider"
           />
-          <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+          <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
             <span>1</span>
             <span>100</span>
           </div>
@@ -1035,11 +1035,11 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             <div>
               <label
                 htmlFor="train-total-epoch"
-                className="block text-xs font-semibold text-[#FDF7F7]"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
                 Total Epoch
               </label>
-              <p className="text-[11px] text-[#AD8288] mt-0.5">
+              <p className="text-[13px] text-[#C89EA4] mt-0.5">
                 Target number of full dataset passes before training stops automatically.
               </p>
             </div>
@@ -1075,7 +1075,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             }
             className="w-full scarlet-slider"
           />
-          <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+          <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
             <span>1</span>
             <span>10000</span>
           </div>
@@ -1114,10 +1114,10 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
                     className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                   />
                   <div>
-                    <span className="block text-xs font-semibold text-[#FDF7F7]">
+                    <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                       {opt.title}
                     </span>
-                    <span className="block text-[11px] text-[#AD8288] mt-0.5 leading-snug">
+                    <span className="block text-[13px] text-[#C89EA4] mt-0.5 leading-snug">
                       {opt.desc}
                     </span>
                   </div>
@@ -1158,11 +1158,11 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             <div>
               <label
                 htmlFor="train-index-algorithm"
-                className="block text-xs font-semibold text-[#FDF7F7]"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
                 Index Algorithm
               </label>
-              <p className="text-[11px] text-[#AD8288] mt-0.5 mb-1.5">
+              <p className="text-[13px] text-[#C89EA4] mt-0.5 mb-1.5">
                 Vector clustering method used when building your .index retrieval file. Auto selects the fastest option for your dataset size.
               </p>
               <select
@@ -1196,10 +1196,10 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
           />
           <div>
-            <span className="block text-xs font-semibold text-[#FDF7F7]">
+            <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
               I agree to the terms of use
             </span>
-            <span className="block text-[11px] text-[#AD8288] mt-0.5">
+            <span className="block text-[13px] text-[#C89EA4] mt-0.5">
               Confirm that your training audio follows the usage guidelines for NoRegretsRVC.
             </span>
           </div>
@@ -1305,7 +1305,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div className="rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wider text-[#AD8288]">
+              <div className="text-[11px] uppercase tracking-wider text-[#C89EA4]">
                 {t('train.eta.remaining')}
               </div>
               <div className="mt-0.5 text-sm font-semibold text-[#FDF7F7] tabular-nums">
@@ -1314,7 +1314,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             </div>
 
             <div className="rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wider text-[#AD8288]">
+              <div className="text-[11px] uppercase tracking-wider text-[#C89EA4]">
                 {t('train.eta.localTime')}
               </div>
               <div className="mt-0.5 text-sm font-semibold text-[#FDF7F7] tabular-nums">
@@ -1323,7 +1323,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             </div>
 
             <div className="rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wider text-[#AD8288]">
+              <div className="text-[11px] uppercase tracking-wider text-[#C89EA4]">
                 {t('train.eta.finishDay')}
               </div>
               <div className="mt-0.5 text-sm font-semibold text-[#FDF7F7] tabular-nums">
@@ -1332,7 +1332,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             </div>
           </div>
 
-          <p className="text-[11px] text-[#AD8288] leading-relaxed">
+          <p className="text-[13px] text-[#C89EA4] leading-relaxed">
             {completionEstimate.disclaimer}
           </p>
         </section>

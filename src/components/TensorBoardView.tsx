@@ -1,10 +1,12 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  Activity,
+  Award,
   ChevronDown,
   ChevronRight,
-  Compass,
   ExternalLink,
   FileUp,
+  RotateCcw,
   Sparkles,
 } from 'lucide-react';
 import { REPO_README_URL, SAMPLE_TRAINING_LOG } from '../data/defaults';
@@ -14,6 +16,7 @@ import {
   VoiceModelProject,
 } from '../types/studio';
 import { analyzeTrainingZones, parseTrainingNotebookOrLog } from '../utils/logParser';
+import { sanitizeModelName } from '../utils/rvcTuning';
 import { useI18n } from '../utils/i18n';
 import { LossChart } from './LossChart';
 
@@ -24,9 +27,9 @@ interface TensorBoardViewProps {
 }
 
 const SOUND_FEEDBACK_OPTIONS: { id: ModelSoundFeedback; label: string }[] = [
-  { id: 'untested', label: 'Not tested yet' },
+  { id: 'untested', label: 'Not auditioned yet' },
   { id: 'undertrained', label: 'Undertrained (robotic / flat)' },
-  { id: 'clean', label: 'Sounds clean & natural' },
+  { id: 'clean', label: 'Clean & natural' },
   { id: 'overtrained', label: 'Overtrained (metallic / harsh)' },
 ];
 
@@ -36,7 +39,6 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
   onAnalysisChange,
 }) => {
   const { t } = useI18n();
-  const [showSuggestion, setShowSuggestion] = useState(true);
   const [soundCheck, setSoundCheck] = useState<ModelSoundFeedback>('untested');
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [logInput, setLogInput] = useState('');
@@ -44,18 +46,15 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const zoneInsight = useMemo(
-    () =>
-      showSuggestion
-        ? analyzeTrainingZones(lastAnalysis, activeProject, soundCheck)
-        : null,
-    [showSuggestion, lastAnalysis, activeProject, soundCheck]
+    () => analyzeTrainingZones(lastAnalysis, activeProject, soundCheck),
+    [lastAnalysis, activeProject, soundCheck]
   );
 
   const runParse = (raw: string) => {
     const parsed = parseTrainingNotebookOrLog(raw);
     if (!parsed) {
       setParseError(
-        'Could not detect RVC training metrics. Paste Applio console stdout or upload a .ipynb file.'
+        'Could not detect RVC training metrics. Paste Applio/Kaggle console output or upload a .ipynb / .log file.'
       );
       return;
     }
@@ -77,6 +76,10 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
 
   const effectiveBatch = activeProject.batchSize * activeProject.gpuCount;
   const activeModelTitle = activeProject.name.trim() || 'Untitled Model';
+  const safeModelSlug = sanitizeModelName(activeProject.name);
+  const isTrained = Boolean(lastAnalysis && zoneInsight.confidence !== 'untrained');
+  const observedLossCount =
+    lastAnalysis?.points.filter((p) => p.lowestLoss !== null).length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -85,8 +88,8 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
           <h2 className="font-display text-2xl font-bold text-[#FDF7F7] tracking-tight">
             {t('diagnostics.title')}
           </h2>
-          <p className="text-sm text-[#DFBFC3] mt-1">
-            Model-specific Training Zone Guide aligned to your saved checkpoint schedule.
+          <p className="text-[15px] text-[#DFBFC3] mt-1">
+            Analyzes real training mel loss, dataset size, and checkpoint sound feedback to identify the Best Epoch for your model.
           </p>
         </div>
 
@@ -101,167 +104,207 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
         </a>
       </div>
 
-      {/* Training Zone Guide (Optional Suggestion ON by default + Red Graph) */}
       <section
         aria-label={t('diagnostics.guide')}
-        className="rounded-xl border border-[#47161D] bg-[#160709] p-6 space-y-5"
+        className="rounded-xl border border-[#47161D] bg-[#160709] p-6 space-y-5 shadow-[0_12px_30px_-16px_rgba(0,0,0,0.8)]"
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#47161D] pb-4">
           <div className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#E51923]/50 bg-[#200B0E] text-[#E51923]">
-              <Compass className="h-4 w-4" />
+              <Activity className="h-4 w-4" />
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
-                  {t('diagnostics.guide')}
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
+                  Best Epoch Diagnostics
                 </h3>
-                <span className="rounded-md border border-[#E51923]/40 bg-[#200B0E] px-2 py-0.5 text-[10px] font-mono text-[#FDF7F7]">
+                <span className="rounded-md border border-[#E51923]/40 bg-[#200B0E] px-2.5 py-0.5 text-xs font-mono text-[#FDF7F7]">
                   Save Every {activeProject.saveEveryEpoch} Epochs
                 </span>
               </div>
-              <p className="text-xs text-[#AD8288] mt-0.5">
-                Shows Undertraining, Suggested Sweet Spot, and Overtraining checkpoints tailored to your active model.
+              <p className="text-[13.5px] text-[#C89EA4] mt-1">
+                Evaluates only real logged epochs against your dataset clips, sample rate, vocoder, and listening feedback.
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowSuggestion((v) => !v)}
-            aria-pressed={showSuggestion}
-            className={`rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-              showSuggestion
-                ? 'border-[#E51923] bg-[#E51923] text-white'
-                : 'border-[#47161D] bg-[#100506] text-[#DFBFC3] hover:text-white hover:border-[#E51923]'
-            }`}
-          >
-            {showSuggestion ? 'Optional Suggestion: On' : 'Optional Suggestion: Off'}
-          </button>
+          {isTrained && (
+            <button
+              type="button"
+              onClick={() => {
+                onAnalysisChange(null);
+                setSoundCheck('untested');
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#47161D] bg-[#100506] px-3 py-1.5 text-xs font-medium text-[#DFBFC3] hover:text-white hover:border-[#E51923] whitespace-nowrap shrink-0"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Clear Loaded Run</span>
+            </button>
+          )}
         </div>
 
         {/* Active Model Reference Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3 py-2">
-            <p className="text-[10px] text-[#AD8288]">Active Model</p>
-            <p className="text-xs font-semibold text-[#FDF7F7] truncate mt-0.5">
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2.5">
+            <p className="text-xs text-[#C89EA4]">Active Model</p>
+            <p className="text-[13.5px] font-semibold text-[#FDF7F7] truncate mt-0.5">
               {activeModelTitle}
             </p>
           </div>
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3 py-2">
-            <p className="text-[10px] text-[#AD8288]">Vocoder</p>
-            <p className="text-xs font-semibold text-[#FDF7F7] truncate mt-0.5">
-              {activeProject.vocoder}
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2.5">
+            <p className="text-xs text-[#C89EA4]">Vocoder</p>
+            <p className="text-[13.5px] font-semibold text-[#FDF7F7] truncate mt-0.5">
+              {lastAnalysis?.vocoderDetected || activeProject.vocoder}
             </p>
           </div>
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3 py-2">
-            <p className="text-[10px] text-[#AD8288]">Sample Rate</p>
-            <p className="text-xs font-mono font-semibold text-[#FDF7F7] tabular-nums mt-0.5">
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2.5">
+            <p className="text-xs text-[#C89EA4]">Sample Rate</p>
+            <p className="text-[13.5px] font-mono font-semibold text-[#FDF7F7] tabular-nums mt-0.5">
               {activeProject.samplingRate} Hz
             </p>
           </div>
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3 py-2">
-            <p className="text-[10px] text-[#AD8288]">Effective Batch</p>
-            <p className="text-xs font-mono font-semibold text-[#FDF7F7] tabular-nums mt-0.5">
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2.5">
+            <p className="text-xs text-[#C89EA4]">Effective Batch</p>
+            <p className="text-[13.5px] font-mono font-semibold text-[#FDF7F7] tabular-nums mt-0.5">
               {effectiveBatch}
             </p>
           </div>
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3 py-2">
-            <p className="text-[10px] text-[#AD8288]">Save Interval</p>
-            <p className="text-xs font-mono font-semibold text-[#E51923] tabular-nums mt-0.5">
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2.5">
+            <p className="text-xs text-[#C89EA4]">Save Interval</p>
+            <p className="text-[13.5px] font-mono font-semibold text-[#E51923] tabular-nums mt-0.5">
               Every {activeProject.saveEveryEpoch} ep
             </p>
           </div>
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3 py-2">
-            <p className="text-[10px] text-[#AD8288]">Total Target</p>
-            <p className="text-xs font-mono font-semibold text-[#FDF7F7] tabular-nums mt-0.5">
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2.5">
+            <p className="text-xs text-[#C89EA4]">Total Target</p>
+            <p className="text-[13.5px] font-mono font-semibold text-[#FDF7F7] tabular-nums mt-0.5">
               {activeProject.totalEpoch} ep
             </p>
           </div>
         </div>
 
-        {/* Model Sound Feedback */}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-[#FDF7F7]">
-            How does your current model checkpoint sound?
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {SOUND_FEEDBACK_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setSoundCheck(opt.id)}
-                aria-pressed={soundCheck === opt.id}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
-                  soundCheck === opt.id
-                    ? 'border-[#E51923] bg-[#200B0E] text-white'
-                    : 'border-[#47161D] bg-[#100506] text-[#DFBFC3] hover:text-white'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+        {!isTrained ? (
+          <div
+            data-testid="diagnostics-untrained-state"
+            className="rounded-xl border border-dashed border-[#47161D] bg-[#100506] p-6 text-center space-y-2.5"
+          >
+            <p className="text-[15px] font-semibold text-[#FDF7F7]">
+              Waiting for Training Data
+            </p>
+            <p className="text-[13.5px] text-[#C89EA4] max-w-2xl mx-auto leading-relaxed">
+              {zoneInsight.summary}
+            </p>
+            <p className="text-xs font-mono text-[#AD8288] pt-1">
+              On Kaggle, Diagnostics activates automatically as soon as your model finishes its first epoch and logs mel loss.
+            </p>
           </div>
-        </div>
-
-        {zoneInsight ? (
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-semibold text-[#FDF7F7]">
-                Optional Training Zone Suggestion ·{' '}
-                <span className="font-normal text-[#AD8288]">
-                  {zoneInsight.confidence === 'observed'
-                    ? 'Observed from log curve & active model'
-                    : 'Estimated from active model settings'}
-                </span>
+        ) : (
+          <div className="space-y-4">
+            {/* Sound Feedback Selector (available once real model checkpoints exist) */}
+            <div className="space-y-2">
+              <p className="text-[13.5px] font-semibold text-[#FDF7F7]">
+                How does this model sound in Samples?
               </p>
-              <span className="font-mono text-[11px] text-[#DFBFC3] tabular-nums">
-                Checkpoints snapped to ×{zoneInsight.saveEveryEpoch} epochs
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-md border border-[#47161D] bg-[#160709] p-3.5">
-                <p className="text-[11px] text-[#F59E0B] font-semibold">
-                  Undertraining Zone
-                </p>
-                <p className="text-sm font-mono font-bold text-[#FDF7F7] tabular-nums mt-1">
-                  {zoneInsight.undertrainingLabel}
-                </p>
-                <p className="text-[11px] text-[#AD8288] mt-1">
-                  Voice still lacks target timbre or sounds muffled.
-                </p>
-              </div>
-
-              <div className="rounded-md border border-[#E51923] bg-[#200B0E] p-3.5">
-                <p className="text-[11px] text-[#FDF7F7] font-semibold">
-                  Suggested Sweet Spot
-                </p>
-                <p className="text-sm font-mono font-bold text-[#FDF7F7] tabular-nums mt-1">
-                  {zoneInsight.sweetSpotLabel}
-                </p>
-                <p className="text-[11px] text-[#DFBFC3] mt-1">
-                  Valid saved checkpoints to audition in Samples.
-                </p>
-              </div>
-
-              <div className="rounded-md border border-[#47161D] bg-[#160709] p-3.5">
-                <p className="text-[11px] text-[#FF2B35] font-semibold">
-                  Overtraining Zone
-                </p>
-                <p className="text-sm font-mono font-bold text-[#FDF7F7] tabular-nums mt-1">
-                  {zoneInsight.overtrainingLabel}
-                </p>
-                <p className="text-[11px] text-[#AD8288] mt-1">
-                  High risk of metallic ringing or dataset memorization.
-                </p>
+              <div className="flex flex-wrap gap-2">
+                {SOUND_FEEDBACK_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setSoundCheck(opt.id)}
+                    aria-pressed={soundCheck === opt.id}
+                    className={`rounded-lg border px-3.5 py-2 text-[13px] font-medium transition-colors whitespace-nowrap ${
+                      soundCheck === opt.id
+                        ? 'border-[#E51923] bg-[#200B0E] text-white'
+                        : 'border-[#47161D] bg-[#100506] text-[#DFBFC3] hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Live Mid-Epoch Progress from Imported Active Run */}
+            {/* Recommended Best Epoch Hero Card */}
+            <div
+              data-testid="diagnostics-best-epoch-card"
+              className="rounded-xl border border-[#E51923]/70 bg-[#200B0E] p-5 space-y-4"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-[#FF5A62]">
+                    <Award className="h-4 w-4 text-[#E51923]" />
+                    <span>Recommended Best Epoch</span>
+                  </div>
+                  <p className="font-display text-2xl font-bold text-[#FDF7F7] tabular-nums">
+                    Epoch {zoneInsight.sweetSpotEpoch}
+                    <span className="ml-2.5 font-mono text-sm font-normal text-[#DFBFC3]">
+                      ({safeModelSlug}_{zoneInsight.sweetSpotEpoch}e.pth)
+                    </span>
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {(zoneInsight.candidateEpochs ?? []).map((ep) => (
+                    <span
+                      key={ep}
+                      className={`rounded-lg border px-2.5 py-1 font-mono text-xs tabular-nums ${
+                        ep === zoneInsight.sweetSpotEpoch
+                          ? 'border-[#E51923] bg-[#E51923] text-white font-semibold'
+                          : 'border-[#47161D] bg-[#100506] text-[#DFBFC3]'
+                      }`}
+                    >
+                      e{ep}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-[13.5px] text-[#FDF7F7]/90 leading-relaxed">
+                {zoneInsight.summary}
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                <div className="rounded-lg border border-[#47161D] bg-[#100506] p-3.5">
+                  <p className="text-xs font-semibold text-[#F59E0B]">
+                    Early / Undertrained Range
+                  </p>
+                  <p className="text-[14px] font-mono font-bold text-[#FDF7F7] tabular-nums mt-1">
+                    {zoneInsight.undertrainingLabel}
+                  </p>
+                  <p className="text-[13px] text-[#C89EA4] mt-1">
+                    Timbre is still forming relative to your dataset.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-[#47161D] bg-[#100506] p-3.5">
+                  <p className="text-xs font-semibold text-[#E51923]">
+                    Lowest Mel Loss &amp; Dataset Fit
+                  </p>
+                  <p className="text-[14px] font-mono font-bold text-[#FDF7F7] tabular-nums mt-1">
+                    {zoneInsight.bestLoss != null ? `${zoneInsight.bestLoss.toFixed(3)} loss` : 'Observed'}
+                  </p>
+                  <p className="text-[13px] text-[#C89EA4] mt-1">
+                    {zoneInsight.datasetSummary || 'Measured from observed training epochs.'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-[#47161D] bg-[#100506] p-3.5">
+                  <p className="text-xs font-semibold text-[#FF2B35]">
+                    Overtraining Threshold
+                  </p>
+                  <p className="text-[14px] font-mono font-bold text-[#FDF7F7] tabular-nums mt-1">
+                    {zoneInsight.overtrainingLabel}
+                  </p>
+                  <p className="text-[13px] text-[#C89EA4] mt-1">
+                    Past this point, weights risk metallic artifacts or overfitting.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {lastAnalysis?.liveProgress && (
-              <div className="rounded-lg border border-[#E51923]/45 bg-[#160709] p-3.5 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+              <div className="rounded-lg border border-[#E51923]/45 bg-[#100506] p-4 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[13px] font-mono">
                   <span className="font-semibold text-[#FDF7F7] tabular-nums">
                     Epoch {lastAnalysis.liveProgress.epoch} · Step {lastAnalysis.liveProgress.step} · Batch{' '}
                     {lastAnalysis.liveProgress.batchDone}/{lastAnalysis.liveProgress.batchTotal} (
@@ -272,7 +315,7 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
                     {lastAnalysis.liveProgress.elapsedLabel} &lt; {lastAnalysis.liveProgress.etaLabel}
                   </span>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-[#100506] overflow-hidden border border-[#47161D]">
+                <div className="h-1.5 w-full rounded-full bg-[#160709] overflow-hidden border border-[#47161D]">
                   <div
                     className="h-full bg-[#E51923] transition-all duration-200"
                     style={{
@@ -283,29 +326,21 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
               </div>
             )}
 
-            {/* Compact Red Graph under Optional Training Zone Suggestion */}
-            <LossChart
-              points={lastAnalysis?.points ?? []}
-              zoneInsight={zoneInsight}
-            />
+            {observedLossCount >= 2 && (
+              <LossChart
+                points={lastAnalysis?.points ?? []}
+                zoneInsight={zoneInsight}
+              />
+            )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#DFBFC3] leading-relaxed">
-              <p>{zoneInsight.summary}</p>
-              {lastAnalysis && lastAnalysis.avgSpeedSec > 0 && (
-                <p className="font-mono text-[11px] text-[#AD8288] tabular-nums shrink-0">
-                  Avg {lastAnalysis.avgSpeedSec}s/ep
-                  {lastAnalysis.lowestLossEpoch !== null &&
-                  lastAnalysis.epochsCompleted > lastAnalysis.lowestLossEpoch
-                    ? ` · ${lastAnalysis.epochsCompleted - lastAnalysis.lowestLossEpoch} ep since best (ep ${lastAnalysis.lowestLossEpoch})`
-                    : ''}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4 text-xs text-[#AD8288]">
-            Optional Training Zone Suggestion is turned off. Click{' '}
-            <strong className="text-[#FDF7F7]">Optional Suggestion: Off</strong> above anytime to show checkpoint recommendations and graph.
+            {lastAnalysis && lastAnalysis.avgSpeedSec > 0 && (
+              <p className="font-mono text-xs text-[#C89EA4] tabular-nums text-right">
+                Avg {lastAnalysis.avgSpeedSec}s/ep · {lastAnalysis.epochsCompleted} epochs observed
+                {lastAnalysis.lowestLossEpoch !== null
+                  ? ` · Min mel loss at ep ${lastAnalysis.lowestLossEpoch}`
+                  : ''}
+              </p>
+            )}
           </div>
         )}
 
@@ -315,12 +350,12 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
             type="button"
             onClick={() => setLogPanelOpen((v) => !v)}
             aria-expanded={logPanelOpen}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-[#DFBFC3] hover:text-white"
+            className="w-full flex items-center justify-between px-4 py-3 text-[13px] font-semibold text-[#DFBFC3] hover:text-white"
           >
             <span>
               {lastAnalysis
-                ? `Optional: Imported Run Data (${lastAnalysis.speakerName} · ${lastAnalysis.epochsCompleted} ep)`
-                : 'Optional: Import Training Log or .ipynb to Refine Zone Graph'}
+                ? `Imported Training Run (${lastAnalysis.speakerName} · ${lastAnalysis.epochsCompleted} ep)`
+                : 'Import Training Log or .ipynb to Analyze a Trained Model'}
             </span>
             {logPanelOpen ? (
               <ChevronDown className="h-4 w-4" />
@@ -342,7 +377,7 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#47161D] bg-[#200B0E] px-3 py-1.5 text-xs font-medium text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#47161D] bg-[#200B0E] px-3.5 py-2 text-xs font-medium text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap"
                 >
                   <FileUp className="h-3.5 w-3.5" />
                   <span>Import .ipynb / Log</span>
@@ -353,7 +388,7 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
                     setLogInput(SAMPLE_TRAINING_LOG);
                     runParse(SAMPLE_TRAINING_LOG);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#47161D] bg-[#160709] px-3 py-1.5 text-xs font-medium text-[#DFBFC3] hover:text-white whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#47161D] bg-[#160709] px-3.5 py-2 text-xs font-medium text-[#DFBFC3] hover:text-white whitespace-nowrap"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   <span>Load Sample Run</span>
@@ -364,27 +399,27 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
                 value={logInput}
                 onChange={(e) => setLogInput(e.target.value)}
                 rows={3}
-                placeholder="Paste Kaggle notebook JSON or Applio training stdout (epoch=... | step=... | lowest_value=...)..."
+                placeholder="Paste Kaggle training stdout (epoch=... | step=... | lowest_value=...) or upload your .ipynb file..."
                 aria-label="Training log or notebook JSON input"
-                className="w-full rounded-lg bg-[#160709] border border-[#47161D] p-3 text-xs font-mono text-[#FDF7F7] placeholder-[#AD8288]/45 focus:outline-none focus:border-[#E51923]"
+                className="w-full rounded-lg bg-[#160709] border border-[#47161D] p-3 text-xs font-mono text-[#FDF7F7] placeholder-[#AD8288]/55 focus:outline-none focus:border-[#E51923]"
               />
 
               <div className="flex items-center justify-between gap-3">
                 {parseError ? (
-                  <p className="text-xs text-[#FF2B35]" role="alert">
+                  <p className="text-[13px] text-[#FF2B35]" role="alert">
                     {parseError}
                   </p>
                 ) : (
-                  <span className="text-xs text-[#AD8288]">
-                    Parsed runs automatically refine the red zone graph and checkpoint numbers above.
+                  <span className="text-[13px] text-[#C89EA4]">
+                    Calculates your model&apos;s Best Epoch from real observed mel loss and dataset segment stats.
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => runParse(logInput)}
-                  className="rounded-lg border border-[#47161D] bg-[#200B0E] px-4 py-1.5 text-xs font-semibold text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap shrink-0"
+                  className="rounded-lg border border-[#47161D] bg-[#200B0E] px-4 py-2 text-xs font-semibold text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap shrink-0"
                 >
-                  Parse Training Run
+                  Analyze Training Run
                 </button>
               </div>
             </div>

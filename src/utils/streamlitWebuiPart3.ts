@@ -67,6 +67,7 @@ elif active_tab == "Samples":
                 st.rerun()
         with b_rf:
             if st.button("Refresh models and indexes", type="secondary", use_container_width=True, key="nr_btn_ref_models"):
+                _clear_fs_caches()
                 st.rerun()
 
     # --- STEP 2: Audio Source & Multi-Sample Queue ---
@@ -172,8 +173,8 @@ elif active_tab == "Samples":
                         p_str = f'+{clip["pitch"]}' if clip["pitch"] > 0 else str(clip["pitch"])
                         status_tag = " · Converted" if clip.get("converted_path") else ""
                         ch1.markdown(
-                            f'<div style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:600;color:#FDF7F7">{idx_c + 1}. {html.escape(clip["name"])}</div>'
-                            f'<div style="font-size:11px;color:#AD8288">Pitch {p_str} · Index {clip["index_rate"]:.2f} · {clip["format"].upper()}{status_tag}</div>',
+                            f'<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:#FDF7F7">{idx_c + 1}. {html.escape(clip["name"])}</div>'
+                            f'<div style="font-size:12.5px;color:#C89EA4">Pitch {p_str} · Index {clip["index_rate"]:.2f} · {clip["format"].upper()}{status_tag}</div>',
                             unsafe_allow_html=True,
                         )
                         if ch2.button("Re-Convert" if clip.get("converted_path") else "Convert", type="primary", use_container_width=True, key=f"nr_conv_one_{clip['id']}"):
@@ -254,7 +255,7 @@ elif active_tab == "Samples":
                             clip["split_audio"] = t3.checkbox("Split", value=bool(clip["split_audio"]), key=f"nr_csp_{clip['id']}")
 
                         if clip.get("converted_path") and os.path.isfile(clip["converted_path"]):
-                            st.markdown(f'<div style="font-size:11px;font-weight:600;color:#FDF7F7;margin-top:4px">Converted Output ({html.escape(Path(clip["converted_path"]).name)})</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div style="font-size:12.5px;font-weight:600;color:#FDF7F7;margin-top:6px">Converted Output ({html.escape(Path(clip["converted_path"]).name)})</div>', unsafe_allow_html=True)
                             st.audio(clip["converted_path"])
                             st.download_button("Save Converted Clip", data=Path(clip["converted_path"]).read_bytes(), file_name=Path(clip["converted_path"]).name, type="secondary", key=f"nr_dl_c_{clip['id']}")
         else:
@@ -515,7 +516,7 @@ elif active_tab == "Free Samples":
 
     with st.container(border=True):
         fb_l, fb_1, fb_2, fb_3 = st.columns([4, 1, 1, 1], gap="small")
-        fb_l.markdown('<div style="font-size:12px;color:#DFBFC3;padding-top:6px">Clean, dry mono WAVs (32 kHz) with zero background music or reverb — ideal for RVC conversion tests.</div>', unsafe_allow_html=True)
+        fb_l.markdown('<div style="font-size:13.5px;color:#DFBFC3;padding-top:6px">Clean, dry mono WAVs (32 kHz) with zero background music or reverb — ideal for RVC conversion tests.</div>', unsafe_allow_html=True)
         for col_f, g_lbl, g_val in ((fb_1, "All (6)", "All"), (fb_2, "Male (3)", "Male"), (fb_3, "Female (3)", "Female")):
             if col_f.button(g_lbl, type="primary" if st.session_state["nr_free_gender"] == g_val else "secondary", use_container_width=True, key=f"nr_fs_flt_{g_val}"):
                 st.session_state["nr_free_gender"] = g_val
@@ -536,8 +537,8 @@ elif active_tab == "Free Samples":
                     with st.container(border=True):
                         st.markdown(
                             f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-                            f'<div><div style="font-weight:600;font-size:14px;color:#FDF7F7">{html.escape(sample["title"])}</div>'
-                            f'<div style="font-size:11px;color:#AD8288">{html.escape(sample["style"])} · {html.escape(sample["durationLabel"])}</div></div>'
+                            f'<div><div style="font-weight:600;font-size:15px;color:#FDF7F7">{html.escape(sample["title"])}</div>'
+                            f'<div style="font-size:12.5px;color:#C89EA4">{html.escape(sample["style"])} · {html.escape(sample["durationLabel"])}</div></div>'
                             f'<span class="nr-mono-badge">Mono 32k WAV</span></div>'
                             f'<div class="nr-quote-box">“{html.escape(sample["transcript"])}”</div>',
                             unsafe_allow_html=True,
@@ -581,139 +582,142 @@ elif active_tab == "Free Samples":
                                 st.rerun()
 
 # ==============================================================================
-# TAB 5: DIAGNOSTICS (AUTO-SYNCED TRAINING ZONE GUIDE & CRIMSON LOSS GRAPH)
+# TAB 5: DIAGNOSTICS (REAL-DATA BEST EPOCH ANALYZER & MEL LOSS GRAPH)
 # ==============================================================================
 elif active_tab == "Diagnostics":
-    _page_header("Diagnostics", "Model-specific Training Zone Guide aligned to your saved checkpoint schedule.")
+    _page_header("Diagnostics", "Model-specific Best Epoch finder driven by your actual training mel loss, dataset profile, and listening feedback.")
 
-    m_diag_name = st.session_state["nr_model_name"].strip() or "Untitled Model"
-    auto_log = _read_train_log(m_diag_name)
+    m_diag_raw = st.session_state["nr_model_name"].strip()
+    m_diag_name = m_diag_raw or "Untitled Model"
+    auto_log = _read_train_log(m_diag_raw)
     raw_source = st.session_state.get("nr_diag_log_input", "").strip() or auto_log
     parsed_diag = _parse_training_log(raw_source) if raw_source else None
+    ds_slices_d = _dataset_slice_count(m_diag_raw) if m_diag_raw else 0
 
     eff_batch_d = int(st.session_state["nr_batch_size"]) * max(1, len([x for x in str(st.session_state["nr_gpu_num"]).split("-") if x.strip()]))
     sr_d = int(st.session_state["nr_sr"])
     sev_d = int(st.session_state["nr_save_every"])
     tot_d = int(st.session_state["nr_total_epoch"])
+    voc_d = str(st.session_state["nr_vocoder"])
+
+    zone = _analyze_zones(
+        parsed_diag,
+        sev_d,
+        tot_d,
+        sr_d,
+        st.session_state["nr_diag_sound"],
+        dataset_slices=ds_slices_d,
+        vocoder=voc_d,
+        model_name=m_diag_raw,
+    )
 
     with st.container(border=True):
-        dh_l, dh_r = st.columns([4.2, 1.5], gap="small")
-        with dh_l:
-            st.markdown(
-                f'<div class="nr-step-head"><span class="nr-step-num" style="background:#200B0E;border:1px solid rgba(229,25,35,0.5);color:#E51923">⌖</span>'
-                f'<div><div class="nr-step-title">Training Zone Guide <span class="nr-mono-badge" style="margin-left:6px">Save Every {sev_d} Epochs</span></div>'
-                f'<div class="nr-step-desc">Shows Undertraining, Suggested Sweet Spot, and Overtraining checkpoints tailored to your active model.</div></div></div>',
-                unsafe_allow_html=True,
-            )
-        with dh_r:
-            sug_on = bool(st.session_state["nr_diag_suggest"])
-            if st.button("Optional Suggestion: On" if sug_on else "Optional Suggestion: Off", type="primary" if sug_on else "secondary", use_container_width=True, key="nr_diag_tog_btn"):
-                st.session_state["nr_diag_suggest"] = not sug_on
-                st.rerun()
+        st.markdown(
+            f'<div class="nr-step-head"><span class="nr-step-num" style="background:#200B0E;border:1px solid rgba(229,25,35,0.5);color:#E51923">⌖</span>'
+            f'<div><div class="nr-step-title">Best Epoch Analyzer <span class="nr-mono-badge" style="margin-left:6px">Save Every {sev_d} Epochs</span></div>'
+            f'<div class="nr-step-desc">Identifies the best saved checkpoint epoch from real training logs, mel loss convergence, dataset size, and your sound audition checks.</div></div></div>',
+            unsafe_allow_html=True,
+        )
 
         # Active Model Reference Bar (6 cards)
         m1, m2, m3, m4, m5, m6 = st.columns(6, gap="small")
         m1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Active Model</div><div class="nr-metric-v">{html.escape(m_diag_name)}</div></div>', unsafe_allow_html=True)
-        m2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Vocoder</div><div class="nr-metric-v">{html.escape(str(st.session_state["nr_vocoder"]))}</div></div>', unsafe_allow_html=True)
+        m2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Vocoder</div><div class="nr-metric-v">{html.escape(voc_d)}</div></div>', unsafe_allow_html=True)
         m3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Sample Rate</div><div class="nr-metric-v">{sr_d} Hz</div></div>', unsafe_allow_html=True)
         m4.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Effective Batch</div><div class="nr-metric-v">{eff_batch_d}</div></div>', unsafe_allow_html=True)
         m5.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Save Interval</div><div class="nr-metric-v" style="color:#E51923">Every {sev_d} ep</div></div>', unsafe_allow_html=True)
-        m6.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Total Target</div><div class="nr-metric-v">{tot_d} ep</div></div>', unsafe_allow_html=True)
+        m6.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Dataset Clips</div><div class="nr-metric-v">{ds_slices_d if ds_slices_d > 0 else "—"}</div></div>', unsafe_allow_html=True)
 
-        # Model Sound Feedback selector
-        st.markdown('<div class="nr-field-title" style="margin:12px 0 6px 0">How does your current model checkpoint sound?</div>', unsafe_allow_html=True)
-        sf_cols = st.columns(4, gap="small")
-        sf_opts = [
-            ("untested", "Not tested yet"),
-            ("undertrained", "Undertrained (robotic / flat)"),
-            ("clean", "Sounds clean & natural"),
-            ("overtrained", "Overtrained (metallic / harsh)"),
-        ]
-        for idx_sf, (sf_id, sf_lbl) in enumerate(sf_opts):
-            if sf_cols[idx_sf].button(sf_lbl, type="primary" if st.session_state["nr_diag_sound"] == sf_id else "secondary", use_container_width=True, key=f"nr_sf_{sf_id}"):
-                st.session_state["nr_diag_sound"] = sf_id
-                st.rerun()
-
-        if st.session_state["nr_diag_suggest"]:
-            zone = _analyze_zones(parsed_diag, sev_d, tot_d, sr_d, st.session_state["nr_diag_sound"])
-            conf_lbl = "Observed from live training log & active model" if zone["confidence"] == "observed" else "Estimated from active model settings"
+        if zone["confidence"] == "untrained":
             with st.container(border=True):
                 st.markdown(
-                    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
-                    f'<span style="font-size:12px;font-weight:600;color:#FDF7F7">Optional Training Zone Suggestion · <span style="font-weight:400;color:#AD8288">{conf_lbl}</span></span>'
-                    f'<span style="font-family:JetBrains Mono,monospace;font-size:11px;color:#DFBFC3">Checkpoints snapped to ×{zone["save_every"]} epochs</span></div>',
+                    f'<div style="padding:14px 6px;text-align:center">'
+                    f'<div style="font-family:Space Grotesk,sans-serif;font-size:18px;font-weight:700;color:#FDF7F7">Waiting for Training Data</div>'
+                    f'<div style="font-size:13.5px;color:#DFBFC3;margin-top:6px;max-width:680px;margin-left:auto;margin-right:auto;line-height:1.55">'
+                    f'{html.escape(zone["summary"])} Diagnostics never shows guesswork epoch ranges before your model actually trains.'
+                    f'</div>'
+                    f'<div style="margin-top:10px;font-family:JetBrains Mono,monospace;font-size:12px;color:#C89EA4">{html.escape(zone["dataset_summary"])}</div>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
+        else:
+            cand_badges = " ".join(
+                f'<span class="nr-mono-badge" style="{"border-color:#E51923;color:#FDF7F7;background:#2A0D12;" if ep_c == zone["best_epoch"] else ""}">Epoch {ep_c}</span>'
+                for ep_c in zone["candidate_epochs"]
+            )
+            best_loss_lbl = f"{zone['best_loss']:.3f}" if zone["best_loss"] is not None else "—"
+            with st.container(border=True):
+                st.markdown(
+                    f'<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px">'
+                    f'<div><div style="font-size:12.5px;font-weight:600;color:#FF5A63;text-transform:uppercase;letter-spacing:0.04em">Recommended Best Epoch</div>'
+                    f'<div style="font-family:Space Grotesk,sans-serif;font-size:28px;font-weight:700;color:#FDF7F7;line-height:1.15;margin-top:2px">Epoch {zone["best_epoch"]}</div>'
+                    f'<div style="font-family:JetBrains Mono,monospace;font-size:12.5px;color:#DFBFC3;margin-top:4px">Checkpoint hint: {html.escape(zone["checkpoint_hint"])}</div></div>'
+                    f'<div style="text-align:right"><div style="font-size:12px;color:#C89EA4;margin-bottom:5px">Best Checkpoints to Audition</div><div>{cand_badges}</div></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
                 zc1, zc2, zc3 = st.columns(3, gap="small")
                 zc1.markdown(
-                    f'<div class="nr-zone-card"><div style="font-size:11px;font-weight:600;color:#F59E0B">Undertraining Zone</div>'
-                    f'<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:#FDF7F7;margin-top:4px">{zone["under_label"]}</div>'
-                    f'<div style="font-size:11px;color:#AD8288;margin-top:4px">Voice still lacks target timbre or sounds muffled.</div></div>',
+                    f'<div class="nr-zone-card"><div style="font-size:12.5px;font-weight:600;color:#F59E0B">Best Mel Loss</div>'
+                    f'<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:#FDF7F7;margin-top:4px">{best_loss_lbl}</div>'
+                    f'<div style="font-size:12.5px;color:#C89EA4;margin-top:4px">{html.escape(zone["dataset_summary"])}</div></div>',
                     unsafe_allow_html=True,
                 )
                 zc2.markdown(
-                    f'<div class="nr-zone-card nr-zone-sweet"><div style="font-size:11px;font-weight:600;color:#FDF7F7">Suggested Sweet Spot</div>'
-                    f'<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:#FDF7F7;margin-top:4px">{zone["sweet_label"]}</div>'
-                    f'<div style="font-size:11px;color:#DFBFC3;margin-top:4px">Valid saved checkpoints to audition in Samples.</div></div>',
+                    f'<div class="nr-zone-card nr-zone-sweet"><div style="font-size:12.5px;font-weight:600;color:#FDF7F7">Audition Window</div>'
+                    f'<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:#FDF7F7;margin-top:4px">e{zone["sweet_min"]} – e{zone["sweet_max"]}</div>'
+                    f'<div style="font-size:12.5px;color:#DFBFC3;margin-top:4px">Test saved checkpoints in Samples tab.</div></div>',
                     unsafe_allow_html=True,
                 )
                 zc3.markdown(
-                    f'<div class="nr-zone-card"><div style="font-size:11px;font-weight:600;color:#FF2B35">Overtraining Zone</div>'
-                    f'<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:#FDF7F7;margin-top:4px">{zone["over_label"]}</div>'
-                    f'<div style="font-size:11px;color:#AD8288;margin-top:4px">High risk of metallic ringing or dataset memorization.</div></div>',
+                    f'<div class="nr-zone-card"><div style="font-size:12.5px;font-weight:600;color:#FF2B35">Overtraining Watch</div>'
+                    f'<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:#FDF7F7;margin-top:4px">{zone["over_label"]}</div>'
+                    f'<div style="font-size:12.5px;color:#C89EA4;margin-top:4px">Watch for metallic timbre past this point.</div></div>',
                     unsafe_allow_html=True,
                 )
 
-                if parsed_diag and parsed_diag.get("live"):
-                    lp = parsed_diag["live"]
-                    st.markdown(
-                        f'<div class="nr-prog-wrap">'
-                        f'<div style="display:flex;justify-content:space-between;font-family:JetBrains Mono,monospace;font-size:12px">'
-                        f'<span style="color:#FDF7F7;font-weight:600">Epoch {lp["epoch"]} · Step {lp["step"]} · Batch {lp["batch_done"]}/{lp["batch_total"]} ({lp["percent"]}%)</span>'
-                        f'<span style="color:#DFBFC3">{lp["it_per_sec"]:.2f} it/s · {lp["elapsed"]} &lt; {lp["eta"]}</span></div>'
-                        f'<div class="nr-prog-track"><div class="nr-prog-fill" style="width:{lp["percent"]}%"></div></div></div>',
-                        unsafe_allow_html=True,
-                    )
+            # Model Sound Feedback selector
+            st.markdown('<div class="nr-field-title" style="margin:12px 0 6px 0">How does this checkpoint sound in Samples?</div>', unsafe_allow_html=True)
+            sf_cols = st.columns(4, gap="small")
+            sf_opts = [
+                ("untested", "Not tested yet"),
+                ("undertrained", "Undertrained (robotic / flat)"),
+                ("clean", "Sounds clean & natural"),
+                ("overtrained", "Overtrained (metallic / harsh)"),
+            ]
+            for idx_sf, (sf_id, sf_lbl) in enumerate(sf_opts):
+                if sf_cols[idx_sf].button(sf_lbl, type="primary" if st.session_state["nr_diag_sound"] == sf_id else "secondary", use_container_width=True, key=f"nr_sf_{sf_id}"):
+                    st.session_state["nr_diag_sound"] = sf_id
+                    st.rerun()
 
-                # Crimson SVG Loss / Checkpoint Quality Chart
-                W, H, PAD_L, PAD_R, PAD_T, PAD_B = 1000, 170, 24, 24, 22, 24
+            if parsed_diag and parsed_diag.get("live"):
+                lp = parsed_diag["live"]
+                st.markdown(
+                    f'<div class="nr-prog-wrap">'
+                    f'<div style="display:flex;justify-content:space-between;font-family:JetBrains Mono,monospace;font-size:12.5px">'
+                    f'<span style="color:#FDF7F7;font-weight:600">Epoch {lp["epoch"]} · Step {lp["step"]} · Batch {lp["batch_done"]}/{lp["batch_total"]} ({lp["percent"]}%)</span>'
+                    f'<span style="color:#DFBFC3">{lp["it_per_sec"]:.2f} it/s · {lp["elapsed"]} &lt; {lp["eta"]}</span></div>'
+                    f'<div class="nr-prog-track"><div class="nr-prog-fill" style="width:{lp["percent"]}%"></div></div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Observed Mel Loss Chart (only rendered from real logged mel loss points)
+            pts = [p for p in (parsed_diag["points"] if parsed_diag else []) if p.get("lowest_loss") is not None]
+            if len(pts) >= 2:
+                W, H, PAD_L, PAD_R, PAD_T, PAD_B = 1000, 180, 26, 26, 24, 26
                 PLOT_W, PLOT_H = W - PAD_L - PAD_R, H - PAD_T - PAD_B
-                pts = [p for p in (parsed_diag["points"] if parsed_diag else []) if p.get("lowest_loss") is not None]
-                if len(pts) >= 2:
-                    min_ep = pts[0]["epoch"]
-                    max_ep = max(min_ep + sev_d, pts[-1]["epoch"], zone["over_start"])
-                    min_l = math.floor(min(p["lowest_loss"] for p in pts) * 0.92)
-                    max_l = math.ceil(max(p["lowest_loss"] for p in pts) * 1.05)
-                    span_l = max(0.5, max_l - min_l)
-                    to_x = lambda ep: PAD_L + ((min(max_ep, max(min_ep, ep)) - min_ep) / max(1, max_ep - min_ep)) * PLOT_W
-                    coords = [(to_x(p["epoch"]), PAD_T + (1.0 - (p["lowest_loss"] - min_l) / span_l) * PLOT_H, p["epoch"]) for p in pts]
-                    chart_title = "Model Training Loss & Checkpoint Zones"
-                else:
-                    min_ep = zone["save_every"]
-                    max_ep = max(zone["over_start"] + zone["save_every"] * 3, zone["sweet_max"] + zone["save_every"] * 6)
-                    to_x = lambda ep: PAD_L + ((min(max_ep, max(min_ep, ep)) - min_ep) / max(1, max_ep - min_ep)) * PLOT_W
-                    raw_ms = [
-                        (min_ep, 0.08),
-                        (zone["under_end"], 0.48),
-                        (zone["sweet_min"], 0.78),
-                        (zone["sweet_mid"], 0.88),
-                        (zone["sweet_max"], 0.87),
-                        (zone["over_start"], 0.72),
-                        (max_ep, 0.56),
-                    ]
-                    uniq_ms = []
-                    for ep_m, ny_m in raw_ms:
-                        if not uniq_ms or ep_m > uniq_ms[-1][0]:
-                            uniq_ms.append((ep_m, ny_m))
-                    coords = [(to_x(ep_m), PAD_T + (1.0 - ny_m) * PLOT_H, ep_m) for ep_m, ny_m in uniq_ms]
-                    chart_title = "Estimated Checkpoint Quality Curve"
-
+                min_ep = pts[0]["epoch"]
+                max_ep = max(min_ep + sev_d, pts[-1]["epoch"])
+                min_l = math.floor(min(p["lowest_loss"] for p in pts) * 0.92)
+                max_l = math.ceil(max(p["lowest_loss"] for p in pts) * 1.05)
+                span_l = max(0.5, max_l - min_l)
+                to_x = lambda ep: PAD_L + ((min(max_ep, max(min_ep, ep)) - min_ep) / max(1, max_ep - min_ep)) * PLOT_W
+                coords = [(to_x(p["epoch"]), PAD_T + (1.0 - (p["lowest_loss"] - min_l) / span_l) * PLOT_H, p["epoch"]) for p in pts]
                 poly_pts = " ".join(f"{cx:.1f},{cy:.1f}" for cx, cy, _ in coords)
-                under_x = to_x(zone["under_end"])
                 sw_s = to_x(zone["sweet_min"])
                 sw_e = to_x(zone["sweet_max"])
-                sw_m = to_x(zone["sweet_mid"])
-                ov_x = to_x(zone["over_start"])
+                best_x = to_x(zone["best_epoch"])
                 dots_svg = "".join(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3.5" fill="#FDF7F7" stroke="#E51923" stroke-width="2" />' for cx, cy, _ in coords)
                 lbl_coords = [coords[0]] if coords else []
                 for cx, cy, ep_v in coords[1:-1]:
@@ -721,33 +725,31 @@ elif active_tab == "Diagnostics":
                         lbl_coords.append((cx, cy, ep_v))
                 if len(coords) > 1:
                     lbl_coords.append(coords[-1])
-                lbls_svg = "".join(f'<text x="{cx:.1f}" y="{H - 5}" text-anchor="middle" fill="#AD8288" font-size="10" font-family="JetBrains Mono, monospace">e{ep_v}</text>' for cx, _, ep_v in lbl_coords)
+                lbls_svg = "".join(f'<text x="{cx:.1f}" y="{H - 5}" text-anchor="middle" fill="#C89EA4" font-size="11" font-family="JetBrains Mono, monospace">e{ep_v}</text>' for cx, _, ep_v in lbl_coords)
                 grid_svg = "".join(f'<line x1="{PAD_L}" y1="{PAD_T + PLOT_H * r:.1f}" x2="{W - PAD_R}" y2="{PAD_T + PLOT_H * r:.1f}" stroke="#47161D" stroke-dasharray="3 3" />' for r in (0.25, 0.5, 0.75))
 
                 svg_html = (
                     f'<div style="background:#160709;border:1px solid #47161D;border-radius:8px;padding:12px;margin:10px 0">'
                     f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-                    f'<span style="font-size:11px;font-weight:600;color:#FDF7F7">{chart_title}</span>'
-                    f'<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#AD8288">● Sweet Spot &nbsp; ● Overtrain Risk</span></div>'
+                    f'<span style="font-size:13px;font-weight:600;color:#FDF7F7">Observed Mel Loss &amp; Best Epoch (e{zone["best_epoch"]})</span>'
+                    f'<span style="font-family:JetBrains Mono,monospace;font-size:11px;color:#C89EA4">● Best Epoch Window</span></div>'
                     f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto">'
-                    f'<rect x="{PAD_L}" y="{PAD_T}" width="{max(0.0, under_x - PAD_L):.1f}" height="{PLOT_H}" fill="#47161D" fill-opacity="0.22" />'
                     f'<rect x="{sw_s:.1f}" y="{PAD_T}" width="{max(8.0, sw_e - sw_s):.1f}" height="{PLOT_H}" fill="#E51923" fill-opacity="0.16" />'
-                    f'<rect x="{ov_x:.1f}" y="{PAD_T}" width="{max(0.0, W - PAD_R - ov_x):.1f}" height="{PLOT_H}" fill="#991B1B" fill-opacity="0.18" />'
                     f'{grid_svg}'
-                    f'<line x1="{sw_m:.1f}" y1="{PAD_T}" x2="{sw_m:.1f}" y2="{PAD_T + PLOT_H}" stroke="#FF2B35" stroke-width="1.25" stroke-dasharray="4 3" />'
-                    f'<text x="{sw_m:.1f}" y="{PAD_T - 5}" text-anchor="middle" fill="#FDF7F7" font-size="10" font-family="JetBrains Mono, monospace">Sweet Spot</text>'
+                    f'<line x1="{best_x:.1f}" y1="{PAD_T}" x2="{best_x:.1f}" y2="{PAD_T + PLOT_H}" stroke="#FF2B35" stroke-width="1.5" stroke-dasharray="4 3" />'
+                    f'<text x="{best_x:.1f}" y="{PAD_T - 6}" text-anchor="middle" fill="#FDF7F7" font-size="11" font-family="JetBrains Mono, monospace">Best Epoch (e{zone["best_epoch"]})</text>'
                     f'<polyline fill="none" stroke="#E51923" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="{poly_pts}" />'
                     f'{dots_svg}{lbls_svg}</svg></div>'
                 )
                 st.markdown(svg_html, unsafe_allow_html=True)
 
-                spd_note = f"Avg {parsed_diag['avg_speed_sec']}s/ep" if (parsed_diag and parsed_diag["avg_speed_sec"] > 0) else ""
-                st.markdown(
-                    f'<div style="display:flex;justify-content:space-between;font-size:12px;color:#DFBFC3">'
-                    f'<span>{html.escape(zone["summary"])}</span>'
-                    f'<span style="font-family:JetBrains Mono,monospace;color:#AD8288">{html.escape(spd_note)}</span></div>',
-                    unsafe_allow_html=True,
-                )
+            spd_note = f"Avg {parsed_diag['avg_speed_sec']}s/ep" if (parsed_diag and parsed_diag["avg_speed_sec"] > 0) else ""
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;font-size:13.5px;color:#DFBFC3;margin-top:6px">'
+                f'<span>{html.escape(zone["summary"])}</span>'
+                f'<span style="font-family:JetBrains Mono,monospace;color:#C89EA4">{html.escape(spd_note)}</span></div>',
+                unsafe_allow_html=True,
+            )
 
         with st.expander("Optional: Import External .ipynb or Training Log", expanded=False):
             imp_file = st.file_uploader("Upload .ipynb / .log / .txt", type=["ipynb", "log", "txt"], key="nr_diag_up")
@@ -774,11 +776,18 @@ elif active_tab == "Voice Blender":
                 dst_a = Path(now_dir) / "logs" / up_a.name
                 dst_a.parent.mkdir(parents=True, exist_ok=True)
                 dst_a.write_bytes(up_a.getvalue())
+                _clear_fs_caches()
                 st.session_state["nr_vb_path_a"] = str(dst_a.relative_to(now_dir))
+                st.session_state["nr_vb_in_a"] = str(dst_a.relative_to(now_dir))
             if pths_b:
-                pick_a = st.selectbox("Library Model A", options=[""] + pths_b, format_func=lambda x: "Pick from logs/..." if x == "" else x, key="nr_vb_pick_a")
-                if pick_a:
-                    st.session_state["nr_vb_path_a"] = pick_a
+                def _on_pick_vb_a() -> None:
+                    pa_sel = st.session_state.get("nr_vb_pick_a", "")
+                    if pa_sel:
+                        st.session_state["nr_vb_path_a"] = pa_sel
+                        st.session_state["nr_vb_in_a"] = pa_sel
+                        st.session_state["nr_vb_pick_a"] = ""
+
+                st.selectbox("Library Model A", options=[""] + pths_b, format_func=lambda x: "Pick from logs/..." if x == "" else x, on_change=_on_pick_vb_a, key="nr_vb_pick_a")
             st.markdown('<div class="nr-field-title">Path to first model</div><div class="nr-field-help">Or type a relative logs/ path directly.</div>', unsafe_allow_html=True)
             st.session_state["nr_vb_path_a"] = st.text_input("Path to first model", value=st.session_state.get("nr_vb_path_a", ""), placeholder="Enter path to model", label_visibility="collapsed", key="nr_vb_in_a")
         with vb_r:
@@ -787,11 +796,18 @@ elif active_tab == "Voice Blender":
                 dst_b = Path(now_dir) / "logs" / up_b.name
                 dst_b.parent.mkdir(parents=True, exist_ok=True)
                 dst_b.write_bytes(up_b.getvalue())
+                _clear_fs_caches()
                 st.session_state["nr_vb_path_b"] = str(dst_b.relative_to(now_dir))
+                st.session_state["nr_vb_in_b"] = str(dst_b.relative_to(now_dir))
             if pths_b:
-                pick_b = st.selectbox("Library Model B", options=[""] + pths_b, format_func=lambda x: "Pick from logs/..." if x == "" else x, key="nr_vb_pick_b")
-                if pick_b:
-                    st.session_state["nr_vb_path_b"] = pick_b
+                def _on_pick_vb_b() -> None:
+                    pb_sel = st.session_state.get("nr_vb_pick_b", "")
+                    if pb_sel:
+                        st.session_state["nr_vb_path_b"] = pb_sel
+                        st.session_state["nr_vb_in_b"] = pb_sel
+                        st.session_state["nr_vb_pick_b"] = ""
+
+                st.selectbox("Library Model B", options=[""] + pths_b, format_func=lambda x: "Pick from logs/..." if x == "" else x, on_change=_on_pick_vb_b, key="nr_vb_pick_b")
             st.markdown('<div class="nr-field-title">Path to second model</div><div class="nr-field-help">Or type a relative logs/ path directly.</div>', unsafe_allow_html=True)
             st.session_state["nr_vb_path_b"] = st.text_input("Path to second model", value=st.session_state.get("nr_vb_path_b", ""), placeholder="Enter path to model", label_visibility="collapsed", key="nr_vb_in_b")
 
@@ -807,7 +823,7 @@ elif active_tab == "Voice Blender":
         with st.container(border=True):
             br_l, br_val, br_rst = st.columns([4.4, 0.85, 0.55], gap="small")
             br_l.markdown('<div class="nr-field-title">Blend Ratio</div><div class="nr-field-help">Balance influence between checkpoints: 0 leans 100% toward Model B, while 1 leans 100% toward Model A.</div>', unsafe_allow_html=True)
-            br_val.markdown(f'<div style="background:#160709;border:1px solid #47161D;border-radius:8px;padding:6px 10px;text-align:center;font-family:JetBrains Mono,monospace;font-size:12px;color:#FDF7F7">{float(st.session_state.get("nr_vb_ratio", 0.5)):g}</div>', unsafe_allow_html=True)
+            br_val.markdown(f'<div style="background:#160709;border:1px solid #47161D;border-radius:8px;padding:6px 10px;text-align:center;font-family:JetBrains Mono,monospace;font-size:13px;color:#FDF7F7">{float(st.session_state.get("nr_vb_ratio", 0.5)):g}</div>', unsafe_allow_html=True)
             if br_rst.button("↺", key="nr_vb_rst_ratio", help="Reset Blend Ratio to 0.5", use_container_width=True):
                 st.session_state["nr_vb_ratio"] = 0.5
                 st.rerun()
@@ -864,26 +880,35 @@ elif active_tab == "TTS":
     voices_t = _load_tts_voices()
 
     with st.container(border=True):
+        _step_head(1, "Voice & Script", "Choose an Edge-TTS narrator, pair your trained RVC voice model, and write the spoken script.")
         tc1, tc2 = st.columns(2, gap="medium")
         with tc1:
-            tts_voice = st.selectbox("Base Edge-TTS Speaker", options=voices_t, index=0, key="nr_tts_voice_sel")
+            st.markdown('<div class="nr-field-title">Base Edge-TTS Speaker</div><div class="nr-field-help">Neural speaker voice before converting through your RVC model.</div>', unsafe_allow_html=True)
+            tts_voice = st.selectbox("Base Edge-TTS Speaker", options=voices_t, index=0, label_visibility="collapsed", key="nr_tts_voice_sel")
         with tc2:
-            tts_pth = st.selectbox("Target RVC Voice Model (Synced with Models)", options=[""] + pths_t, format_func=lambda x: "-- Select Target .pth Model --" if x == "" else x, key="nr_tts_pth_sel")
+            st.markdown('<div class="nr-field-title">Target RVC Voice Model (Synced with Models)</div><div class="nr-field-help">Optional trained .pth checkpoint to apply your custom voice timbre.</div>', unsafe_allow_html=True)
+            tts_pth = st.selectbox("Target RVC Voice Model (Synced with Models)", options=[""] + pths_t, format_func=lambda x: "-- Select Target .pth Model --" if x == "" else x, label_visibility="collapsed", key="nr_tts_pth_sel")
 
-        tts_idx = st.selectbox("Index File (Optional)", options=[""] + idxs_t, format_func=lambda x: "-- Optional .index File --" if x == "" else x, key="nr_tts_idx_sel")
-        tts_text = st.text_area("Text to Speak", value="Welcome to NoRegretsRVC. Testing synthesized speech with your voice model.", height=96, key="nr_tts_text_in")
+        st.markdown('<div class="nr-field-title">Index File (Optional)</div><div class="nr-field-help">FAISS retrieval index to strengthen vocal accent and tone similarity.</div>', unsafe_allow_html=True)
+        tts_idx = st.selectbox("Index File (Optional)", options=[""] + idxs_t, format_func=lambda x: "-- Optional .index File --" if x == "" else x, label_visibility="collapsed", key="nr_tts_idx_sel")
+        st.markdown('<div class="nr-field-title">Text to Speak</div><div class="nr-field-help">Dialogue or test lines rendered into speech and routed through RVC.</div>', unsafe_allow_html=True)
+        tts_text = st.text_area("Text to Speak", value="Welcome to NoRegretsRVC. Testing synthesized speech with your voice model.", height=96, label_visibility="collapsed", key="nr_tts_text_in")
 
         ts1, ts2 = st.columns(2, gap="medium")
         with ts1:
             with st.container(border=True):
-                tts_pitch = st.slider("Pitch Shift (Semitones)", -12, 12, 0, step=1, key="nr_tts_pitch")
+                st.markdown('<div class="nr-field-title">Pitch Shift (Semitones)</div><div class="nr-field-help">Adjust target octave/register up or down (-12 to +12).</div>', unsafe_allow_html=True)
+                tts_pitch = st.slider("Pitch Shift (Semitones)", -12, 12, 0, step=1, label_visibility="collapsed", key="nr_tts_pitch")
             with st.container(border=True):
-                tts_idx_r = st.slider("Index Feature Ratio", 0.0, 1.0, 0.75, step=0.05, key="nr_tts_idx_r")
+                st.markdown('<div class="nr-field-title">Index Feature Ratio</div><div class="nr-field-help">Accent strength pulled from your trained .index database.</div>', unsafe_allow_html=True)
+                tts_idx_r = st.slider("Index Feature Ratio", 0.0, 1.0, 0.75, step=0.05, label_visibility="collapsed", key="nr_tts_idx_r")
         with ts2:
             with st.container(border=True):
-                tts_rate = st.slider("Speech Speed (%)", -50, 50, 0, step=5, key="nr_tts_rate")
+                st.markdown('<div class="nr-field-title">Speech Speed (%)</div><div class="nr-field-help">Pace of the base Edge-TTS delivery before voice conversion.</div>', unsafe_allow_html=True)
+                tts_rate = st.slider("Speech Speed (%)", -50, 50, 0, step=5, label_visibility="collapsed", key="nr_tts_rate")
             with st.container(border=True):
-                tts_prot = st.slider("Consonant Protect", 0.0, 0.5, 0.5, step=0.01, key="nr_tts_prot")
+                st.markdown('<div class="nr-field-title">Consonant Protect</div><div class="nr-field-help">Preserves crisp breaths and sharp consonant articulation.</div>', unsafe_allow_html=True)
+                tts_prot = st.slider("Consonant Protect", 0.0, 0.5, 0.5, step=0.01, label_visibility="collapsed", key="nr_tts_prot")
 
         if st.button(_tr("Convert Text-to-Speech"), type="primary", use_container_width=True, key="nr_btn_run_tts"):
             if not tts_text.strip():
@@ -1075,9 +1100,9 @@ elif active_tab == "Settings":
             rt3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">GPU Allocation</div><div class="nr-metric-v">{html.escape(_gpu_info_lines(st.session_state["nr_gpu_num"]).replace(chr(10), " · "))}</div></div>', unsafe_allow_html=True)
             rt4.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Python Environment</div><div class="nr-metric-v">{html.escape(sys.executable)}</div></div>', unsafe_allow_html=True)
 
-# Auto-refresh live training metrics smoothly while training is active
-if st.session_state.get("nr_is_training") and _is_training_process_alive(st.session_state.get("nr_model_name", "")):
-    time.sleep(2.5)
+# Auto-refresh live metrics & background task status smoothly across all tabs
+if _has_active_bg_work():
+    time.sleep(2.0)
     st.rerun()
 `;
 }

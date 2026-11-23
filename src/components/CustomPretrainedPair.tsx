@@ -135,13 +135,13 @@ const SinglePretrainedSlot: React.FC<SingleSlotProps> = ({
             : 'border-[#47161D] bg-[#100506]'
         }`}
       >
-        <span className="text-[11px] text-[#AD8288]">
+        <span className="text-xs text-[#C89EA4]">
           {t('customPretrain.dropHint')}
         </span>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="inline-flex items-center gap-1.5 rounded-md border border-[#47161D] bg-[#200B0E] px-2.5 py-1 text-[11px] font-semibold text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-1.5 rounded-md border border-[#47161D] bg-[#200B0E] px-2.5 py-1 text-xs font-semibold text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap shrink-0"
         >
           <Upload className="h-3 w-3 text-[#E51923]" />
           <span>{t('customPretrain.uploadBtn')}</span>

@@ -20,8 +20,33 @@
   body {
     font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: var(--bg-canvas);
+    background-image: radial-gradient(ellipse 85% 32% at 50% -6%, rgba(229, 25, 35, 0.085), transparent 72%);
+    background-attachment: fixed;
     color: var(--text-primary);
     letter-spacing: 0.005em;
+  }
+
+  .nr-toast-fade {
+    animation: nrToastFade 5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes nrToastFade {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.98);
+    }
+    8% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    84% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+    }
   }
 
   h1,

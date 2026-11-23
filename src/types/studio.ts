@@ -261,10 +261,13 @@ export interface TrainingCompletionEstimate {
 }
 
 export interface TrainingZoneInsight {
-  confidence: 'observed' | 'estimate';
+  confidence: 'untrained' | 'observed' | 'estimate';
   saveEveryEpoch: number;
   modelContext: string;
   summary: string;
+  datasetSummary?: string;
+  bestLoss?: number | null;
+  candidateEpochs?: number[];
   undertrainingLabel: string;
   undertrainingEndEpoch: number | null;
   sweetSpotLabel: string;

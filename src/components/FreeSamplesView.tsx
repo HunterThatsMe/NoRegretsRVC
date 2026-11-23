@@ -170,10 +170,10 @@ export const FreeSamplesView: React.FC<FreeSamplesViewProps> = React.memo(({
           className="rounded-xl border border-[#47161D] bg-[#160709] p-6 space-y-4"
         >
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               {group.title} ({group.items.length})
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">{group.subtitle}</p>
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">{group.subtitle}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -190,7 +190,7 @@ export const FreeSamplesView: React.FC<FreeSamplesViewProps> = React.memo(({
                         <h4 className="font-display text-sm font-semibold text-[#FDF7F7]">
                           {sample.title}
                         </h4>
-                        <p className="text-[11px] text-[#AD8288]">
+                        <p className="text-xs text-[#C89EA4]">
                           {sample.style} · {sample.durationLabel}
                         </p>
                       </div>

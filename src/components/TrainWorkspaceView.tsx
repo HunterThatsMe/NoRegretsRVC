@@ -23,11 +23,13 @@ import {
 interface TrainWorkspaceViewProps {
   activeProject: VoiceModelProject;
   onUpdateProject: (updated: VoiceModelProject) => void;
+  onNotify?: (title: string, message: string, tone?: 'success' | 'error') => void;
 }
 
 export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(({
   activeProject,
   onUpdateProject,
+  onNotify,
 }) => {
   const { t } = useI18n();
   const [showInfoBar, setShowInfoBar] = useState(false);
@@ -94,6 +96,7 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
 
   const activeProjectRef = useRef(activeProject);
   const onUpdateProjectRef = useRef(onUpdateProject);
+  const onNotifyRef = useRef(onNotify);
   const safeNameRef = useRef(safeName);
   const isTrainingRef = useRef(isTraining);
   const currentEpochRef = useRef(trainingRun.epoch);
@@ -102,6 +105,7 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
 
   activeProjectRef.current = activeProject;
   onUpdateProjectRef.current = onUpdateProject;
+  onNotifyRef.current = onNotify;
   safeNameRef.current = safeName;
   isTrainingRef.current = isTraining;
   currentEpochRef.current = trainingRun.epoch;
@@ -160,10 +164,15 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
         });
         onUpdateProjectRef.current({
           ...proj,
-          trainingOutput: `Model ${name} completed ${proj.totalEpoch} epochs on GPU ${proj.gpuNumber}. Saved logs/${name}/${name}_${proj.totalEpoch}e.pth`,
+          trainingOutput: `✔ Training complete! Model ${name} finished ${proj.totalEpoch} epochs on GPU ${proj.gpuNumber}. Saved logs/${name}/${name}_${proj.totalEpoch}e.pth`,
           exportPthFile: `logs/${name}/${name}_${proj.totalEpoch}e.pth`,
           exportIndexFile: `logs/${name}/${name}.index`,
         });
+        onNotifyRef.current?.(
+          'Training complete',
+          `${name} finished ${proj.totalEpoch} epochs.`,
+          'success'
+        );
         return;
       }
 
@@ -218,8 +227,13 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
     ];
     onUpdateProjectRef.current({
       ...proj,
-      preprocessOutput: `Model ${name} preprocessed successfully (${notes.join(', ')}).`,
+      preprocessOutput: `✔ Preprocess complete! Model ${name} is ready (${notes.join(', ')}). Proceed to Extract Features.`,
     });
+    onNotifyRef.current?.(
+      'Preprocess complete',
+      `${name} dataset sliced (${notes[0]}).`,
+      'success'
+    );
   }, []);
 
   const handleExtractFeatures = useCallback(() => {
@@ -227,8 +241,13 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
     const name = safeNameRef.current;
     onUpdateProjectRef.current({
       ...proj,
-      extractOutput: `Model ${name} extracted successfully (${proj.pitchExtractor} + ${proj.embedder}, silent files: ${proj.silentTrainingFiles}).`,
+      extractOutput: `✔ Feature extraction complete! Model ${name} extracted (${proj.pitchExtractor} + ${proj.embedder}, silent files: ${proj.silentTrainingFiles}). Ready to train.`,
     });
+    onNotifyRef.current?.(
+      'Feature extraction complete',
+      `${name} extracted via ${proj.pitchExtractor} + ${proj.embedder}.`,
+      'success'
+    );
   }, []);
 
   const handleToggleTraining = useCallback(() => {
@@ -275,9 +294,14 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
     const name = safeNameRef.current;
     onUpdateProjectRef.current({
       ...proj,
-      trainingOutput: `Index file for model ${name} generated successfully (${proj.indexAlgorithm}).`,
+      trainingOutput: `✔ Index generation complete! Saved logs/${name}/${name}.index (${proj.indexAlgorithm}).`,
       exportIndexFile: `logs/${name}/${name}.index`,
     });
+    onNotifyRef.current?.(
+      'Index file ready',
+      `logs/${name}/${name}.index generated.`,
+      'success'
+    );
   }, []);
 
   const handleToggleCliPreview = useCallback(() => {
@@ -292,7 +316,7 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
           <h2 className="font-display text-2xl font-bold text-[#FDF7F7] tracking-tight">
             {t('train.title')}
           </h2>
-          <p className="text-sm text-[#DFBFC3] mt-1">
+          <p className="text-[15px] text-[#DFBFC3] mt-1">
             {t('train.subtitle')}
           </p>
         </div>

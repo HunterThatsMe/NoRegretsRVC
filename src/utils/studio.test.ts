@@ -245,7 +245,18 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.match(appFile.content, /key="nr_train_terms"/);
   assert.match(appFile.content, /key="nr_inf_terms"/);
   assert.match(appFile.content, /start_new_session=True/);
-  assert.match(appFile.content, /Model Training Loss & Checkpoint Zones/);
+  assert.match(appFile.content, /"nr_model_name": ""/);
+  assert.doesNotMatch(appFile.content, /backdrop-filter:\s*blur/i);
+  assert.match(appFile.content, /nr-toast-stack/);
+  assert.match(appFile.content, /@st\.cache_data/);
+  assert.match(appFile.content, /def _start_core_task_bg/);
+  assert.match(appFile.content, /def _poll_core_tasks/);
+  assert.match(appFile.content, /✔ Preprocess complete!/);
+  assert.match(appFile.content, /✔ Feature extraction complete!/);
+  assert.match(appFile.content, /✔ Index generation complete!/);
+  assert.match(appFile.content, /✔ Training complete!/);
+  assert.match(appFile.content, /Best Epoch Analyzer/);
+  assert.match(appFile.content, /Waiting for Training Data/);
   assert.match(appFile.content, /python core\.py infer/);
   assert.match(appFile.content, /Load All 6 in Samples/);
   assert.match(appFile.content, /Download All 6 \(\.zip\)/);
@@ -275,28 +286,31 @@ test('estimateKaggleSurvival stays Safe by default and flags Risk of Full if sav
   assert.ok(heavyEst.estimatedDiskGb > 20);
 });
 
-test('analyzeTrainingZones snaps all suggested epochs strictly to saveEveryEpoch and adapts to model & sound check', () => {
+test('analyzeTrainingZones refuses fake pre-training epochs and pinpoints Best Epoch from real observed training data', () => {
   const projEvery5 = { ...DEFAULT_PROJECTS[0], name: 'TestVoice', saveEveryEpoch: 5, totalEpoch: 200 };
 
-  // Model-only estimate (no log loaded yet)
+  // No training epochs yet -> untrained state with null epochs (no fabricated chart/zones)
   const noLogZones = analyzeTrainingZones(null, projEvery5, 'untested');
-  assert.equal(noLogZones.confidence, 'estimate');
+  assert.equal(noLogZones.confidence, 'untrained');
   assert.equal(noLogZones.saveEveryEpoch, 5);
-  assert.equal((noLogZones.undertrainingEndEpoch ?? 0) % 5, 0);
-  assert.equal((noLogZones.sweetSpotMinEpoch ?? 0) % 5, 0);
-  assert.equal((noLogZones.sweetSpotMaxEpoch ?? 0) % 5, 0);
-  assert.equal((noLogZones.sweetSpotEpoch ?? 0) % 5, 0);
-  assert.equal((noLogZones.overtrainingStartEpoch ?? 0) % 5, 0);
+  assert.equal(noLogZones.undertrainingEndEpoch, null);
+  assert.equal(noLogZones.sweetSpotMinEpoch, null);
+  assert.equal(noLogZones.sweetSpotMaxEpoch, null);
+  assert.equal(noLogZones.sweetSpotEpoch, null);
+  assert.equal(noLogZones.overtrainingStartEpoch, null);
+  assert.deepEqual(noLogZones.candidateEpochs, []);
 
-  // Still dropping sample log (saveEveryEpoch = 5)
+  // Still dropping sample log (saveEveryEpoch = 5) -> observed Best Epoch so far
   const parsedSample = parseTrainingNotebookOrLog(SAMPLE_TRAINING_LOG);
   assert.ok(parsedSample);
   const sampleZones = analyzeTrainingZones(parsedSample, projEvery5, 'untested');
-  assert.equal(sampleZones.confidence, 'estimate');
+  assert.equal(sampleZones.confidence, 'observed');
+  assert.ok(sampleZones.sweetSpotEpoch !== null);
+  assert.equal((sampleZones.sweetSpotEpoch ?? 0) % 5, 0);
   assert.equal((sampleZones.sweetSpotMinEpoch ?? 0) % 5, 0);
   assert.equal((sampleZones.sweetSpotMaxEpoch ?? 0) % 5, 0);
 
-  // Plateau log with custom saveEveryEpoch = 10 -> every epoch is multiple of 10
+  // Plateau log with custom saveEveryEpoch = 10 -> every suggested epoch snaps to multiple of 10
   const projEvery10 = { ...DEFAULT_PROJECTS[0], saveEveryEpoch: 10, totalEpoch: 200 };
   const plateauLog = [
     'VoiceA | epoch=11 | step=1000 | time=10:01:00 | training_speed=0:00:45 | lowest_value=21.000 (epoch 11 and step 1000)',
@@ -309,9 +323,11 @@ test('analyzeTrainingZones snaps all suggested epochs strictly to saveEveryEpoch
   assert.ok(parsedPlateau);
   const observedZones = analyzeTrainingZones(parsedPlateau, projEvery10, 'clean');
   assert.equal(observedZones.confidence, 'observed');
+  assert.ok(observedZones.sweetSpotEpoch !== null);
   assert.equal((observedZones.sweetSpotEpoch ?? 0) % 10, 0);
   assert.equal((observedZones.undertrainingEndEpoch ?? 0) % 10, 0);
   assert.equal((observedZones.overtrainingStartEpoch ?? 0) % 10, 0);
+  assert.ok((observedZones.candidateEpochs ?? []).includes(observedZones.sweetSpotEpoch!));
 
   // Overtrained sound feedback shifts sweet spot earlier and still aligns to saveEveryEpoch
   const overtrainedZones = analyzeTrainingZones(parsedPlateau, projEvery10, 'overtrained');

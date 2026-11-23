@@ -103,17 +103,23 @@ if active_tab == "Training":
             existing_logs = _list_models()
             if existing_logs:
                 st.markdown('<div class="nr-field-title">Resume Existing Checkpoint Folder (Optional)</div>', unsafe_allow_html=True)
-                picked_log = st.selectbox(
+
+                def _on_pick_resume_model() -> None:
+                    picked_m = st.session_state.get("nr_resume_existing_sel", "")
+                    if picked_m:
+                        st.session_state["nr_model_name"] = picked_m
+                        st.session_state["nr_model_name_inp"] = picked_m
+                        st.session_state["nr_resume_existing_sel"] = ""
+
+                st.selectbox(
                     "Resume Existing Model",
                     options=[""] + existing_logs,
                     index=0,
                     format_func=lambda x: "Keep current model name..." if x == "" else x,
                     label_visibility="collapsed",
+                    on_change=_on_pick_resume_model,
                     key="nr_resume_existing_sel",
                 )
-                if picked_log and picked_log != st.session_state["nr_model_name"]:
-                    st.session_state["nr_model_name"] = picked_log
-                    st.rerun()
 
     # --- STEP 2: Prepare Dataset ---
     with st.container(border=True):
@@ -140,9 +146,11 @@ if active_tab == "Training":
             )
         with ds_r:
             if st.button("Refresh models and datasets", use_container_width=True, key="nr_refresh_ds_btn"):
+                _clear_fs_caches()
                 refreshed_ds = _list_datasets()
                 if refreshed_ds and ("your-username" in st.session_state["nr_dataset_path"] or not st.session_state["nr_dataset_path"].strip()):
                     st.session_state["nr_dataset_path"] = refreshed_ds[0]
+                    st.session_state["nr_ds_path_inp"] = refreshed_ds[0]
                 st.session_state["nr_prep_log"] = f"Refreshed dataset & model scan ({len(refreshed_ds)} dataset folder(s) found)."
                 st.rerun()
 
@@ -160,24 +168,32 @@ if active_tab == "Training":
                     target_ds.mkdir(parents=True, exist_ok=True)
                     for uf in dc_files:
                         (target_ds / uf.name).write_bytes(uf.getvalue())
+                    _clear_fs_caches()
                     st.session_state["nr_dataset_path"] = str(target_ds)
+                    st.session_state["nr_ds_path_inp"] = str(target_ds)
                     st.session_state["nr_prep_log"] = f"Saved {len(dc_files)} clip(s) into {target_ds}."
                     st.rerun()
 
         with st.expander("Advanced Settings", expanded=False):
             if len(detected_datasets) > 1:
                 st.markdown('<div class="nr-field-title">Detected Mounted Kaggle Datasets</div><div class="nr-field-help">Switch between mounted Kaggle datasets automatically without manual copying.</div>', unsafe_allow_html=True)
-                picked_ds = st.selectbox(
+
+                def _on_pick_detected_ds() -> None:
+                    picked_d = st.session_state.get("nr_pick_detected_ds", "")
+                    if picked_d:
+                        st.session_state["nr_dataset_path"] = picked_d
+                        st.session_state["nr_ds_path_inp"] = picked_d
+                        st.session_state["nr_pick_detected_ds"] = ""
+
+                st.selectbox(
                     "Detected Kaggle Dataset",
                     options=[""] + detected_datasets,
                     index=0,
                     format_func=lambda x: "Keep current dataset path..." if x == "" else x,
                     label_visibility="collapsed",
+                    on_change=_on_pick_detected_ds,
                     key="nr_pick_detected_ds",
                 )
-                if picked_ds and picked_ds != st.session_state["nr_dataset_path"]:
-                    st.session_state["nr_dataset_path"] = picked_ds
-                    st.rerun()
 
             st.markdown('<div class="nr-field-title">Audio cutting</div><div class="nr-field-help">Choose how long recordings are divided: Automatic detects quiet gaps dynamically, Simple cuts fixed chunks, and Skip leaves pre-split clips untouched.</div>', unsafe_allow_html=True)
             cut_opts = ["Automatic", "Simple", "Skip"]
@@ -247,27 +263,31 @@ if active_tab == "Training":
             elif not ds_clean:
                 st.warning("Enter a Dataset Path first.")
             else:
-                with st.spinner("Preprocessing dataset clips..."):
-                    use_fx = bool(st.session_state["nr_noise_filter"] or st.session_state["nr_loud_norm"])
-                    _, out_txt = _run_core_sync(
-                        "run_preprocess_script",
-                        {
-                            "model_name": m_clean,
-                            "dataset_path": ds_clean,
-                            "sample_rate": int(st.session_state["nr_sr"]),
-                            "cpu_cores": int(st.session_state["nr_cpu_cores"]),
-                            "cut_preprocess": st.session_state["nr_audio_cutting"],
-                            "process_effects": use_fx,
-                            "noise_reduction": bool(st.session_state["nr_noise_filter"]),
-                            "noise_reduction_strength": 0.7,
-                            "chunk_len": float(st.session_state["nr_chunk_len"]),
-                            "overlap_len": float(st.session_state["nr_overlap_len"]),
-                            "normalization_mode": "post" if st.session_state["nr_loud_norm"] else "none",
-                            "truncate_silence": bool(st.session_state["nr_trunc_sil"]),
-                            "silence_duration_ms": int(st.session_state["nr_sil_ms"]),
-                        },
-                    )
-                    st.session_state["nr_prep_log"] = out_txt
+                use_fx = bool(st.session_state["nr_noise_filter"] or st.session_state["nr_loud_norm"])
+                out_txt = _start_core_task_bg(
+                    "preprocess",
+                    "run_preprocess_script",
+                    m_clean,
+                    {
+                        "model_name": m_clean,
+                        "dataset_path": ds_clean,
+                        "sample_rate": int(st.session_state["nr_sr"]),
+                        "cpu_cores": int(st.session_state["nr_cpu_cores"]),
+                        "cut_preprocess": st.session_state["nr_audio_cutting"],
+                        "process_effects": use_fx,
+                        "noise_reduction": bool(st.session_state["nr_noise_filter"]),
+                        "noise_reduction_strength": 0.7,
+                        "chunk_len": float(st.session_state["nr_chunk_len"]),
+                        "overlap_len": float(st.session_state["nr_overlap_len"]),
+                        "normalization_mode": "post" if st.session_state["nr_loud_norm"] else "none",
+                        "truncate_silence": bool(st.session_state["nr_trunc_sil"]),
+                        "silence_duration_ms": int(st.session_state["nr_sil_ms"]),
+                    },
+                    "nr_prep_log",
+                    "Preprocess Complete",
+                    f"Dataset sliced & ready for {m_clean} ({st.session_state['nr_sr']} Hz).",
+                )
+                st.session_state["nr_prep_log"] = out_txt
                 st.rerun()
 
     # --- STEP 3: Extract Features ---
@@ -298,21 +318,25 @@ if active_tab == "Training":
             if not m_clean:
                 st.warning("Enter a Model Name in Step 1 first.")
             else:
-                with st.spinner("Extracting F0 pitch tracks & speaker embeddings..."):
-                    _, out_txt = _run_core_sync(
-                        "run_extract_script",
-                        {
-                            "model_name": m_clean,
-                            "f0_method": st.session_state["nr_f0"],
-                            "cpu_cores": int(st.session_state["nr_cpu_cores"]),
-                            "gpu": str(st.session_state["nr_gpu_num"]).strip() or "0",
-                            "sample_rate": int(st.session_state["nr_sr"]),
-                            "embedder_model": st.session_state["nr_embedder"],
-                            "embedder_model_custom": None,
-                            "include_mutes": int(st.session_state["nr_silent_files"]),
-                        },
-                    )
-                    st.session_state["nr_ext_log"] = out_txt
+                out_txt = _start_core_task_bg(
+                    "extract",
+                    "run_extract_script",
+                    m_clean,
+                    {
+                        "model_name": m_clean,
+                        "f0_method": st.session_state["nr_f0"],
+                        "cpu_cores": int(st.session_state["nr_cpu_cores"]),
+                        "gpu": str(st.session_state["nr_gpu_num"]).strip() or "0",
+                        "sample_rate": int(st.session_state["nr_sr"]),
+                        "embedder_model": st.session_state["nr_embedder"],
+                        "embedder_model_custom": None,
+                        "include_mutes": int(st.session_state["nr_silent_files"]),
+                    },
+                    "nr_ext_log",
+                    "Feature Extraction Complete",
+                    f"Pitch ({st.session_state['nr_f0']}) & {st.session_state['nr_embedder']} embeddings ready for {m_clean}.",
+                )
+                st.session_state["nr_ext_log"] = out_txt
                 st.rerun()
 
     # --- STEP 4: Train Model ---
@@ -376,15 +400,25 @@ if active_tab == "Training":
                     cp_l, cp_r = st.columns(2, gap="medium")
                     with cp_l:
                         if g_list:
-                            pick_g = st.selectbox("Detected G Pretrain", options=[""] + g_list, format_func=lambda x: "Pick G file..." if x == "" else x, key="nr_cp_g_pick")
-                            if pick_g:
-                                st.session_state["nr_custom_g"] = pick_g
+                            def _on_pick_cp_g() -> None:
+                                pg = st.session_state.get("nr_cp_g_pick", "")
+                                if pg:
+                                    st.session_state["nr_custom_g"] = pg
+                                    st.session_state["nr_cp_g_inp"] = pg
+                                    st.session_state["nr_cp_g_pick"] = ""
+
+                            st.selectbox("Detected G Pretrain", options=[""] + g_list, format_func=lambda x: "Pick G file..." if x == "" else x, on_change=_on_pick_cp_g, key="nr_cp_g_pick")
                         st.session_state["nr_custom_g"] = st.text_input("G Pretrained Path or URL", value=st.session_state["nr_custom_g"], placeholder="rvc/models/pretraineds/custom/G.pth", key="nr_cp_g_inp")
                     with cp_r:
                         if d_list:
-                            pick_d = st.selectbox("Detected D Pretrain", options=[""] + d_list, format_func=lambda x: "Pick D file..." if x == "" else x, key="nr_cp_d_pick")
-                            if pick_d:
-                                st.session_state["nr_custom_d"] = pick_d
+                            def _on_pick_cp_d() -> None:
+                                pd = st.session_state.get("nr_cp_d_pick", "")
+                                if pd:
+                                    st.session_state["nr_custom_d"] = pd
+                                    st.session_state["nr_cp_d_inp"] = pd
+                                    st.session_state["nr_cp_d_pick"] = ""
+
+                            st.selectbox("Detected D Pretrain", options=[""] + d_list, format_func=lambda x: "Pick D file..." if x == "" else x, on_change=_on_pick_cp_d, key="nr_cp_d_pick")
                         st.session_state["nr_custom_d"] = st.text_input("D Pretrained Path or URL (optional auto-pair)", value=st.session_state["nr_custom_d"], placeholder="rvc/models/pretraineds/custom/D.pth", key="nr_cp_d_inp")
 
             idx_opts = ["Auto", "Faiss", "KMeans"]
@@ -480,15 +514,19 @@ if active_tab == "Training":
                 if not m_clean_cur:
                     st.warning("Enter a Model Name in Step 1 first.")
                 else:
-                    with st.spinner("Generating FAISS feature index..."):
-                        _, out_txt = _run_core_sync(
-                            "run_index_script",
-                            {
-                                "model_name": m_clean_cur,
-                                "index_algorithm": st.session_state["nr_index_algo"],
-                            },
-                        )
-                        st.session_state["nr_trn_log"] = out_txt
+                    out_txt = _start_core_task_bg(
+                        "index",
+                        "run_index_script",
+                        m_clean_cur,
+                        {
+                            "model_name": m_clean_cur,
+                            "index_algorithm": st.session_state["nr_index_algo"],
+                        },
+                        "nr_trn_log",
+                        "Index Generation Complete",
+                        f"FAISS feature index ready for {m_clean_cur}.",
+                    )
+                    st.session_state["nr_trn_log"] = out_txt
                     st.rerun()
 
         if is_running_now and parsed_live and parsed_live.get("live"):
@@ -510,7 +548,7 @@ if active_tab == "Training":
                 e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v">{fin_day}</div></div>', unsafe_allow_html=True)
 
         with st.expander("View Generated Kaggle core.py Pipeline Commands", expanded=False):
-            m_cmd_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", m_clean_cur or "NoRegretsVoice")
+            m_cmd_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", m_clean_cur or "MyVoice")
             ds_cmd = st.session_state["nr_dataset_path"].strip() or "/kaggle/input/datasets/your-username/voice-dataset"
             st.code(
                 f"""# 1. Preprocess dataset
@@ -555,6 +593,7 @@ python core.py index --model_name "{m_cmd_name}" --index_algorithm {st.session_s
                 st.download_button(f"Download {i_obj.name}", data=i_obj.read_bytes(), file_name=i_obj.name, type="secondary", use_container_width=True, key="nr_dl_idx_btn")
 
         if st.button("Refresh trained models and indexes", type="secondary", use_container_width=True, key="nr_btn_refresh_exports"):
+            _clear_fs_caches()
             st.rerun()
 
 # ==============================================================================
@@ -576,6 +615,7 @@ elif active_tab == "Models":
             else:
                 with st.spinner("Downloading model into library..."):
                     _, out_txt = _run_core_sync("run_download_script", {"model_link": url_clean})
+                    _clear_fs_caches()
                     label = re.sub(r"[^a-zA-Z0-9_-]+", "-", Path(urllib.parse.urlsplit(url_clean).path).stem or "DownloadedModel")
                     st.session_state["nr_manifest"].append({
                         "id": f"dl-{int(time.time())}",
@@ -583,7 +623,7 @@ elif active_tab == "Models":
                         "category": "voice",
                         "url": url_clean,
                     })
-                    st.session_state["nr_dl_log"] = out_txt
+                    st.session_state["nr_dl_log"] = f"✔ {out_txt}"
                 st.rerun()
 
     # --- STEP 2: Drop Files ---
@@ -614,7 +654,8 @@ elif active_tab == "Models":
                     dst = dl_dir / uf.name
                     dst.write_bytes(uf.getvalue())
                     saved_names.append(dst.name)
-            st.session_state["nr_dl_log"] = f"Imported {', '.join(saved_names)} into logs/downloads/ -> synced to Samples & TTS."
+            _clear_fs_caches()
+            st.session_state["nr_dl_log"] = f"✔ Imported {', '.join(saved_names)} into logs/downloads/ -> synced to Samples & TTS."
             st.rerun()
 
     # --- STEP 3: Download Pretrained Models ---

@@ -204,6 +204,10 @@ function computeModelBaselineSweetRange(
   return { low, high, underEnd, overStart };
 }
 
+function uniqueSortedEpochs(epochs: number[]): number[] {
+  return Array.from(new Set(epochs)).sort((a, b) => a - b);
+}
+
 export function analyzeTrainingZones(
   analysis: TrainingAnalysis | null,
   project?: VoiceModelProject,
@@ -213,65 +217,87 @@ export function analyzeTrainingZones(
   const totalEpoch = Math.max(saveEvery, Math.round(project?.totalEpoch ?? 200));
   const maxSaved = Math.max(saveEvery, Math.floor(totalEpoch / saveEvery) * saveEvery);
   const modelName = project?.name.trim() || 'Active Model';
-  const modelContext = project
-    ? `${modelName} · ${project.vocoder} · ${project.samplingRate} Hz · Save every ${saveEvery} ep`
-    : `Save every ${saveEvery} ep`;
+  const vocoder = analysis?.vocoderDetected || project?.vocoder || 'HiFi-GAN';
+  const sr = project?.samplingRate || '32000';
+  const modelContext = `${modelName} · ${vocoder} · ${sr} Hz · Save every ${saveEvery} ep`;
 
   const lossPoints = analysis
     ? analysis.points.filter(
         (p): p is TrainingEpochPoint & { lowestLoss: number } => p.lowestLoss !== null
       )
     : [];
+  const allPoints = analysis?.points ?? [];
+
+  // Never fabricate epoch numbers or charts before a model has real training epochs logged
+  if (!analysis || (lossPoints.length === 0 && allPoints.length === 0)) {
+    return {
+      confidence: 'untrained',
+      saveEveryEpoch: saveEvery,
+      modelContext,
+      datasetSummary: analysis?.segmentCount
+        ? `${analysis.segmentCount} dataset segments (${analysis.audioDurationLabel})`
+        : 'Waiting for training epochs',
+      bestLoss: null,
+      candidateEpochs: [],
+      summary: `Waiting for real training data for ${modelName}. Once epochs are logged (or a .log/.ipynb is imported), Diagnostics will analyze mel loss, dataset size, architecture, and how your checkpoints sound to pinpoint the Best Epoch.`,
+      undertrainingLabel: 'Awaiting training data',
+      undertrainingEndEpoch: null,
+      sweetSpotLabel: 'Awaiting training data',
+      sweetSpotEpoch: null,
+      sweetSpotMinEpoch: null,
+      sweetSpotMaxEpoch: null,
+      overtrainingLabel: 'Awaiting training data',
+      overtrainingStartEpoch: null,
+    };
+  }
+
+  const segCount = analysis.segmentCount || 0;
+  const effBatch = Math.max(1, (project?.batchSize ?? 2) * (project?.gpuCount ?? 1));
+  const datasetTier =
+    segCount > 0
+      ? segCount < 140
+        ? `Small dataset (${segCount} clips · converges quickly)`
+        : segCount >= 450
+          ? `Large dataset (${segCount} clips · tolerates deeper epochs)`
+          : `Balanced dataset (${segCount} clips)`
+      : `Batch ${effBatch} eff. · ${analysis.audioDurationLabel !== 'Unknown' ? analysis.audioDurationLabel : `${vocoder} @ ${sr} Hz`}`;
 
   const soundNote =
     soundCheck === 'undertrained'
-      ? 'Based on your note that the voice still sounds robotic/undertrained, aim toward the upper end of the sweet window.'
+      ? 'You marked this checkpoint undertrained (robotic/flat) — weighting toward higher saved epochs or continuing training if loss is still dropping.'
       : soundCheck === 'overtrained'
-        ? 'Based on your note that the voice sounds metallic/harsh, step back to an earlier saved checkpoint.'
+        ? 'You marked this checkpoint overtrained (metallic/harsh) — pulling the Best Epoch back earlier before memorization sets in.'
         : soundCheck === 'clean'
-          ? 'Your checkpoint already sounds clean—compare adjacent saves around this range before training further.'
+          ? 'You confirmed it sounds clean & natural — locking near your lowest stable mel-loss checkpoint.'
           : '';
 
-  // No log or sparse milestones: give a clear model-driven estimate strictly aligned to saveEveryEpoch
-  if (!analysis || lossPoints.length < 4) {
-    const baseline = computeModelBaselineSweetRange(
-      project,
-      analysis?.segmentCount ?? 0,
-      soundCheck
-    );
-    const mid = snapToSaveInterval(
-      (baseline.low + baseline.high) / 2,
-      saveEvery,
-      baseline.low,
-      baseline.high
-    );
+  const maxObservedEpoch = Math.max(
+    saveEvery,
+    allPoints.length > 0 ? allPoints[allPoints.length - 1].epoch : analysis.epochsCompleted
+  );
+  const maxObservedSaved = Math.max(saveEvery, Math.floor(maxObservedEpoch / saveEvery) * saveEvery);
 
-    const baseReason = !analysis
-      ? `No training log loaded yet—showing an estimate tuned to ${modelName} (${project?.vocoder ?? 'HiFi-GAN'}, ${project?.samplingRate ?? '32000'} Hz, save every ${saveEvery} epochs).`
-      : `Only ${lossPoints.length} loss milestone${lossPoints.length === 1 ? '' : 's'} logged so far, so a plateau cannot be measured yet—showing an estimate aligned to every ${saveEvery} epochs.`;
-
+  // Sparse log (1–3 loss points): report real observed progress only, never fabricate future curves
+  if (lossPoints.length < 2) {
+    const curBestEp = lossPoints[0]?.epoch ?? maxObservedEpoch;
+    const bestSnap = snapToSaveInterval(curBestEp, saveEvery, saveEvery, Math.max(saveEvery, maxObservedSaved));
+    const bestVal = lossPoints[0]?.lowestLoss ?? analysis.lowestLoss ?? null;
     return {
-      confidence: 'estimate',
+      confidence: 'observed',
       saveEveryEpoch: saveEvery,
       modelContext,
-      summary: soundNote ? `${baseReason} ${soundNote}` : baseReason,
-      undertrainingLabel:
-        baseline.underEnd > saveEvery
-          ? `Est. Epochs ${saveEvery}–${baseline.underEnd}`
-          : `Est. Up to Epoch ${baseline.underEnd}`,
-      undertrainingEndEpoch: baseline.underEnd,
-      sweetSpotLabel:
-        baseline.low === baseline.high
-          ? `Est. Epoch ${baseline.low}`
-          : `Est. Epochs ${baseline.low}–${baseline.high}`,
-      sweetSpotEpoch: mid,
-      sweetSpotMinEpoch: baseline.low,
-      sweetSpotMaxEpoch: baseline.high,
-      overtrainingLabel:
-        soundCheck === 'overtrained'
-          ? `Past Epoch ${baseline.high} (harshness reported)`
-          : `Est. Past Epoch ${baseline.overStart}`,
-      overtrainingStartEpoch: baseline.overStart,
+      datasetSummary: datasetTier,
+      bestLoss: bestVal,
+      candidateEpochs: [bestSnap],
+      summary: `Early training data recorded (${allPoints.length} epoch${allPoints.length === 1 ? '' : 's'}, best observed loss ${bestVal !== null ? bestVal.toFixed(3) : 'N/A'} at epoch ${curBestEp}). Let more saved epochs log so mel-loss stabilization can be measured.${soundNote ? ` ${soundNote}` : ''}`,
+      undertrainingLabel: `Epoch 1–${maxObservedEpoch} (warming up)`,
+      undertrainingEndEpoch: bestSnap,
+      sweetSpotLabel: `Best so far: Epoch ${bestSnap}`,
+      sweetSpotEpoch: bestSnap,
+      sweetSpotMinEpoch: bestSnap,
+      sweetSpotMaxEpoch: bestSnap,
+      overtrainingLabel: 'Not yet reached',
+      overtrainingStartEpoch: null,
     };
   }
 
@@ -287,8 +313,8 @@ export function analyzeTrainingZones(
   const lastPoint = lossPoints[lossPoints.length - 1];
   const totalDrop = Math.max(0.01, first.lowestLoss - minPoint.lowestLoss);
 
-  // Undertraining ends once ~75% of the observed mel-loss drop has completed
-  const underThreshold = first.lowestLoss - totalDrop * 0.75;
+  // When ~72% of observed mel-loss reduction finishes, voice timbre enters usable clarity
+  const underThreshold = first.lowestLoss - totalDrop * 0.72;
   let underIdx = 0;
   for (let i = 0; i < lossPoints.length; i++) {
     if (lossPoints[i].lowestLoss <= underThreshold) {
@@ -296,135 +322,118 @@ export function analyzeTrainingZones(
       break;
     }
   }
-  const rawUnderEnd = lossPoints[underIdx].epoch;
-  const underEndEpoch = snapToSaveInterval(rawUnderEnd, saveEvery, saveEvery, maxSaved);
+  const underEndEpoch = snapToSaveInterval(lossPoints[underIdx].epoch, saveEvery, saveEvery, maxSaved);
 
+  const tailWindow = lossPoints.slice(-Math.min(3, lossPoints.length));
   const tailSlope =
-    lossPoints.length >= 2
-      ? (lossPoints[lossPoints.length - 2].lowestLoss - lastPoint.lowestLoss) /
-        Math.max(1, lastPoint.epoch - lossPoints[lossPoints.length - 2].epoch)
+    tailWindow.length >= 2
+      ? (tailWindow[0].lowestLoss - tailWindow[tailWindow.length - 1].lowestLoss) /
+        Math.max(1, tailWindow[tailWindow.length - 1].epoch - tailWindow[0].epoch)
       : 0;
-  const stalledOrReversed = minIdx < lossPoints.length - 1 || tailSlope < 0.03;
+  const hasPlateauOrRebound = minIdx < lossPoints.length - 1 || tailSlope < 0.025;
 
-  const sweetCap = minPoint.lowestLoss + totalDrop * 0.06;
-  let sweetPoint = minPoint;
+  // Earliest epoch reaching within 4.5% of total mel-loss gain (avoids overfitting tail noise)
+  const sweetCap = minPoint.lowestLoss + totalDrop * 0.045;
+  let balancedPoint = minPoint;
   for (let i = underIdx; i <= minIdx; i++) {
     if (lossPoints[i].lowestLoss <= sweetCap) {
-      sweetPoint = lossPoints[i];
+      balancedPoint = lossPoints[i];
       break;
     }
   }
 
-  if (stalledOrReversed) {
-    let snappedSweet = snapToSaveInterval(sweetPoint.epoch, saveEvery, saveEvery, maxSaved);
+  // Factor dataset size & sample rate slightly around observed balanced checkpoint
+  let datasetOffsetEpochs = 0;
+  if (segCount > 0 && segCount < 140) datasetOffsetEpochs -= saveEvery;
+  else if (segCount >= 450 && !hasPlateauOrRebound) datasetOffsetEpochs += saveEvery;
+  if (sr === '48000' && soundCheck !== 'overtrained') datasetOffsetEpochs += saveEvery;
+
+  const upperObservedBound = Math.max(saveEvery, maxObservedSaved);
+
+  if (hasPlateauOrRebound) {
+    let bestEpoch = snapToSaveInterval(
+      balancedPoint.epoch + datasetOffsetEpochs,
+      saveEvery,
+      saveEvery,
+      upperObservedBound
+    );
     if (soundCheck === 'overtrained') {
-      snappedSweet = snapToSaveInterval(
-        snappedSweet - saveEvery * 2,
-        saveEvery,
-        saveEvery,
-        maxSaved
-      );
+      bestEpoch = snapToSaveInterval(bestEpoch - saveEvery * 2, saveEvery, saveEvery, upperObservedBound);
     } else if (soundCheck === 'undertrained') {
-      snappedSweet = snapToSaveInterval(
-        snappedSweet + saveEvery * 2,
+      bestEpoch = snapToSaveInterval(minPoint.epoch + saveEvery, saveEvery, saveEvery, upperObservedBound);
+    } else if (soundCheck === 'clean') {
+      bestEpoch = snapToSaveInterval(
+        Math.round((balancedPoint.epoch + minPoint.epoch) / 2),
         saveEvery,
         saveEvery,
-        maxSaved
+        upperObservedBound
       );
     }
 
-    const rangePad = saveEvery * 2;
-    const sweetMin = snapToSaveInterval(
-      snappedSweet - rangePad,
-      saveEvery,
-      Math.min(maxSaved, underEndEpoch + saveEvery),
-      snappedSweet
-    );
-    const sweetMax = snapToSaveInterval(
-      snappedSweet + rangePad,
-      saveEvery,
-      snappedSweet,
-      maxSaved
-    );
+    const sweetMin = snapToSaveInterval(bestEpoch - saveEvery, saveEvery, saveEvery, bestEpoch);
+    const sweetMax = snapToSaveInterval(bestEpoch + saveEvery, saveEvery, bestEpoch, upperObservedBound);
     const overStartEpoch = snapToSaveInterval(
-      Math.max(sweetMax + saveEvery * 2, minPoint.epoch + saveEvery),
+      Math.max(sweetMax + saveEvery, minPoint.epoch + saveEvery),
       saveEvery,
       Math.min(maxSaved, sweetMax + saveEvery),
       Math.max(maxSaved, sweetMax + saveEvery)
     );
     const firstSaved = snapToSaveInterval(first.epoch, saveEvery, saveEvery, underEndEpoch);
+    const candidates = uniqueSortedEpochs([sweetMin, bestEpoch, sweetMax].filter((e) => e >= saveEvery && e <= upperObservedBound));
 
     return {
       confidence: 'observed',
       saveEveryEpoch: saveEvery,
       modelContext,
-      summary: `Mel loss dropped ${totalDrop.toFixed(2)} pts overall and flattened near saved checkpoint Epoch ${snappedSweet} (${sweetPoint.lowestLoss.toFixed(3)}).${soundNote ? ` ${soundNote}` : ''}`,
+      datasetSummary: datasetTier,
+      bestLoss: minPoint.lowestLoss,
+      candidateEpochs: candidates,
+      summary: `Best checkpoint: Epoch ${bestEpoch} (lowest mel loss ${minPoint.lowestLoss.toFixed(3)} near ep ${minPoint.epoch}, dropped ${totalDrop.toFixed(2)} pts total across ${datasetTier.toLowerCase()}).${soundNote ? ` ${soundNote}` : ''}`,
       undertrainingLabel:
-        firstSaved < underEndEpoch
-          ? `Epochs ${firstSaved}–${underEndEpoch}`
-          : `Up to Epoch ${underEndEpoch}`,
+        firstSaved < underEndEpoch ? `Epochs ${firstSaved}–${underEndEpoch}` : `Up to Epoch ${underEndEpoch}`,
       undertrainingEndEpoch: underEndEpoch,
       sweetSpotLabel:
-        sweetMin < sweetMax
-          ? `Epochs ${sweetMin}–${sweetMax} (best ~${snappedSweet})`
-          : `Epoch ${snappedSweet} (observed)`,
-      sweetSpotEpoch: snappedSweet,
+        sweetMin < sweetMax ? `Best: Epoch ${bestEpoch} (test e${sweetMin}–e${sweetMax})` : `Best: Epoch ${bestEpoch}`,
+      sweetSpotEpoch: bestEpoch,
       sweetSpotMinEpoch: sweetMin,
       sweetSpotMaxEpoch: sweetMax,
       overtrainingLabel:
         minIdx < lossPoints.length - 1 || soundCheck === 'overtrained'
-          ? `Past Epoch ${overStartEpoch} (stalled/harsh)`
-          : `Past Epoch ${overStartEpoch}`,
+          ? `Past Epoch ${overStartEpoch} (plateau/rebound)`
+          : `Risk past Epoch ${overStartEpoch}`,
       overtrainingStartEpoch: overStartEpoch,
     };
   }
 
-  // Still dropping cleanly at the end of the log: snap projected range strictly to saveEvery
-  const lastSnapped = snapToSaveInterval(lastPoint.epoch, saveEvery, saveEvery, maxSaved);
-  const projectedLow = snapToSaveInterval(
-    Math.max(lastSnapped + saveEvery * 2, lastPoint.epoch * 1.25),
-    saveEvery,
-    saveEvery,
-    maxSaved
-  );
-  const projectedHigh = snapToSaveInterval(
-    projectedLow + Math.max(saveEvery * 4, 30),
-    saveEvery,
-    projectedLow,
-    maxSaved
-  );
-  const projectedSweet = snapToSaveInterval(
-    (projectedLow + projectedHigh) / 2,
-    saveEvery,
-    projectedLow,
-    projectedHigh
-  );
-  const projectedOverStart = snapToSaveInterval(
-    projectedHigh + Math.max(saveEvery * 6, 40),
-    saveEvery,
-    Math.min(maxSaved, projectedHigh + saveEvery),
-    Math.max(maxSaved, projectedHigh + saveEvery)
-  );
-  const firstSaved = snapToSaveInterval(first.epoch, saveEvery, saveEvery, lastSnapped);
+  // Mel loss is still actively improving through the latest logged epoch
+  let currentBest = snapToSaveInterval(minPoint.epoch, saveEvery, saveEvery, upperObservedBound);
+  if (soundCheck === 'overtrained') {
+    currentBest = snapToSaveInterval(currentBest - saveEvery * 2, saveEvery, saveEvery, upperObservedBound);
+  }
+  const sweetMin = snapToSaveInterval(currentBest - saveEvery, saveEvery, saveEvery, currentBest);
+  const sweetMax = snapToSaveInterval(currentBest, saveEvery, sweetMin, upperObservedBound);
+  const firstSaved = snapToSaveInterval(first.epoch, saveEvery, saveEvery, currentBest);
+  const candidates = uniqueSortedEpochs([sweetMin, currentBest].filter((e) => e >= saveEvery && e <= upperObservedBound));
 
   return {
-    confidence: 'estimate',
+    confidence: 'observed',
     saveEveryEpoch: saveEvery,
     modelContext,
-    summary: `Mel loss is still dropping through Epoch ${lastPoint.epoch} (${lastPoint.lowestLoss.toFixed(3)}) without flattening yet—showing the next checkpoints aligned to every ${saveEvery} epochs.${soundNote ? ` ${soundNote}` : ''}`,
+    datasetSummary: datasetTier,
+    bestLoss: minPoint.lowestLoss,
+    candidateEpochs: candidates,
+    summary:
+      soundCheck === 'undertrained'
+        ? `Best saved checkpoint so far is Epoch ${currentBest} (${lastPoint.lowestLoss.toFixed(3)}), and mel loss is still actively dropping across ${datasetTier.toLowerCase()} — keep training past e${currentBest} until loss flattens.`
+        : `Mel loss is still steadily dropping through Epoch ${lastPoint.epoch} (${lastPoint.lowestLoss.toFixed(3)}) without overtraining signs yet. Best checkpoint so far: Epoch ${currentBest} (also audition e${candidates[0] ?? currentBest}).${soundNote ? ` ${soundNote}` : ''}`,
     undertrainingLabel:
-      firstSaved < lastSnapped
-        ? `Epochs ${firstSaved}–${lastSnapped} (still improving)`
-        : `Up to Epoch ${lastSnapped} (still improving)`,
-    undertrainingEndEpoch: lastSnapped,
-    sweetSpotLabel:
-      projectedLow < projectedHigh
-        ? `Est. Epochs ${projectedLow}–${projectedHigh}`
-        : `Est. Epoch ${projectedLow}`,
-    sweetSpotEpoch: projectedSweet,
-    sweetSpotMinEpoch: projectedLow,
-    sweetSpotMaxEpoch: projectedHigh,
-    overtrainingLabel: `Est. Past Epoch ${projectedOverStart}`,
-    overtrainingStartEpoch: projectedOverStart,
+      firstSaved < underEndEpoch ? `Epochs ${firstSaved}–${underEndEpoch}` : `Up to Epoch ${underEndEpoch}`,
+    undertrainingEndEpoch: underEndEpoch,
+    sweetSpotLabel: `Best so far: Epoch ${currentBest}`,
+    sweetSpotEpoch: currentBest,
+    sweetSpotMinEpoch: sweetMin,
+    sweetSpotMaxEpoch: sweetMax,
+    overtrainingLabel: 'None observed yet (still improving)',
+    overtrainingStartEpoch: null,
   };
 }

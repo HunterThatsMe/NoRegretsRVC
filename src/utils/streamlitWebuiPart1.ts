@@ -8,7 +8,7 @@ export function buildStreamlitHeaderAndTabsPart1(
   project: VoiceModelProject,
   downloads: DownloadModelItem[] = []
 ): string {
-  const defaultModelName = sanitizeModelName(project.name || '');
+  const defaultModelName = project.name.trim() ? sanitizeModelName(project.name) : '';
   const defaultDatasetPath =
     project.datasetPath || '/kaggle/input/datasets/your-username/voice-dataset';
   const defaultRepo = (config.customRepoUrl || REPO_URL).trim();
@@ -103,17 +103,24 @@ CRIMSON_CSS = """
 
 html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
   background-color: var(--nr-bg) !important;
+  background-image: radial-gradient(ellipse 90% 45% at 50% -10%, rgba(229, 25, 35, 0.13), transparent 70%) !important;
+  background-attachment: fixed !important;
   color: var(--nr-text) !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
-[data-testid="stHeader"] {
-  background: rgba(16, 5, 6, 0.88) !important;
-  backdrop-filter: blur(8px);
+[data-testid="stHeader"],
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+[data-testid="stSidebar"],
+#MainMenu,
+footer {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  visibility: hidden !important;
 }
-
-[data-testid="stSidebar"] { display: none !important; }
-#MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden; height: 0; }
 
 * {
   scrollbar-color: #E51923 #100506 !important;
@@ -150,7 +157,7 @@ html::-webkit-scrollbar-thumb:hover,
 
 .block-container {
   max-width: 1400px !important;
-  padding-top: 1.25rem !important;
+  padding-top: 1.15rem !important;
   padding-bottom: 3.5rem !important;
   padding-left: 1.5rem !important;
   padding-right: 1.5rem !important;
@@ -162,13 +169,15 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   border: 1px solid var(--nr-border) !important;
   border-radius: 12px !important;
   padding: 1.25rem !important;
-  transition: border-color 0.16s ease !important;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.34) !important;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease !important;
 }
 div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlockBorderWrapper"] {
   background-color: var(--nr-bg) !important;
   border: 1px solid var(--nr-border) !important;
   border-radius: 10px !important;
-  padding: 0.85rem 1rem !important;
+  padding: 0.9rem 1.05rem !important;
+  box-shadow: none !important;
 }
 
 /* Inputs & Selects */
@@ -180,7 +189,13 @@ div[data-baseweb="select"] > div {
   border: 1px solid var(--nr-border) !important;
   border-radius: 8px !important;
   color: var(--nr-text) !important;
-  font-size: 13px !important;
+  font-size: 14px !important;
+}
+[data-testid="stWidgetLabel"] label,
+[data-testid="stWidgetLabel"] p {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: var(--nr-text) !important;
 }
 [data-testid="stTextInput"] input:focus,
 [data-testid="stTextArea"] textarea:focus,
@@ -203,9 +218,9 @@ div[data-baseweb="select"] > div:focus-within {
 .stButton > button, .stDownloadButton > button {
   border-radius: 8px !important;
   font-weight: 600 !important;
-  font-size: 13px !important;
+  font-size: 13.5px !important;
   transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease !important;
-  min-height: 38px !important;
+  min-height: 39px !important;
 }
 .stButton > button[kind="primary"],
 .stDownloadButton > button[kind="primary"] {
@@ -260,7 +275,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
 }
 [data-testid="stExpander"] summary {
   color: var(--nr-text-soft) !important;
-  font-size: 12px !important;
+  font-size: 13.5px !important;
   font-weight: 600 !important;
 }
 [data-testid="stExpander"] summary:hover {
@@ -284,7 +299,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
 }
 [data-testid="stCheckbox"] label span {
   color: var(--nr-text) !important;
-  font-size: 13px !important;
+  font-size: 14px !important;
+  line-height: 1.45 !important;
 }
 
 /* Custom Studio Components */
@@ -293,6 +309,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   border: 1px solid var(--nr-border);
   border-radius: 12px;
   padding: 16px 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -333,8 +350,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   margin-left: 8px;
 }
 .nr-brand-sub {
-  font-size: 12px;
-  color: var(--nr-muted);
+  font-size: 13px;
+  color: var(--nr-text-soft);
   margin-top: 3px;
 }
 .nr-model-pill {
@@ -345,21 +362,21 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   text-align: right;
 }
 .nr-model-pill-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--nr-text);
 }
 .nr-model-pill-meta {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: var(--nr-muted);
+  font-size: 12px;
+  color: var(--nr-text-soft);
   margin-top: 2px;
 }
 .nr-step-head, .applio-step {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .nr-step-num {
   width: 28px;
@@ -377,37 +394,39 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
 .nr-step-title {
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 17px;
   color: var(--nr-text);
   line-height: 1.25;
 }
 .nr-step-desc {
-  font-size: 12px;
-  color: var(--nr-muted);
-  margin-top: 2px;
+  font-size: 13.5px;
+  color: var(--nr-text-soft);
+  margin-top: 3px;
+  line-height: 1.45;
 }
 .nr-field-title {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--nr-text);
 }
 .nr-field-help {
-  font-size: 11px;
-  color: var(--nr-muted);
-  margin: 2px 0 6px 0;
-  line-height: 1.4;
+  font-size: 13px;
+  color: var(--nr-text-soft);
+  margin: 3px 0 8px 0;
+  line-height: 1.45;
 }
 .nr-output-box {
   background: var(--nr-bg);
   border: 1px solid var(--nr-border);
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 11px 14px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.55;
   color: var(--nr-text-soft);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 240px;
+  max-height: 260px;
   overflow-y: auto;
 }
 .nr-section-header {
@@ -427,7 +446,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   letter-spacing: -0.02em;
 }
 .nr-section-sub {
-  font-size: 14px;
+  font-size: 14.5px;
   color: var(--nr-text-soft);
   margin-top: 4px;
 }
@@ -439,7 +458,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   border: 1px solid var(--nr-border);
   border-radius: 8px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--nr-text-soft);
   text-decoration: none;
@@ -455,19 +474,20 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   padding: 10px 12px;
 }
 .nr-metric-k {
-  font-size: 10px;
-  color: var(--nr-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--nr-text-soft);
 }
 .nr-metric-v {
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--nr-text);
-  margin-top: 2px;
+  margin-top: 3px;
   font-family: 'JetBrains Mono', monospace;
 }
 .nr-zone-card {
   border-radius: 8px;
-  padding: 12px 14px;
+  padding: 13px 15px;
   border: 1px solid var(--nr-border);
   background: var(--nr-card);
 }
@@ -481,7 +501,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   border-radius: 6px;
   padding: 2px 8px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--nr-text-soft);
   white-space: nowrap;
 }
@@ -490,7 +510,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   border: 1px solid rgba(71, 22, 29, 0.8);
   border-radius: 8px;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--nr-text-soft);
   line-height: 1.5;
   margin: 8px 0 10px 0;
@@ -499,10 +519,10 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   background: var(--nr-bg);
   border: 1px solid var(--nr-border);
   border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 12px;
+  padding: 11px 14px;
+  font-size: 13.5px;
   color: var(--nr-text-soft);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .nr-prog-wrap {
   background: var(--nr-elevated);
@@ -523,6 +543,44 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
 .nr-prog-fill {
   height: 100%;
   background: var(--nr-accent);
+}
+.nr-toast-stack {
+  position: fixed;
+  top: 18px;
+  right: 20px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+  pointer-events: none;
+}
+.nr-toast {
+  background: #1C090C;
+  border: 1px solid rgba(229, 25, 35, 0.8);
+  border-left: 4px solid #E51923;
+  border-radius: 10px;
+  padding: 12px 15px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.78);
+  animation: nrToastFade 5.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.nr-toast-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #FDF7F7;
+}
+.nr-toast-msg {
+  font-size: 13px;
+  color: #DFBFC3;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+@keyframes nrToastFade {
+  0% { opacity: 0; transform: translate3d(18px, -8px, 0); }
+  10% { opacity: 1; transform: translate3d(0, 0, 0); }
+  82% { opacity: 1; transform: translate3d(0, 0, 0); }
+  100% { opacity: 0; transform: translate3d(18px, -6px, 0); visibility: hidden; }
 }
 </style>
 """
@@ -923,8 +981,219 @@ def _run_core_sync(fn_name: str, kwargs: dict[str, Any]) -> tuple[int, str]:
         return 1, f"Error in {fn_name}: {exc}"
 
 
+def _push_toast(title: str, message: str, ttl: float = 5.2) -> None:
+    toasts = list(st.session_state.get("nr_toasts", []))
+    toasts.append({
+        "id": f"t-{int(time.time() * 1000)}-{len(toasts)}",
+        "title": title,
+        "message": message,
+        "expires": time.time() + ttl,
+    })
+    st.session_state["nr_toasts"] = toasts[-4:]
+
+
+def _render_toasts() -> None:
+    now_t = time.time()
+    active = [t for t in st.session_state.get("nr_toasts", []) if float(t.get("expires", 0)) > now_t]
+    st.session_state["nr_toasts"] = active
+    if not active:
+        return
+    cards = "".join(
+        f'<div class="nr-toast"><div class="nr-toast-title">{html.escape(str(t["title"]))}</div>'
+        f'<div class="nr-toast-msg">{html.escape(str(t["message"]))}</div></div>'
+        for t in active
+    )
+    st.markdown(f'<div class="nr-toast-stack">{cards}</div>', unsafe_allow_html=True)
+
+
+def _safe_model_slug(model_name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", model_name.strip() or "UnnamedModel")
+
+
+def _task_paths(task_kind: str) -> tuple[Path, Path]:
+    logs_root = Path(now_dir) / "logs"
+    logs_root.mkdir(parents=True, exist_ok=True)
+    return logs_root / f".nr_task_{task_kind}.json", logs_root / f".nr_task_{task_kind}.log"
+
+
+def _clear_fs_caches() -> None:
+    for fn in (_list_models, _list_datasets, _list_files_rel, _load_tts_voices, _dataset_slice_count):
+        try:
+            fn.clear()
+        except Exception:
+            pass
+
+
+def _start_core_task_bg(
+    task_kind: str,
+    fn_name: str,
+    model_name: str,
+    kwargs: dict[str, Any],
+    log_state_key: str,
+    toast_title: str,
+    done_note: str,
+) -> str:
+    meta_p, log_p = _task_paths(task_kind)
+    if meta_p.is_file():
+        try:
+            prev = json.loads(meta_p.read_text(encoding="utf-8"))
+            if prev.get("status") == "running" and prev.get("pid"):
+                os.kill(int(prev["pid"]), 0)
+                return f"{task_kind.capitalize()} is already running in background (PID {prev['pid']})."
+        except Exception:
+            pass
+
+    child_code = (
+        "import sys, os, json, inspect, traceback; from pathlib import Path; "
+        "sys.path.insert(0, os.getcwd()); "
+        f"meta_p = Path({json.dumps(str(meta_p))}); "
+        f"task_kind = {json.dumps(task_kind)}; "
+        f"model_safe = {json.dumps(_safe_model_slug(model_name))}; "
+        f"kw = {json.dumps(kwargs)}; "
+        "status = 'done';\\n"
+        "try:\\n"
+        "    import core\\n"
+        f"    fn = getattr(core, {json.dumps(fn_name)})\\n"
+        "    sig = inspect.signature(fn)\\n"
+        "    kw = kw if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()) else {k: v for k, v in kw.items() if k in sig.parameters}\\n"
+        "    res = fn(**kw)\\n"
+        "    if isinstance(res, tuple):\\n"
+        "        print(' '.join(str(x) for x in res if x is not None), flush=True)\\n"
+        "    elif res is not None:\\n"
+        "        print(str(res), flush=True)\\n"
+        "    if task_kind == 'preprocess':\\n"
+        "        sdir = Path('logs') / model_safe / 'sliced_audios'\\n"
+        "        cnt = sum(1 for f in sdir.glob('*.wav')) if sdir.is_dir() else 0\\n"
+        "        print(f'\\\\n✔ Preprocess complete! ({cnt} sliced audio clip(s) ready in logs/{model_safe}/sliced_audios)', flush=True)\\n"
+        "    elif task_kind == 'extract':\\n"
+        "        edir = Path('logs') / model_safe / 'extracted'\\n"
+        "        cnt = sum(1 for f in edir.glob('*.npy')) if edir.is_dir() else 0\\n"
+        "        print(f'\\\\n✔ Feature extraction complete! ({cnt} feature embedding(s) saved in logs/{model_safe})', flush=True)\\n"
+        "    elif task_kind == 'index':\\n"
+        "        mdir = Path('logs') / model_safe\\n"
+        "        idxs = [f.name for f in mdir.glob('*.index') if 'trained' not in f.name.lower()] if mdir.is_dir() else []\\n"
+        "        idx_lbl = idxs[0] if idxs else 'added.index'\\n"
+        "        print(f'\\\\n✔ Index generation complete! ({idx_lbl} ready for inference)', flush=True)\\n"
+        "except Exception:\\n"
+        "    status = 'error'\\n"
+        "    traceback.print_exc()\\n"
+        "finally:\\n"
+        "    try:\\n"
+        "        meta = json.loads(meta_p.read_text(encoding='utf-8')) if meta_p.is_file() else {}\\n"
+        "        meta['status'] = status\\n"
+        "        meta['finished'] = __import__('time').time()\\n"
+        "        meta_p.write_text(json.dumps(meta), encoding='utf-8')\\n"
+        "    except Exception:\\n"
+        "        pass\\n"
+    )
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    with open(log_p, "w", encoding="utf-8") as lf:
+        lf.write(f"⏳ Starting {task_kind} for {model_name or 'model'}...\\n")
+        proc = subprocess.Popen(
+            [sys.executable, "-u", "-c", child_code],
+            cwd=now_dir,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            start_new_session=True,
+        )
+    meta_p.write_text(
+        json.dumps({
+            "task_kind": task_kind,
+            "pid": proc.pid,
+            "model_name": model_name,
+            "log_state_key": log_state_key,
+            "log_path": str(log_p),
+            "toast_title": toast_title,
+            "done_note": done_note,
+            "status": "running",
+            "notified": False,
+            "started": time.time(),
+        }),
+        encoding="utf-8",
+    )
+    return f"⏳ {task_kind.capitalize()} running in background (PID {proc.pid})..."
+
+
+def _poll_core_tasks() -> None:
+    for task_kind in ("preprocess", "extract", "index"):
+        meta_p, log_p = _task_paths(task_kind)
+        if not meta_p.is_file():
+            continue
+        try:
+            meta = json.loads(meta_p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        lkey = str(meta.get("log_state_key", ""))
+        if log_p.is_file() and lkey:
+            try:
+                txt = log_p.read_text(encoding="utf-8", errors="replace").strip()
+                if txt:
+                    st.session_state[lkey] = "\\n".join(txt.splitlines()[-80:])
+            except Exception:
+                pass
+        if meta.get("status") == "running" and meta.get("pid"):
+            try:
+                os.kill(int(meta["pid"]), 0)
+            except Exception:
+                meta["status"] = "done"
+                try:
+                    meta_p.write_text(json.dumps(meta), encoding="utf-8")
+                except Exception:
+                    pass
+        if meta.get("status") in ("done", "error") and not meta.get("notified"):
+            meta["notified"] = True
+            try:
+                meta_p.write_text(json.dumps(meta), encoding="utf-8")
+            except Exception:
+                pass
+            _clear_fs_caches()
+            title = str(meta.get("toast_title", f"{task_kind.capitalize()} Complete"))
+            msg = str(meta.get("done_note", f"{task_kind.capitalize()} finished."))
+            if meta.get("status") == "error":
+                title = f"{task_kind.capitalize()} Finished With Error"
+                msg = f"Check output log for {meta.get('model_name') or 'task'} details."
+            _push_toast(title, msg)
+
+    if ACTIVE_TRAIN_META.is_file():
+        try:
+            tmeta = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8"))
+            tmodel = str(tmeta.get("model_name", ""))
+            alive = _is_training_process_alive(tmodel)
+            if tmeta.get("status") == "running" and not alive:
+                st.session_state["nr_is_training"] = False
+                tmeta["status"] = "done"
+                if not tmeta.get("notified"):
+                    tmeta["notified"] = True
+                    ACTIVE_TRAIN_META.write_text(json.dumps(tmeta), encoding="utf-8")
+                    _clear_fs_caches()
+                    _push_toast("Training Complete", f"Training finished for {tmodel or 'your model'} — open Diagnostics to inspect best epoch.")
+        except Exception:
+            pass
+
+
+def _has_active_bg_work() -> bool:
+    if st.session_state.get("nr_is_training") and _is_training_process_alive(st.session_state.get("nr_model_name", "")):
+        return True
+    for task_kind in ("preprocess", "extract", "index"):
+        meta_p, _ = _task_paths(task_kind)
+        if meta_p.is_file():
+            try:
+                meta = json.loads(meta_p.read_text(encoding="utf-8"))
+                if meta.get("status") == "running" and meta.get("pid"):
+                    os.kill(int(meta["pid"]), 0)
+                    return True
+            except Exception:
+                pass
+    return False
+
+
 def _train_log_path(model_name: str) -> Path:
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", model_name.strip() or "UnnamedModel")
+    safe = _safe_model_slug(model_name)
     p = Path(now_dir) / "logs" / safe / "nr_train.log"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
@@ -988,7 +1257,7 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
     try:
         ACTIVE_TRAIN_META.parent.mkdir(parents=True, exist_ok=True)
         ACTIVE_TRAIN_META.write_text(
-            json.dumps({"pid": proc.pid, "model_name": model_name, "log_path": str(log_p), "started": time.time()}),
+            json.dumps({"pid": proc.pid, "model_name": model_name, "log_path": str(log_p), "started": time.time(), "status": "running", "notified": False}),
             encoding="utf-8",
         )
     except Exception:
@@ -1002,7 +1271,10 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
                     lf.flush()
                     print(ln, end="", flush=True)
         finally:
-            proc.wait()
+            rc = proc.wait()
+            if rc == 0:
+                lf.write("\\n✔ Training complete!\\n")
+                lf.flush()
             lf.close()
 
     threading.Thread(target=_pump, daemon=True).start()
@@ -1026,6 +1298,9 @@ def _stop_training(model_name: str) -> str:
             meta = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8"))
             if isinstance(meta.get("pid"), int):
                 pids.append(meta["pid"])
+            meta["status"] = "stopped"
+            meta["notified"] = True
+            ACTIVE_TRAIN_META.write_text(json.dumps(meta), encoding="utf-8")
         except Exception:
             pass
     for pid in set(pids):
@@ -1038,6 +1313,7 @@ def _stop_training(model_name: str) -> str:
                 killed += 1
             except Exception:
                 pass
+    _clear_fs_caches()
     return f"Stop signal sent to training ({killed} process group(s))."
 
 
@@ -1053,14 +1329,26 @@ def _is_training_process_alive(model_name: str) -> bool:
         return False
 
 
+@st.cache_data(ttl=6, show_spinner=False)
 def _list_models() -> list[str]:
     logs_dir = Path(now_dir) / "logs"
     if not logs_dir.is_dir():
         return []
     skip = {"mute", "mute_spin", "reference", "zips", "downloads"}
-    return sorted(p.name for p in logs_dir.iterdir() if p.is_dir() and p.name not in skip)
+    return sorted(p.name for p in logs_dir.iterdir() if p.is_dir() and p.name not in skip and not p.name.startswith("."))
 
 
+@st.cache_data(ttl=6, show_spinner=False)
+def _dataset_slice_count(model_name: str) -> int:
+    if not model_name.strip():
+        return 0
+    sdir = Path(now_dir) / "logs" / _safe_model_slug(model_name) / "sliced_audios"
+    if not sdir.is_dir():
+        return 0
+    return sum(1 for p in sdir.iterdir() if p.is_file() and p.suffix.lower() == ".wav")
+
+
+@st.cache_data(ttl=6, show_spinner=False)
 def _list_datasets() -> list[str]:
     found: list[str] = []
     for base in (Path("/kaggle/input"), Path(now_dir) / "assets" / "datasets"):
@@ -1075,6 +1363,7 @@ def _list_datasets() -> list[str]:
     return found
 
 
+@st.cache_data(ttl=6, show_spinner=False)
 def _list_files_rel(exts: tuple[str, ...], roots: tuple[str, ...], query: str = "") -> list[str]:
     found: list[str] = []
     q = query.strip().lower()
@@ -1119,6 +1408,7 @@ def _list_custom_pretrains(prefix: str) -> list[str]:
     return out
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def _load_tts_voices() -> list[str]:
     vf = Path(now_dir) / "rvc" / "lib" / "tools" / "tts_voices.json"
     if vf.is_file():
@@ -1283,45 +1573,125 @@ def _snap_near(val: int, step: int) -> int:
     return max(s, int(round(val / s) * s))
 
 
-def _analyze_zones(parsed: dict[str, Any] | None, save_every: int, total_epoch: int, sr: int, sound_feedback: str) -> dict[str, Any]:
+def _analyze_zones(
+    parsed: dict[str, Any] | None,
+    save_every: int,
+    total_epoch: int,
+    sr: int,
+    sound_feedback: str = "untested",
+    dataset_slices: int = 0,
+    vocoder: str = "HiFi-GAN",
+    model_name: str = "",
+) -> dict[str, Any]:
     s = max(1, int(save_every))
-    sr_bump = 10 if sr >= 48000 else (5 if sr >= 40000 else 0)
-    base_sweet = _snap_near((55 if total_epoch >= 120 else 45) + sr_bump, s)
-    observed = False
-    if parsed and parsed.get("lowest_loss_epoch"):
-        observed = True
-        base_sweet = _snap_near(int(parsed["lowest_loss_epoch"]), s)
+    pts = [p for p in (parsed.get("points") if parsed else []) if p.get("epoch") is not None]
+    if not parsed or len(pts) == 0:
+        return {
+            "confidence": "untrained",
+            "save_every": s,
+            "best_epoch": None,
+            "best_loss": None,
+            "candidate_epochs": [],
+            "under_end": None,
+            "sweet_min": None,
+            "sweet_mid": None,
+            "sweet_max": None,
+            "over_start": None,
+            "under_label": "—",
+            "sweet_label": "—",
+            "over_label": "—",
+            "checkpoint_hint": "",
+            "dataset_summary": (
+                f"{dataset_slices} sliced audio clips detected on disk"
+                if dataset_slices > 0
+                else "Waiting for preprocessed slices & real training epochs"
+            ),
+            "summary": "No real training epochs recorded yet. Start training or import a training log to identify your model's best epoch.",
+        }
 
-    if sound_feedback == "undertrained":
-        sweet_mid = _snap_up(max(base_sweet + s * 2, (parsed["epochs_completed"] if parsed else 0) + s * 2), s)
-    elif sound_feedback == "overtrained":
-        sweet_mid = _snap_near(max(s * 2, base_sweet - s * 2), s)
-    elif sound_feedback == "clean" and parsed and parsed["epochs_completed"] >= s:
-        sweet_mid = _snap_near(parsed["epochs_completed"], s)
-    else:
-        sweet_mid = base_sweet
+    ep_completed = max(int(parsed.get("epochs_completed") or pts[-1]["epoch"]), pts[-1]["epoch"])
+    loss_pts = [p for p in pts if p.get("lowest_loss") is not None]
+    min_loss_pt = min(loss_pts, key=lambda p: float(p["lowest_loss"])) if loss_pts else pts[-1]
+    lowest_ep = int(parsed.get("lowest_loss_epoch") or min_loss_pt["epoch"])
+    best_loss = float(min_loss_pt["lowest_loss"]) if min_loss_pt.get("lowest_loss") is not None else None
 
-    sweet_min = max(s, sweet_mid - s * 2)
-    sweet_max = max(sweet_min + s, sweet_mid + s * 2)
-    under_end = max(s, sweet_min - s)
-    over_start = sweet_max + s * 5
-    summary = (
-        f"Checkpoints {sweet_min}-{sweet_max} offer your cleanest timbre window (snapped to ×{s} save interval)."
-        if sound_feedback == "untested"
-        else f"Adjusted to your sound check ({sound_feedback}): audition checkpoints {sweet_min}-{sweet_max} in Samples."
+    tail_pts = loss_pts[-3:]
+    rebound = bool(
+        best_loss is not None
+        and tail_pts
+        and float(tail_pts[-1]["lowest_loss"]) > best_loss * 1.04
+        and int(tail_pts[-1]["epoch"]) > lowest_ep + s
     )
+
+    if dataset_slices > 0 and dataset_slices < 60:
+        ds_tier = f"Compact dataset ({dataset_slices} clips — converges quickly, monitor early checkpoints)"
+    elif dataset_slices >= 250:
+        ds_tier = f"Rich dataset ({dataset_slices} clips — tolerates deeper epochs before memorization)"
+    elif dataset_slices > 0:
+        ds_tier = f"Balanced dataset ({dataset_slices} clips)"
+    else:
+        ds_tier = f"Live log analysis ({ep_completed} epochs completed · {sr} Hz · {vocoder})"
+
+    snapped = [ep for ep in range(s, ep_completed + 1, s)]
+    if not snapped:
+        snapped = [ep_completed]
+
+    target_raw = _snap_near(lowest_ep, s)
+    if sound_feedback == "undertrained":
+        target_raw = min(ep_completed, _snap_up(max(target_raw + s, ep_completed), s))
+    elif sound_feedback == "overtrained":
+        target_raw = max(snapped[0], _snap_near(lowest_ep - s * 2, s))
+    elif sound_feedback == "clean" and ep_completed >= s:
+        target_raw = _snap_near(ep_completed, s)
+
+    best_ep = min(snapped, key=lambda ep: abs(ep - target_raw))
+    candidates = sorted({
+        min(snapped, key=lambda ep: abs(ep - max(snapped[0], best_ep - s))),
+        best_ep,
+        min(snapped, key=lambda ep: abs(ep - min(snapped[-1], best_ep + s))),
+    })
+
+    sweet_min = candidates[0]
+    sweet_max = max(candidates[-1], sweet_min + s) if len(candidates) > 1 else best_ep
+    under_end = max(s, sweet_min - s) if sweet_min > s else None
+    over_start = (best_ep + s * 3) if rebound else (sweet_max + s * 4)
+
+    safe_m = _safe_model_slug(model_name) if model_name.strip() else "YourModel"
+    step_at_best = next((int(p["step"]) for p in pts if int(p["epoch"]) == best_ep), None)
+    if step_at_best is None:
+        closest_pt = min(pts, key=lambda p: abs(int(p["epoch"]) - best_ep))
+        step_at_best = int(closest_pt["step"])
+    ckpt_hint = f"{safe_m}_{best_ep}e_{step_at_best}s.pth"
+
+    loss_note = f"Lowest mel loss {best_loss:.3f} at e{lowest_ep}. " if best_loss is not None else ""
+    if sound_feedback == "undertrained":
+        fb_note = f"Shifted forward from e{lowest_ep} because you reported undertrained audio."
+    elif sound_feedback == "overtrained":
+        fb_note = f"Pulled earlier from e{lowest_ep} to remove metallic overtraining artifacts."
+    elif sound_feedback == "clean":
+        fb_note = f"Confirmed clean & natural near checkpoint e{best_ep}."
+    elif rebound:
+        fb_note = f"Loss rebounded past e{lowest_ep}, so stopping around e{best_ep} preserves natural tone."
+    else:
+        fb_note = f"Mel loss & {sr} Hz {vocoder} schedule point directly to checkpoint e{best_ep}."
+
     return {
-        "confidence": "observed" if observed else "estimated",
+        "confidence": "observed",
         "save_every": s,
+        "best_epoch": best_ep,
+        "best_loss": round(best_loss, 4) if best_loss is not None else None,
+        "candidate_epochs": candidates,
         "under_end": under_end,
         "sweet_min": sweet_min,
-        "sweet_mid": sweet_mid,
+        "sweet_mid": best_ep,
         "sweet_max": sweet_max,
         "over_start": over_start,
-        "under_label": f"e{s} – e{under_end}",
-        "sweet_label": f"e{sweet_min} – e{sweet_max}",
+        "under_label": f"e{s} – e{under_end}" if under_end else "—",
+        "sweet_label": f"Epoch {best_ep}",
         "over_label": f"e{over_start}+",
-        "summary": summary,
+        "checkpoint_hint": ckpt_hint,
+        "dataset_summary": ds_tier,
+        "summary": f"{loss_note}{fb_note}",
     }
 
 
@@ -1413,7 +1783,7 @@ def _page_header(title: str, subtitle: str, show_readme: bool = True) -> None:
 
 
 def _output_box(label: str, text: str) -> None:
-    st.markdown(f'<div style="font-size:12px;font-weight:500;color:#DFBFC3;margin:6px 0 4px 0">{html.escape(label)}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size:13px;font-weight:600;color:#DFBFC3;margin:8px 0 5px 0">{html.escape(label)}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="nr-output-box">{html.escape(text or "The output information will be displayed here.")}</div>', unsafe_allow_html=True)
 
 
@@ -1461,6 +1831,7 @@ def _ensure_state() -> None:
         "nr_custom_d": ${JSON.stringify(project.customPretrainedD || '')},
         "nr_index_algo": ${JSON.stringify(project.indexAlgorithm || 'Auto')},
         "nr_is_training": False,
+        "nr_toasts": [],
         "nr_prep_log": "The output information will be displayed here.",
         "nr_ext_log": "The output information will be displayed here.",
         "nr_trn_log": "The output information will be displayed here.",
@@ -1499,6 +1870,7 @@ def _ensure_state() -> None:
 
 
 _ensure_state()
+_poll_core_tasks()
 
 # ==============================================================================
 # AUTH GATE (WHEN LAUNCHED VIA KAGGLE NOTEBOOK WITH RANDOM PASSWORD)
@@ -1528,6 +1900,8 @@ if _auth_pass and not st.session_state.get("nr_authed", False):
                 else:
                     st.error("Invalid WebUI username or password.")
     st.stop()
+
+_render_toasts()
 
 # ==============================================================================
 # TOP BAR & 8-TAB NAVIGATION (EXACT PREVIEW MATCH)

@@ -178,20 +178,20 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             <div className="flex items-start gap-3">
               <StepBadge num={1} />
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.sec1.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.sec1.desc')}
                 </p>
               </div>
             </div>
             <label className="flex items-center justify-between rounded-lg border border-[#47161D] bg-[#100506] px-4 py-3 cursor-pointer">
               <div>
-                <span className="block text-xs font-semibold text-[#FDF7F7]">
+                <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                   {t('settings.sec1.label')}
                 </span>
-                <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                   {t('settings.sec1.sub')}
                 </span>
               </div>
@@ -211,10 +211,10 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             <div className="flex items-start gap-3">
               <StepBadge num={2} />
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.sec2.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.sec2.desc')}
                 </p>
               </div>
@@ -238,10 +238,10 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                 <div className="border-t border-[#47161D] p-4 space-y-4">
                   <label className="flex items-start justify-between gap-4 cursor-pointer">
                     <div>
-                      <span className="block text-xs font-semibold text-[#FDF7F7]">
+                      <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                         Enable RMVPE high-register correction
                       </span>
-                      <span className="block text-[11px] text-[#AD8288] mt-0.5 leading-relaxed">
+                      <span className="block text-[13px] text-[#C89EA4] mt-0.5 leading-relaxed">
                         Runs a secondary octave-down pass above ~1040 Hz to catch upper-register pitch jumps. Disabled by default so standard RMVPE behavior remains untouched unless checked.
                       </span>
                     </div>
@@ -266,7 +266,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                       >
                         Correction mode
                       </label>
-                      <p className="text-[11px] text-[#AD8288] mt-0.5 mb-1.5 leading-relaxed">
+                      <p className="text-[13px] text-[#C89EA4] mt-0.5 mb-1.5 leading-relaxed">
                         true_pitch tracks the actual note up to the F0 cap; fold corrects only misdetected octave frames.
                       </p>
                       <select
@@ -294,7 +294,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                           >
                             F0 ceiling (Hz)
                           </label>
-                          <p className="text-[11px] text-[#AD8288]">
+                          <p className="text-[13px] text-[#C89EA4]">
                             Upper frequency cap applied in true_pitch mode.
                           </p>
                         </div>
@@ -348,20 +348,20 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             <div className="flex items-start gap-3">
               <StepBadge num={3} />
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.sec3.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.sec3.desc')}
                 </p>
               </div>
             </div>
             <label className="flex items-center justify-between rounded-lg border border-[#47161D] bg-[#100506] px-4 py-3 cursor-pointer">
               <div>
-                <span className="block text-xs font-semibold text-[#FDF7F7]">
+                <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                   {t('settings.sec3.label')}
                 </span>
-                <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                   {t('settings.sec3.sub')}
                 </span>
               </div>
@@ -384,10 +384,10 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             <div className="flex items-start gap-3">
               <StepBadge num={4} />
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.sec4.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.sec4.desc')}
                 </p>
               </div>
@@ -424,17 +424,17 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             <div className="flex items-start gap-3">
               <StepBadge num={5} />
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.sec5.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.sec5.desc')}
                 </p>
               </div>
             </div>
             <div>
-              <p className="text-xs font-semibold text-[#FDF7F7]">{t('settings.sec5.checker')}</p>
-              <p className="text-[11px] text-[#AD8288] mb-2">
+              <p className="text-[13.5px] font-semibold text-[#FDF7F7]">{t('settings.sec5.checker')}</p>
+              <p className="text-[13px] text-[#C89EA4] mb-2">
                 Verifies your installed {BRAND_NAME} build against the newest available release (currently {APP_VERSION}).
               </p>
               <div className="rounded-lg border border-[#47161D] bg-[#100506] px-4 py-3 text-xs font-mono text-[#DFBFC3] flex flex-wrap items-center justify-between gap-2">
@@ -502,10 +502,10 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             <div className="flex items-start gap-3">
               <StepBadge num={1} />
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.tr1.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.tr1.desc')}
                 </p>
               </div>
@@ -518,7 +518,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
               >
                 {t('settings.tr1.label')}
               </label>
-              <p className="text-[11px] text-[#AD8288] mb-1.5">
+              <p className="text-[13px] text-[#C89EA4] mb-1.5">
                 Creator handle embedded in published checkpoints.
               </p>
               <input
@@ -559,10 +559,10 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             <div className="flex items-start gap-3">
               <StepBadge num={2} />
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.tr2.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.tr2.desc')}
                 </p>
               </div>
@@ -575,7 +575,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
               >
                 {t('settings.tr2.label')}
               </label>
-              <p className="text-[11px] text-[#AD8288] mb-1.5">
+              <p className="text-[13px] text-[#C89EA4] mb-1.5">
                 FP32 prioritizes maximum stability on T4 GPUs; FP16 lowers VRAM usage.
               </p>
               <select
@@ -623,10 +623,10 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                 <Shield className="h-4 w-4" />
               </span>
               <div>
-                <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+                <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                   {t('settings.tr3.title')}
                 </h3>
-                <p className="text-xs text-[#AD8288] mt-0.5">
+                <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                   {t('settings.tr3.desc')}
                 </p>
               </div>
@@ -701,7 +701,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-xs text-[#FDF7F7] cursor-pointer">
+              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-[13px] text-[#FDF7F7] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={forkConfig.randomAuthEnabled}
@@ -715,7 +715,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                 />
                 <span>{t('settings.tr3.randomAuth')}</span>
               </label>
-              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-xs text-[#FDF7F7] cursor-pointer">
+              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-[13px] text-[#FDF7F7] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={forkConfig.useUvVenv}
@@ -729,7 +729,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                 />
                 <span>{t('settings.tr3.uv')}</span>
               </label>
-              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-xs text-[#FDF7F7] cursor-pointer">
+              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-[13px] text-[#FDF7F7] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={forkConfig.verifyOnnxGpu}
@@ -743,7 +743,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                 />
                 <span>{t('settings.tr3.onnx')}</span>
               </label>
-              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-xs text-[#FDF7F7] cursor-pointer">
+              <label className="flex items-center gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-[13px] text-[#FDF7F7] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={forkConfig.turboTraining ?? true}

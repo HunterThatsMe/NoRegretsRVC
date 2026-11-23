@@ -487,10 +487,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
         <div className="flex items-start gap-3">
           <StepBadge num={1} />
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               Voice Model
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
               Pick the default .pth voice checkpoint and optional FAISS .index file for new clips.
             </p>
           </div>
@@ -576,10 +576,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
           <div className="flex items-start gap-3">
             <StepBadge num={2} />
             <div>
-              <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+              <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
                 Audio Source
               </h3>
-              <p className="text-xs text-[#AD8288] mt-0.5">
+              <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
                 Drop or select one or multiple recordings, customize Pitch &amp; Index per sample, or point to a Kaggle folder.
               </p>
             </div>
@@ -700,7 +700,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             <p className="font-mono text-xs font-semibold text-[#FDF7F7] truncate">
                               {clip.fileName}
                             </p>
-                            <p className="text-[11px] text-[#AD8288] truncate tabular-nums">
+                            <p className="text-[13px] text-[#C89EA4] truncate tabular-nums">
                               Pitch {pitchText} · Index {clip.indexRate.toFixed(2)} · {clip.outputFormat.toUpperCase()}
                               {clip.status === 'ready' ? ' · Converted' : ''}
                             </p>
@@ -740,7 +740,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           <div className="flex items-center justify-between gap-2 mb-1.5">
                             <label
                               htmlFor={`clip-pitch-${clip.id}`}
-                              className="text-[11px] font-semibold text-[#FDF7F7]"
+                              className="text-xs font-semibold text-[#FDF7F7]"
                             >
                               Pitch
                             </label>
@@ -776,7 +776,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           <div className="flex items-center justify-between gap-2 mb-1.5">
                             <label
                               htmlFor={`clip-index-${clip.id}`}
-                              className="text-[11px] font-semibold text-[#FDF7F7]"
+                              className="text-xs font-semibold text-[#FDF7F7]"
                             >
                               Index Rate
                             </label>
@@ -810,7 +810,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             }))
                           }
                           aria-expanded={isAdvExpanded}
-                          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#AD8288] hover:text-[#FDF7F7]"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#C89EA4] hover:text-[#FDF7F7]"
                         >
                           <SlidersHorizontal className="h-3 w-3 text-[#E51923]" />
                           <span>
@@ -825,7 +825,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             <div>
                               <label
                                 htmlFor={`clip-model-${clip.id}`}
-                                className="block text-[11px] font-medium text-[#AD8288] mb-1"
+                                className="block text-xs font-medium text-[#C89EA4] mb-1"
                               >
                                 Clip Voice Model
                               </label>
@@ -835,7 +835,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                                 onChange={(e) =>
                                   handleUpdateClip(clip.id, { voiceModel: e.target.value })
                                 }
-                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-[11px] font-mono text-[#FDF7F7]"
+                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs font-mono text-[#FDF7F7]"
                               >
                                 <option value="">Use Default (Step 1)</option>
                                 {modelOptions.map((m) => (
@@ -849,7 +849,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             <div>
                               <label
                                 htmlFor={`clip-idxfile-${clip.id}`}
-                                className="block text-[11px] font-medium text-[#AD8288] mb-1"
+                                className="block text-xs font-medium text-[#C89EA4] mb-1"
                               >
                                 Clip Index File
                               </label>
@@ -859,7 +859,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                                 onChange={(e) =>
                                   handleUpdateClip(clip.id, { indexFile: e.target.value })
                                 }
-                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-[11px] font-mono text-[#FDF7F7]"
+                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs font-mono text-[#FDF7F7]"
                               >
                                 <option value="">Use Default / None</option>
                                 {indexOptions.map((idxOpt) => (
@@ -873,7 +873,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             <div>
                               <label
                                 htmlFor={`clip-format-${clip.id}`}
-                                className="block text-[11px] font-medium text-[#AD8288] mb-1"
+                                className="block text-xs font-medium text-[#C89EA4] mb-1"
                               >
                                 Export Format
                               </label>
@@ -885,7 +885,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                                     outputFormat: e.target.value as 'wav' | 'mp3' | 'flac',
                                   })
                                 }
-                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-[11px] text-[#FDF7F7]"
+                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs text-[#FDF7F7]"
                               >
                                 <option value="wav">WAV</option>
                                 <option value="mp3">MP3</option>
@@ -894,8 +894,8 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             </div>
 
                             <div>
-                              <div className="flex justify-between text-[11px] mb-1">
-                                <span className="text-[#AD8288]">Protect</span>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="text-[#C89EA4]">Protect</span>
                                 <span className="font-mono text-[#FDF7F7] tabular-nums">
                                   {clip.protect.toFixed(2)}
                                 </span>
@@ -915,8 +915,8 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             </div>
 
                             <div>
-                              <div className="flex justify-between text-[11px] mb-1">
-                                <span className="text-[#AD8288]">Volume Envelope</span>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="text-[#C89EA4]">Volume Envelope</span>
                                 <span className="font-mono text-[#FDF7F7] tabular-nums">
                                   {clip.volumeEnvelope.toFixed(2)}
                                 </span>
@@ -936,7 +936,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-3.5 pt-2">
-                              <label className="inline-flex items-center gap-1.5 text-[11px] text-[#DFBFC3] cursor-pointer">
+                              <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={clip.autotune}
@@ -947,7 +947,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                                 />
                                 <span>Autotune</span>
                               </label>
-                              <label className="inline-flex items-center gap-1.5 text-[11px] text-[#DFBFC3] cursor-pointer">
+                              <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={clip.proposedPitch}
@@ -958,7 +958,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                                 />
                                 <span>Proposed Pitch</span>
                               </label>
-                              <label className="inline-flex items-center gap-1.5 text-[11px] text-[#DFBFC3] cursor-pointer">
+                              <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={clip.splitAudio}
@@ -977,7 +977,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                       {clip.convertedUrl && (
                         <div className="rounded-lg border border-[#E51923]/50 bg-[#200B0E] p-3 space-y-2">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-semibold text-[#FDF7F7]">
+                            <span className="text-xs font-semibold text-[#FDF7F7]">
                               Converted Sample ({clip.convertedName})
                             </span>
                             <button
@@ -1042,10 +1042,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
         <div className="flex items-start gap-3">
           <StepBadge num={3} />
           <div>
-            <h3 className="font-display text-base font-semibold text-[#FDF7F7]">
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
               Conversion Parameters
             </h3>
-            <p className="text-xs text-[#AD8288] mt-0.5">
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
               Set default Pitch, Index Rate, and export options for incoming clips or batch folders.
             </p>
           </div>
@@ -1057,11 +1057,11 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
             <div>
               <label
                 htmlFor="convert-pitch-slider"
-                className="block text-xs font-semibold text-[#FDF7F7]"
+                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
                 Default Pitch
               </label>
-              <p className="text-[11px] text-[#AD8288] mt-0.5">
+              <p className="text-[13px] text-[#C89EA4] mt-0.5">
                 Shift the vocal register up or down in semitones between -32 and +32.
               </p>
             </div>
@@ -1094,7 +1094,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
             }
             className="w-full scarlet-slider"
           />
-          <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+          <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
             <span>-32</span>
             <span>0</span>
             <span>+32</span>
@@ -1164,7 +1164,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                     {/* Search Feature Ratio */}
                     <div>
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                        <label htmlFor="conv-index-rate" className="text-xs font-semibold text-[#FDF7F7]">
+                        <label htmlFor="conv-index-rate" className="text-[13.5px] font-semibold text-[#FDF7F7]">
                           Search Feature Ratio
                         </label>
                         <div className="flex items-center gap-1.5">
@@ -1181,7 +1181,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           </button>
                         </div>
                       </div>
-                      <p className="text-[11px] text-[#AD8288] mb-2">
+                      <p className="text-[13px] text-[#C89EA4] mb-2">
                         Influence exerted by the index file; higher values give stronger accent/timbre transfer, while lower values help mitigate audio artifacts.
                       </p>
                       <input
@@ -1196,7 +1196,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         }
                         className="w-full scarlet-slider"
                       />
-                      <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+                      <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
                         <span>0</span>
                         <span>1</span>
                       </div>
@@ -1205,7 +1205,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                     {/* Volume Envelope */}
                     <div>
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                        <label htmlFor="conv-vol-env" className="text-xs font-semibold text-[#FDF7F7]">
+                        <label htmlFor="conv-vol-env" className="text-[13.5px] font-semibold text-[#FDF7F7]">
                           Volume Envelope
                         </label>
                         <div className="flex items-center gap-1.5">
@@ -1222,7 +1222,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           </button>
                         </div>
                       </div>
-                      <p className="text-[11px] text-[#AD8288] mb-2">
+                      <p className="text-[13px] text-[#C89EA4] mb-2">
                         Substitute or blend with the volume envelope of the output. Closer to 1 employs more of the output envelope.
                       </p>
                       <input
@@ -1237,7 +1237,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         }
                         className="w-full scarlet-slider"
                       />
-                      <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+                      <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
                         <span>0</span>
                         <span>1</span>
                       </div>
@@ -1246,7 +1246,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                     {/* Protect Voiceless Consonants */}
                     <div>
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                        <label htmlFor="conv-protect" className="text-xs font-semibold text-[#FDF7F7]">
+                        <label htmlFor="conv-protect" className="text-[13.5px] font-semibold text-[#FDF7F7]">
                           Protect Voiceless Consonants
                         </label>
                         <div className="flex items-center gap-1.5">
@@ -1263,7 +1263,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           </button>
                         </div>
                       </div>
-                      <p className="text-[11px] text-[#AD8288] mb-2">
+                      <p className="text-[13px] text-[#C89EA4] mb-2">
                         Safeguard distinct consonants and breathing sounds to prevent electro-acoustic tearing. Pulling to 0.5 offers maximum protection.
                       </p>
                       <input
@@ -1278,7 +1278,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         }
                         className="w-full scarlet-slider"
                       />
-                      <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+                      <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
                         <span>0</span>
                         <span>0.5</span>
                       </div>
@@ -1311,10 +1311,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                 {subOpen.modelsAlgorithms && (
                   <div className="border-t border-[#47161D] p-3.5 grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label htmlFor="conv-speaker-id" className="block text-xs font-semibold text-[#FDF7F7]">
+                      <label htmlFor="conv-speaker-id" className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                         Speaker ID
                       </label>
-                      <p className="text-[11px] text-[#AD8288] mb-1.5">
+                      <p className="text-[13px] text-[#C89EA4] mb-1.5">
                         Speaker ID to use for conversion.
                       </p>
                       <input
@@ -1334,10 +1334,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                     </div>
 
                     <div>
-                      <label htmlFor="conv-f0-method" className="block text-xs font-semibold text-[#FDF7F7]">
+                      <label htmlFor="conv-f0-method" className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                         Pitch extraction algorithm
                       </label>
-                      <p className="text-[11px] text-[#AD8288] mb-1.5">
+                      <p className="text-[13px] text-[#C89EA4] mb-1.5">
                         rmvpe is recommended for most cases.
                       </p>
                       <select
@@ -1359,10 +1359,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                     </div>
 
                     <div>
-                      <label htmlFor="conv-embedder" className="block text-xs font-semibold text-[#FDF7F7]">
+                      <label htmlFor="conv-embedder" className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                         Embedder Model
                       </label>
-                      <p className="text-[11px] text-[#AD8288] mb-1.5">
+                      <p className="text-[13px] text-[#C89EA4] mb-1.5">
                         Model used for speaker embedding.
                       </p>
                       <select
@@ -1424,8 +1424,8 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
                       <div>
-                        <span className="block text-xs font-semibold text-[#FDF7F7]">Autotune</span>
-                        <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                        <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">Autotune</span>
+                        <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                           Apply soft autotune; recommended for singing conversions.
                         </span>
                       </div>
@@ -1444,10 +1444,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
                       <div>
-                        <span className="block text-xs font-semibold text-[#FDF7F7]">
+                        <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                           Proposed Pitch
                         </span>
-                        <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                        <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                           Auto-adjust input pitch to match the voice model range.
                         </span>
                       </div>
@@ -1463,10 +1463,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
                       <div>
-                        <span className="block text-xs font-semibold text-[#FDF7F7]">
+                        <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                           Split Audio
                         </span>
-                        <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                        <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                           Split long clips on silence for cleaner VRAM usage.
                         </span>
                       </div>
@@ -1513,10 +1513,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
                       <div>
-                        <span className="block text-xs font-semibold text-[#FDF7F7]">
+                        <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                           Audio cleanup ({convertAudio.noiseReduction ? 'On' : 'Off'})
                         </span>
-                        <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                        <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                           Cleans input before conversion using balanced rumble high-pass and smooth downward expansion so voices stay natural without harsh gating.
                         </span>
                       </div>
@@ -1526,7 +1526,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                         <label
                           htmlFor="conv-clean-strength"
-                          className="text-xs font-semibold text-[#FDF7F7]"
+                          className="text-[13.5px] font-semibold text-[#FDF7F7]"
                         >
                           Noise reduction limit (dB)
                         </label>
@@ -1549,7 +1549,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           </button>
                         </div>
                       </div>
-                      <p className="text-[11px] text-[#AD8288] mb-2">
+                      <p className="text-[13px] text-[#C89EA4] mb-2">
                         {cleanupCalibration.description} ({cleanupCalibration.highpassHz} Hz rumble filter, up to -{cleanupCalibration.maxAttenuationDb} dB quiet-floor reduction).
                       </p>
                       <input
@@ -1568,7 +1568,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         }
                         className="w-full scarlet-slider"
                       />
-                      <div className="flex justify-between text-[10px] font-mono text-[#AD8288] mt-1 tabular-nums">
+                      <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
                         <span>1 (Subtle)</span>
                         <span>12 (Balanced)</span>
                         <span>30 (Strong)</span>
@@ -1616,10 +1616,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
                       <div>
-                        <span className="block text-xs font-semibold text-[#FDF7F7]">
+                        <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                           Formant Shifting
                         </span>
-                        <span className="block text-[11px] text-[#AD8288] mt-0.5">
+                        <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                           Enable formant shifting for male-to-female and female-to-male conversions.
                         </span>
                       </div>
@@ -1709,10 +1709,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                   <div className="border-t border-[#47161D] p-3.5 space-y-3.5">
                     <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-4">
                       <div>
-                        <label htmlFor="conv-output-path" className="block text-xs font-semibold text-[#FDF7F7]">
+                        <label htmlFor="conv-output-path" className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                           Output Path
                         </label>
-                        <p className="text-[11px] text-[#AD8288] mb-1.5">
+                        <p className="text-[13px] text-[#C89EA4] mb-1.5">
                           Path where output audio is saved (defaults to assets/audios/output.wav).
                         </p>
                         <input
@@ -1730,10 +1730,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                       </div>
 
                       <div>
-                        <label htmlFor="conv-output-format" className="block text-xs font-semibold text-[#FDF7F7]">
+                        <label htmlFor="conv-output-format" className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                           Export Format
                         </label>
-                        <p className="text-[11px] text-[#AD8288] mb-1.5">
+                        <p className="text-[13px] text-[#C89EA4] mb-1.5">
                           Audio export container.
                         </p>
                         <select
@@ -1784,10 +1784,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
               className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
             />
             <div>
-              <span className="block text-xs font-semibold text-[#FDF7F7]">
+              <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
                 I agree to the terms of use
               </span>
-              <span className="block text-[11px] text-[#AD8288] mt-0.5">
+              <span className="block text-[13px] text-[#C89EA4] mt-0.5">
                 Confirm responsible usage guidelines prior to rendering voice conversion samples.
               </span>
             </div>
@@ -1837,7 +1837,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-mono text-xs text-[#FDF7F7] truncate">{s.name}</p>
-                      <p className="text-[11px] text-[#AD8288] tabular-nums truncate">
+                      <p className="text-[13px] text-[#C89EA4] tabular-nums truncate">
                         {s.voiceModel ? `${s.voiceModel} · ` : ''}Pitch {s.pitch >= 0 ? `+${s.pitch}` : s.pitch}
                         {typeof s.indexRate === 'number' ? ` · idx ${s.indexRate.toFixed(2)}` : ''} · {s.createdAt}
                       </p>

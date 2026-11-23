@@ -36,107 +36,69 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
       const realPoints = points.filter(
         (p): p is TrainingEpochPoint & { lowestLoss: number } => p.lowestLoss !== null
       );
+      if (realPoints.length < 2) {
+        return null;
+      }
 
       const step = Math.max(1, zoneInsight.saveEveryEpoch || 5);
-      const sweetMid = zoneInsight.sweetSpotEpoch ?? step * 12;
-      const sweetMin = zoneInsight.sweetSpotMinEpoch ?? Math.max(step, sweetMid - step * 2);
-      const sweetMax = zoneInsight.sweetSpotMaxEpoch ?? sweetMid + step * 2;
-      const underEnd = zoneInsight.undertrainingEndEpoch ?? Math.max(step, sweetMin - step);
-      const overStart = zoneInsight.overtrainingStartEpoch ?? sweetMax + step * 5;
+      const bestEp = zoneInsight.sweetSpotEpoch ?? realPoints[realPoints.length - 1].epoch;
+      const sweetMin = zoneInsight.sweetSpotMinEpoch ?? bestEp;
+      const sweetMax = zoneInsight.sweetSpotMaxEpoch ?? bestEp;
+      const underEnd = zoneInsight.undertrainingEndEpoch ?? realPoints[0].epoch;
+      const overStart = zoneInsight.overtrainingStartEpoch;
 
-      // Mode A: Observed log curve
-      if (realPoints.length >= 2) {
-        const minEpoch = realPoints[0].epoch;
-        const maxEpoch = Math.max(minEpoch + step, realPoints[realPoints.length - 1].epoch, overStart);
-        const losses = realPoints.map((p) => p.lowestLoss);
-        const minLoss = Math.floor(Math.min(...losses) * 0.92);
-        const maxLoss = Math.ceil(Math.max(...losses) * 1.05);
-        const span = Math.max(0.5, maxLoss - minLoss);
-        const toX = (ep: number) =>
-          PAD_L + (Math.min(maxEpoch, Math.max(minEpoch, ep)) - minEpoch) / (maxEpoch - minEpoch) * PLOT_W;
-
-        const coords = realPoints.map((p) => ({
-          x: toX(p.epoch),
-          y: PAD_T + (1 - (p.lowestLoss - minLoss) / span) * PLOT_H,
-          epoch: p.epoch,
-        }));
-
-        return {
-          mode: 'observed' as const,
-          coords,
-          labelCoords: pickSpacedLabels(coords),
-          polyline: coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' '),
-          sweetStartX: toX(sweetMin),
-          sweetEndX: toX(sweetMax),
-          sweetMidX: toX(sweetMid),
-          overStartX: toX(overStart),
-          underEndX: toX(underEnd),
-        };
-      }
-
-      // Mode B: Lightweight model-estimated crimson zone curve (key checkpoint milestones)
-      const startEpoch = step;
-      const maxEpoch = Math.max(overStart + step * 3, sweetMax + step * 6);
+      const minEpoch = realPoints[0].epoch;
+      const maxEpoch = Math.max(minEpoch + step, realPoints[realPoints.length - 1].epoch);
+      const losses = realPoints.map((p) => p.lowestLoss);
+      const minLoss = Math.floor(Math.min(...losses) * 0.92);
+      const maxLoss = Math.ceil(Math.max(...losses) * 1.05);
+      const span = Math.max(0.5, maxLoss - minLoss);
       const toX = (ep: number) =>
-        PAD_L + ((Math.min(maxEpoch, Math.max(startEpoch, ep)) - startEpoch) / Math.max(1, maxEpoch - startEpoch)) * PLOT_W;
+        PAD_L +
+        ((Math.min(maxEpoch, Math.max(minEpoch, ep)) - minEpoch) /
+          Math.max(1, maxEpoch - minEpoch)) *
+          PLOT_W;
 
-      const milestones = [
-        { epoch: startEpoch, normY: 0.08 },
-        { epoch: underEnd, normY: 0.48 },
-        { epoch: sweetMin, normY: 0.78 },
-        { epoch: sweetMid, normY: 0.88 },
-        { epoch: sweetMax, normY: 0.87 },
-        { epoch: overStart, normY: 0.72 },
-        { epoch: maxEpoch, normY: 0.56 },
-      ];
-
-      // Deduplicate strictly non-decreasing epochs
-      const uniqueMilestones: { epoch: number; normY: number }[] = [];
-      for (const m of milestones) {
-        if (
-          uniqueMilestones.length === 0 ||
-          m.epoch > uniqueMilestones[uniqueMilestones.length - 1].epoch
-        ) {
-          uniqueMilestones.push(m);
-        }
-      }
-
-      const coords = uniqueMilestones.map((m) => ({
-        x: toX(m.epoch),
-        y: PAD_T + (1 - m.normY) * PLOT_H,
-        epoch: m.epoch,
+      const coords = realPoints.map((p) => ({
+        x: toX(p.epoch),
+        y: PAD_T + (1 - (p.lowestLoss - minLoss) / span) * PLOT_H,
+        epoch: p.epoch,
       }));
 
       return {
-        mode: 'estimate' as const,
         coords,
         labelCoords: pickSpacedLabels(coords),
         polyline: coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' '),
         sweetStartX: toX(sweetMin),
         sweetEndX: toX(sweetMax),
-        sweetMidX: toX(sweetMid),
-        overStartX: toX(overStart),
+        sweetMidX: toX(bestEp),
+        bestEpoch: bestEp,
+        overStartX: overStart !== null ? toX(overStart) : null,
         underEndX: toX(underEnd),
       };
     }, [points, zoneInsight]);
 
+    if (!model) {
+      return null;
+    }
+
     return (
-      <div className="rounded-lg border border-[#47161D] bg-[#160709] p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
-          <p className="text-[11px] font-semibold text-[#FDF7F7]">
-            {model.mode === 'observed'
-              ? 'Model Training Loss & Checkpoint Zones'
-              : 'Estimated Checkpoint Quality Curve'}
+      <div className="rounded-lg border border-[#47161D] bg-[#160709] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
+          <p className="text-[13px] font-semibold text-[#FDF7F7]">
+            Observed Mel Loss &amp; Best Epoch Zone
           </p>
-          <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-[#AD8288]">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-[#E51923]" />
-              <span>Sweet Spot</span>
+          <div className="flex flex-wrap items-center gap-3.5 text-xs font-mono text-[#C89EA4]">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#E51923]" />
+              <span>Best Epoch (e{model.bestEpoch})</span>
             </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-[#6D202B]" />
-              <span>Overtrain Risk</span>
-            </span>
+            {model.overStartX !== null && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#6D202B]" />
+                <span>Overtrain Risk</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -144,9 +106,8 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
           viewBox={`0 0 ${W} ${H}`}
           className="w-full h-auto overflow-visible"
           role="img"
-          aria-label="Red training zone graph aligned to saved checkpoint intervals"
+          aria-label="Observed model mel loss curve and recommended best checkpoint"
         >
-          {/* Undertraining subtle crimson tint */}
           {model.underEndX > PAD_L && (
             <rect
               x={PAD_L}
@@ -158,27 +119,26 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
             />
           )}
 
-          {/* Suggested Sweet Spot active red band */}
           <rect
             x={model.sweetStartX}
             y={PAD_T}
-            width={Math.max(8, model.sweetEndX - model.sweetStartX)}
+            width={Math.max(10, model.sweetEndX - model.sweetStartX)}
             height={PLOT_H}
             fill={ACCENT_HEX}
-            fillOpacity="0.16"
-          />
-
-          {/* Overtraining risk band */}
-          <rect
-            x={model.overStartX}
-            y={PAD_T}
-            width={Math.max(0, W - PAD_R - model.overStartX)}
-            height={PLOT_H}
-            fill="#991B1B"
             fillOpacity="0.18"
           />
 
-          {/* Horizontal baseline rules */}
+          {model.overStartX !== null && (
+            <rect
+              x={model.overStartX}
+              y={PAD_T}
+              width={Math.max(0, W - PAD_R - model.overStartX)}
+              height={PLOT_H}
+              fill="#991B1B"
+              fillOpacity="0.18"
+            />
+          )}
+
           {[0.25, 0.5, 0.75].map((ratio) => {
             const y = PAD_T + PLOT_H * ratio;
             return (
@@ -194,28 +154,26 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
             );
           })}
 
-          {/* Sweet Spot vertical marker */}
           <line
             x1={model.sweetMidX}
             y1={PAD_T}
             x2={model.sweetMidX}
             y2={PAD_T + PLOT_H}
             stroke="#FF2B35"
-            strokeWidth="1.25"
+            strokeWidth="1.5"
             strokeDasharray="4 3"
           />
           <text
             x={model.sweetMidX}
-            y={PAD_T - 5}
+            y={PAD_T - 6}
             textAnchor="middle"
             fill="#FDF7F7"
-            fontSize="9"
+            fontSize="10.5"
             fontFamily="JetBrains Mono, monospace"
           >
-            Sweet Spot
+            Best e{model.bestEpoch}
           </text>
 
-          {/* Red curve */}
           <polyline
             fill="none"
             stroke={ACCENT_HEX}
@@ -225,7 +183,6 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
             points={model.polyline}
           />
 
-          {/* Checkpoint dots + epoch labels */}
           {model.coords.map((c, idx) => (
             <circle
               key={`${c.epoch}-${idx}`}
@@ -243,8 +200,8 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
               x={c.x}
               y={H - 5}
               textAnchor="middle"
-              fill="#AD8288"
-              fontSize="9.5"
+              fill="#C89EA4"
+              fontSize="10.5"
               fontFamily="JetBrains Mono, monospace"
             >
               e{c.epoch}
