@@ -1,0 +1,1580 @@
+import { ACCENT_HEX, APP_VERSION, BRAND_NAME, REPO_README_URL, REPO_URL } from '../data/defaults';
+import { FREE_SAMPLES } from '../data/freeSamples';
+import { DownloadModelItem, ForkConfig, VoiceModelProject } from '../types/studio';
+import { sanitizeModelName } from './rvcTuning';
+
+export function buildStreamlitHeaderAndTabsPart1(
+  config: ForkConfig,
+  project: VoiceModelProject,
+  downloads: DownloadModelItem[] = []
+): string {
+  const defaultModelName = sanitizeModelName(project.name || '');
+  const defaultDatasetPath =
+    project.datasetPath || '/kaggle/input/datasets/your-username/voice-dataset';
+  const defaultRepo = (config.customRepoUrl || REPO_URL).trim();
+
+  const enabledNav: string[] = [];
+  if (config.activeTabs.train) enabledNav.push('Training');
+  if (config.activeTabs.models) enabledNav.push('Models');
+  if (config.activeTabs.samples) enabledNav.push('Samples');
+  enabledNav.push('Free Samples');
+  enabledNav.push('Diagnostics');
+  if (config.activeTabs.voice_blender) enabledNav.push('Voice Blender');
+  if (config.activeTabs.tts) enabledNav.push('TTS');
+  if (config.activeTabs.settings) enabledNav.push('Settings');
+  if (enabledNav.length === 0) enabledNav.push('Training');
+
+  const freeSamplesJson = JSON.stringify(
+    FREE_SAMPLES.map((s) => ({
+      id: s.id,
+      title: s.title,
+      fileName: s.fileName,
+      gender: s.gender,
+      style: s.style,
+      durationLabel: s.durationLabel,
+      transcript: s.transcript,
+      repoWav: s.url.split('/').pop() || s.fileName,
+    }))
+  );
+
+  const bootManifestJson = JSON.stringify(
+    downloads.map((d) => ({
+      id: d.id,
+      name: d.name,
+      category: d.category,
+      url: d.url,
+    }))
+  );
+
+  return `"""${BRAND_NAME} Streamlit WebUI — exact parity with ${BRAND_NAME} Studio."""
+from __future__ import annotations
+
+import hmac
+import html
+import inspect
+import io
+import json
+import math
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
+import urllib.request
+import zipfile
+from pathlib import Path
+from typing import Any
+
+import streamlit as st
+
+now_dir = os.getcwd()
+if now_dir not in sys.path:
+    sys.path.insert(0, now_dir)
+
+st.set_page_config(
+    page_title="${BRAND_NAME} · RVC Kaggle Studio",
+    page_icon="🎙️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# ==============================================================================
+# CRIMSON OBSIDIAN DESIGN SYSTEM (MATCHES NOREGRETSRVC STUDIO PREVIEW)
+# ==============================================================================
+CRIMSON_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --nr-bg: #100506;
+  --nr-card: #160709;
+  --nr-elevated: #200B0E;
+  --nr-border: #47161D;
+  --nr-accent: ${ACCENT_HEX};
+  --nr-accent-hover: #FF2B35;
+  --nr-text: #FDF7F7;
+  --nr-text-soft: #DFBFC3;
+  --nr-muted: #AD8288;
+}
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+  background-color: var(--nr-bg) !important;
+  color: var(--nr-text) !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+[data-testid="stHeader"] {
+  background: rgba(16, 5, 6, 0.88) !important;
+  backdrop-filter: blur(8px);
+}
+
+[data-testid="stSidebar"] { display: none !important; }
+#MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden; height: 0; }
+
+* {
+  scrollbar-color: #E51923 #100506 !important;
+  scrollbar-width: thin !important;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+[data-testid="stAppViewContainer"]::-webkit-scrollbar,
+[data-testid="stMain"]::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+[data-testid="stAppViewContainer"]::-webkit-scrollbar-track,
+[data-testid="stMain"]::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: #100506 !important;
+}
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+[data-testid="stAppViewContainer"]::-webkit-scrollbar-thumb,
+[data-testid="stMain"]::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: #E51923 !important;
+  border-radius: 999px !important;
+}
+html::-webkit-scrollbar-thumb:hover,
+[data-testid="stMain"]::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: #FF2B35 !important;
+}
+
+.block-container {
+  max-width: 1400px !important;
+  padding-top: 1.25rem !important;
+  padding-bottom: 3.5rem !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+}
+
+/* Framed cards & nested inner slider/option containers */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  background-color: var(--nr-card) !important;
+  border: 1px solid var(--nr-border) !important;
+  border-radius: 12px !important;
+  padding: 1.25rem !important;
+  transition: border-color 0.16s ease !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlockBorderWrapper"] {
+  background-color: var(--nr-bg) !important;
+  border: 1px solid var(--nr-border) !important;
+  border-radius: 10px !important;
+  padding: 0.85rem 1rem !important;
+}
+
+/* Inputs & Selects */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stNumberInput"] input,
+div[data-baseweb="select"] > div {
+  background-color: var(--nr-bg) !important;
+  border: 1px solid var(--nr-border) !important;
+  border-radius: 8px !important;
+  color: var(--nr-text) !important;
+  font-size: 13px !important;
+}
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus,
+[data-testid="stNumberInput"] input:focus,
+div[data-baseweb="select"] > div:focus-within {
+  border-color: var(--nr-accent) !important;
+  box-shadow: 0 0 0 1px var(--nr-accent) !important;
+}
+[data-testid="stNumberInput"] button {
+  background-color: var(--nr-elevated) !important;
+  border-color: var(--nr-border) !important;
+  color: var(--nr-text) !important;
+}
+[data-testid="stNumberInput"] button:hover {
+  border-color: var(--nr-accent) !important;
+  color: #FFFFFF !important;
+}
+
+/* Buttons */
+.stButton > button, .stDownloadButton > button {
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease !important;
+  min-height: 38px !important;
+}
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"] {
+  background-color: var(--nr-accent) !important;
+  border: 1px solid var(--nr-accent) !important;
+  color: #FFFFFF !important;
+}
+.stButton > button[kind="primary"]:hover,
+.stDownloadButton > button[kind="primary"]:hover {
+  background-color: var(--nr-accent-hover) !important;
+  border-color: var(--nr-accent-hover) !important;
+}
+.stButton > button[kind="secondary"],
+.stDownloadButton > button[kind="secondary"] {
+  background-color: var(--nr-elevated) !important;
+  border: 1px solid var(--nr-border) !important;
+  color: var(--nr-text) !important;
+}
+.stButton > button[kind="secondary"]:hover,
+.stDownloadButton > button[kind="secondary"]:hover {
+  border-color: var(--accent-red, var(--nr-accent)) !important;
+  color: #FFFFFF !important;
+}
+
+/* Sleek Preview-Matched Top Nav Bar */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) {
+  padding: 0.45rem 0.65rem !important;
+  margin-bottom: 0.5rem !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > button[kind="secondary"] {
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--nr-text-soft) !important;
+  min-height: 34px !important;
+  padding: 0.35rem 0.65rem !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > button[kind="secondary"]:hover {
+  background-color: var(--nr-elevated) !important;
+  border-color: transparent !important;
+  color: #FFFFFF !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > button[kind="primary"] {
+  min-height: 34px !important;
+  padding: 0.35rem 0.75rem !important;
+}
+
+/* Expanders */
+[data-testid="stExpander"] {
+  background-color: var(--nr-bg) !important;
+  border: 1px solid var(--nr-border) !important;
+  border-radius: 8px !important;
+}
+[data-testid="stExpander"] summary {
+  color: var(--nr-text-soft) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+[data-testid="stExpander"] summary:hover {
+  color: #FFFFFF !important;
+}
+
+/* File Uploader */
+[data-testid="stFileUploaderDropzone"] {
+  background-color: var(--nr-bg) !important;
+  border: 2px dashed var(--nr-border) !important;
+  border-radius: 12px !important;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+  border-color: var(--nr-accent) !important;
+}
+
+/* Sliders & Checkboxes */
+[data-testid="stSlider"] [role="slider"] {
+  background-color: var(--nr-accent) !important;
+  border: 2px solid #FFFFFF !important;
+}
+[data-testid="stCheckbox"] label span {
+  color: var(--nr-text) !important;
+  font-size: 13px !important;
+}
+
+/* Custom Studio Components */
+.nr-topbar, .nr-header-card {
+  background: var(--nr-card);
+  border: 1px solid var(--nr-border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.nr-brand-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.nr-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--nr-accent);
+  color: #FFFFFF;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.nr-brand-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--nr-text);
+  line-height: 1.1;
+}
+.nr-brand-ver {
+  font-size: 11px;
+  color: rgba(223, 191, 195, 0.55);
+  font-weight: 500;
+  margin-left: 8px;
+}
+.nr-brand-sub {
+  font-size: 12px;
+  color: var(--nr-muted);
+  margin-top: 3px;
+}
+.nr-model-pill {
+  background: var(--nr-bg);
+  border: 1px solid var(--nr-border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  text-align: right;
+}
+.nr-model-pill-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nr-text);
+}
+.nr-model-pill-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--nr-muted);
+  margin-top: 2px;
+}
+.nr-step-head, .applio-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.nr-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--nr-accent);
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.nr-step-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--nr-text);
+  line-height: 1.25;
+}
+.nr-step-desc {
+  font-size: 12px;
+  color: var(--nr-muted);
+  margin-top: 2px;
+}
+.nr-field-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nr-text);
+}
+.nr-field-help {
+  font-size: 11px;
+  color: var(--nr-muted);
+  margin: 2px 0 6px 0;
+  line-height: 1.4;
+}
+.nr-output-box {
+  background: var(--nr-bg);
+  border: 1px solid var(--nr-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--nr-text-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.nr-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.nr-section-h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--nr-text);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.nr-section-sub {
+  font-size: 14px;
+  color: var(--nr-text-soft);
+  margin-top: 4px;
+}
+.nr-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--nr-card);
+  border: 1px solid var(--nr-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--nr-text-soft);
+  text-decoration: none;
+}
+.nr-link-btn:hover {
+  border-color: var(--nr-accent);
+  color: #FFFFFF;
+}
+.nr-metric-box {
+  background: var(--nr-bg);
+  border: 1px solid var(--nr-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.nr-metric-k {
+  font-size: 10px;
+  color: var(--nr-muted);
+}
+.nr-metric-v {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nr-text);
+  margin-top: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.nr-zone-card {
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--nr-border);
+  background: var(--nr-card);
+}
+.nr-zone-sweet {
+  border-color: var(--nr-accent);
+  background: var(--nr-elevated);
+}
+.nr-mono-badge {
+  border: 1px solid var(--nr-border);
+  background: var(--nr-card);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--nr-text-soft);
+  white-space: nowrap;
+}
+.nr-quote-box {
+  background: var(--nr-card);
+  border: 1px solid rgba(71, 22, 29, 0.8);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--nr-text-soft);
+  line-height: 1.5;
+  margin: 8px 0 10px 0;
+}
+.nr-info-box {
+  background: var(--nr-bg);
+  border: 1px solid var(--nr-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--nr-text-soft);
+  line-height: 1.5;
+}
+.nr-prog-wrap {
+  background: var(--nr-elevated);
+  border: 1px solid rgba(229, 25, 35, 0.5);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 8px 0;
+}
+.nr-prog-track {
+  width: 100%;
+  height: 7px;
+  background: var(--nr-bg);
+  border: 1px solid var(--nr-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.nr-prog-fill {
+  height: 100%;
+  background: var(--nr-accent);
+}
+</style>
+"""
+st.markdown(CRIMSON_CSS, unsafe_allow_html=True)
+
+# ==============================================================================
+# RUNTIME CONSTANTS, APPLIO CORE BRIDGE & CONFIG PERSISTENCE
+# ==============================================================================
+DEFAULT_REPO = ${JSON.stringify(defaultRepo)}
+README_URL = ${JSON.stringify(REPO_README_URL)}
+APP_VERSION = ${JSON.stringify(APP_VERSION)}
+CONFIG_PATH = Path(now_dir) / "assets" / "config.json"
+ACTIVE_TRAIN_META = Path(now_dir) / "logs" / ".nr_active_train.json"
+FREE_SAMPLES_CATALOG = json.loads(${JSON.stringify(freeSamplesJson)})
+BOOT_MANIFEST_DEFAULTS = json.loads(${JSON.stringify(bootManifestJson)})
+SUPPORTED_LANGUAGES = [
+    ("System Auto", "System Auto"),
+    ("en_US", "English"),
+    ("es_ES", "Spanish (Español)"),
+    ("pt_BR", "Portuguese (Português)"),
+    ("fr_FR", "French (Français)"),
+    ("it_IT", "Italian (Italiano)"),
+    ("nl_NL", "Dutch (Nederlands)"),
+    ("ja_JP", "Japanese (日本語)"),
+    ("zh_CN", "Chinese (中文)"),
+    ("ar_SA", "Arabic (العربية)"),
+]
+LANG_LABELS = dict(SUPPORTED_LANGUAGES)
+TTS_VOICES = [
+    "en-US-AndrewNeural",
+    "en-US-GuyNeural",
+    "en-US-AriaNeural",
+    "en-GB-RyanNeural",
+    "en-US-JennyNeural",
+]
+
+UI_STRINGS: dict[str, dict[str, str]] = {
+    "es_ES": {
+        "Training": "Entrenamiento",
+        "Models": "Modelos",
+        "Samples": "Muestras",
+        "Free Samples": "Muestras Gratis",
+        "Diagnostics": "Diagnóstico",
+        "Voice Blender": "Mezclador de Voz",
+        "TTS": "Texto a Voz (TTS)",
+        "Settings": "Ajustes",
+        "General": "General",
+        "Preprocess Dataset": "Preprocesar Dataset",
+        "Extract Features": "Extraer Características",
+        "Start Training": "Iniciar Entrenamiento",
+        "Stop Training": "Detener Entrenamiento",
+        "Generate Index": "Generar Índice",
+        "Download Model": "Descargar Modelo",
+        "List Filtering": "Filtro de Lista",
+        "Pitch Correction": "Corrección de Tono",
+        "Discord Integration": "Integración con Discord",
+        "Language": "Idioma",
+        "Updates & System": "Actualizaciones y Sistema",
+        "Model Author": "Autor del Modelo",
+        "Training Precision": "Precisión de Entrenamiento",
+        "Convert": "Convertir",
+        "Fusion": "Fusión",
+        "Convert Text-to-Speech": "Convertir Texto a Voz",
+        "Check for updates": "Buscar actualizaciones",
+        "Restart Applio": "Reiniciar Applio",
+        "Set name": "Guardar nombre",
+        "Update precision": "Actualizar precisión",
+        "Load All 6 in Samples": "Cargar los 6 en Muestras",
+        "Download All 6 (.zip)": "Descargar los 6 (.zip)",
+    },
+    "pt_BR": {
+        "Training": "Treinamento",
+        "Models": "Modelos",
+        "Samples": "Amostras",
+        "Free Samples": "Amostras Grátis",
+        "Diagnostics": "Diagnóstico",
+        "Voice Blender": "Misturador de Voz",
+        "TTS": "Texto para Fala (TTS)",
+        "Settings": "Configurações",
+        "General": "Geral",
+        "Preprocess Dataset": "Pré-processar Dataset",
+        "Extract Features": "Extrair Características",
+        "Start Training": "Iniciar Treinamento",
+        "Stop Training": "Parar Treinamento",
+        "Generate Index": "Gerar Índice",
+        "Download Model": "Baixar Modelo",
+        "List Filtering": "Filtragem de Lista",
+        "Pitch Correction": "Correção de Tom",
+        "Discord Integration": "Integração Discord",
+        "Language": "Idioma",
+        "Updates & System": "Atualizações e Sistema",
+        "Model Author": "Autor do Modelo",
+        "Training Precision": "Precisão de Treinamento",
+        "Convert": "Converter",
+        "Fusion": "Fusão",
+        "Convert Text-to-Speech": "Converter Texto para Fala",
+        "Check for updates": "Verificar atualizações",
+        "Restart Applio": "Reiniciar Applio",
+        "Set name": "Definir nome",
+        "Update precision": "Atualizar precisão",
+        "Load All 6 in Samples": "Carregar Todos os 6 em Amostras",
+        "Download All 6 (.zip)": "Baixar Todos os 6 (.zip)",
+    },
+    "fr_FR": {
+        "Training": "Entraînement",
+        "Models": "Modèles",
+        "Samples": "Échantillons",
+        "Free Samples": "Échantillons Gratuits",
+        "Diagnostics": "Diagnostics",
+        "Voice Blender": "Mixeur Vocal",
+        "TTS": "Synthèse Vocale (TTS)",
+        "Settings": "Paramètres",
+        "General": "Général",
+        "Preprocess Dataset": "Prétraiter le Dataset",
+        "Extract Features": "Extraire les Caractéristiques",
+        "Start Training": "Démarrer l'Entraînement",
+        "Stop Training": "Arrêter l'Entraînement",
+        "Generate Index": "Générer l'Index",
+        "Download Model": "Télécharger le Modèle",
+        "List Filtering": "Filtrage de Liste",
+        "Pitch Correction": "Correction de Hauteur",
+        "Discord Integration": "Intégration Discord",
+        "Language": "Langue",
+        "Updates & System": "Mises à jour et Système",
+        "Model Author": "Auteur du Modèle",
+        "Training Precision": "Précision d'Entraînement",
+        "Convert": "Convertir",
+        "Fusion": "Fusionner",
+        "Convert Text-to-Speech": "Convertir en Parole",
+        "Check for updates": "Vérifier les mises à jour",
+        "Restart Applio": "Redémarrer Applio",
+        "Set name": "Définir le nom",
+        "Update precision": "Mettre à jour la précision",
+        "Load All 6 in Samples": "Charger les 6 dans Échantillons",
+        "Download All 6 (.zip)": "Télécharger les 6 (.zip)",
+    },
+    "ja_JP": {
+        "Training": "トレーニング",
+        "Models": "モデル",
+        "Samples": "サンプル",
+        "Free Samples": "無料サンプル",
+        "Diagnostics": "診断",
+        "Voice Blender": "ボイスブレンダー",
+        "TTS": "音声合成 (TTS)",
+        "Settings": "設定",
+        "General": "一般",
+        "Preprocess Dataset": "データセット前処理",
+        "Extract Features": "特徴抽出",
+        "Start Training": "学習開始",
+        "Stop Training": "学習停止",
+        "Generate Index": "インデックス生成",
+        "Download Model": "モデルをダウンロード",
+        "List Filtering": "リスト絞り込み",
+        "Pitch Correction": "ピッチ補正",
+        "Discord Integration": "Discord連携",
+        "Language": "言語",
+        "Updates & System": "アップデートとシステム",
+        "Model Author": "モデル作成者",
+        "Training Precision": "学習精度",
+        "Convert": "変換",
+        "Fusion": "ブレンド実行",
+        "Convert Text-to-Speech": "音声合成を実行",
+        "Check for updates": "更新を確認",
+        "Restart Applio": "Applio を再起動",
+        "Set name": "名前を保存",
+        "Update precision": "精度を更新",
+        "Load All 6 in Samples": "全6件をサンプルへ読込",
+        "Download All 6 (.zip)": "全6件をダウンロード (.zip)",
+    },
+    "it_IT": {
+        "Training": "Addestramento",
+        "Models": "Modelli",
+        "Samples": "Campioni",
+        "Free Samples": "Campioni Gratuiti",
+        "Diagnostics": "Diagnostica",
+        "Voice Blender": "Voice Blender",
+        "TTS": "Sintesi Vocale (TTS)",
+        "Settings": "Impostazioni",
+        "General": "Generale",
+        "Preprocess Dataset": "Preelabora Dataset",
+        "Extract Features": "Estrai Caratteristiche",
+        "Start Training": "Avvia Addestramento",
+        "Stop Training": "Ferma Addestramento",
+        "Generate Index": "Genera Indice",
+        "Download Model": "Scarica Modello",
+        "List Filtering": "Filtro Elenco",
+        "Pitch Correction": "Correzione Intonazione",
+        "Discord Integration": "Integrazione Discord",
+        "Language": "Lingua",
+        "Updates & System": "Aggiornamenti e Sistema",
+        "Model Author": "Autore del Modello",
+        "Training Precision": "Precisione di Addestramento",
+        "Convert": "Converti",
+        "Fusion": "Fondi",
+        "Convert Text-to-Speech": "Converti Testo in Voce",
+        "Check for updates": "Controlla aggiornamenti",
+        "Restart Applio": "Riavvia Applio",
+        "Set name": "Imposta nome",
+        "Update precision": "Aggiorna precisione",
+        "Load All 6 in Samples": "Carica tutti i 6 in Campioni",
+        "Download All 6 (.zip)": "Scarica tutti i 6 (.zip)",
+    },
+    "nl_NL": {
+        "Training": "Training",
+        "Models": "Modellen",
+        "Samples": "Voorbeelden",
+        "Free Samples": "Gratis Voorbeelden",
+        "Diagnostics": "Diagnostiek",
+        "Voice Blender": "Stemmixer",
+        "TTS": "Tekst-naar-Spraak (TTS)",
+        "Settings": "Instellingen",
+        "General": "Algemeen",
+        "Preprocess Dataset": "Dataset Voorbereiden",
+        "Extract Features": "Kenmerken Extraheren",
+        "Start Training": "Training Starten",
+        "Stop Training": "Training Stoppen",
+        "Generate Index": "Index Genereren",
+        "Download Model": "Model Downloaden",
+        "List Filtering": "Lijstfiltering",
+        "Pitch Correction": "Toonhoogtecorrectie",
+        "Discord Integration": "Discord-integratie",
+        "Language": "Taal",
+        "Updates & System": "Updates & Systeem",
+        "Model Author": "Modelauteur",
+        "Training Precision": "Trainingsprecisie",
+        "Convert": "Converteren",
+        "Fusion": "Mengen",
+        "Convert Text-to-Speech": "Tekst naar Spraak Converteren",
+        "Check for updates": "Controleren op updates",
+        "Restart Applio": "Applio herstarten",
+        "Set name": "Naam opslaan",
+        "Update precision": "Precisie bijwerken",
+        "Load All 6 in Samples": "Alle 6 in Voorbeelden laden",
+        "Download All 6 (.zip)": "Alle 6 downloaden (.zip)",
+    },
+    "zh_CN": {
+        "Training": "训练",
+        "Models": "模型",
+        "Samples": "样本试听",
+        "Free Samples": "免费样本",
+        "Diagnostics": "诊断",
+        "Voice Blender": "声音融合",
+        "TTS": "语音合成 (TTS)",
+        "Settings": "设置",
+        "General": "常规",
+        "Preprocess Dataset": "预处理数据集",
+        "Extract Features": "提取特征",
+        "Start Training": "开始训练",
+        "Stop Training": "停止训练",
+        "Generate Index": "生成索引",
+        "Download Model": "下载模型",
+        "List Filtering": "列表过滤",
+        "Pitch Correction": "音高校正",
+        "Discord Integration": "Discord 集成",
+        "Language": "语言",
+        "Updates & System": "更新与系统",
+        "Model Author": "模型作者",
+        "Training Precision": "训练精度",
+        "Convert": "转换",
+        "Fusion": "融合",
+        "Convert Text-to-Speech": "合成语音",
+        "Check for updates": "检查更新",
+        "Restart Applio": "重启 Applio",
+        "Set name": "保存作者名",
+        "Update precision": "更新精度",
+        "Load All 6 in Samples": "全部 6 个载入样本",
+        "Download All 6 (.zip)": "下载全部 6 个 (.zip)",
+    },
+    "ar_SA": {
+        "Training": "التدريب",
+        "Models": "النماذج",
+        "Samples": "العينات",
+        "Free Samples": "عينات مجانية",
+        "Diagnostics": "التشخيص",
+        "Voice Blender": "دمج الأصوات",
+        "TTS": "تحويل النص إلى كلام",
+        "Settings": "الإعدادات",
+        "General": "عام",
+        "Preprocess Dataset": "معالجة البيانات",
+        "Extract Features": "استخراج الخصائص",
+        "Start Training": "بدء التدريب",
+        "Stop Training": "إيقاف التدريب",
+        "Generate Index": "إنشاء الفهرس",
+        "Download Model": "تحميل النموذج",
+        "List Filtering": "تصفية القائمة",
+        "Pitch Correction": "تصحيح النغمة",
+        "Discord Integration": "تكامل ديسكورد",
+        "Language": "اللغة",
+        "Updates & System": "التحديثات والنظام",
+        "Model Author": "مؤلف النموذج",
+        "Training Precision": "دقة التدريب",
+        "Convert": "تحويل",
+        "Fusion": "دمج",
+        "Convert Text-to-Speech": "تحويل النص إلى صوت",
+        "Check for updates": "التحقق من التحديثات",
+        "Restart Applio": "إعادة تشغيل Applio",
+        "Set name": "تعيين الاسم",
+        "Update precision": "تحديث الدقة",
+        "Load All 6 in Samples": "تحميل الكل 6 في العينات",
+        "Download All 6 (.zip)": "تحميل الكل 6 (.zip)",
+    },
+}
+
+
+def _resolve_lang() -> str:
+    raw = str(st.session_state.get("nr_lang", "System Auto"))
+    if raw != "System Auto":
+        return raw
+    try:
+        accept_lang = ""
+        ctx = getattr(st, "context", None)
+        if ctx is not None and hasattr(ctx, "headers"):
+            accept_lang = str(ctx.headers.get("Accept-Language") or ctx.headers.get("accept-language") or "").lower()
+        for prefix, code in (
+            ("es", "es_ES"),
+            ("pt", "pt_BR"),
+            ("fr", "fr_FR"),
+            ("it", "it_IT"),
+            ("nl", "nl_NL"),
+            ("ja", "ja_JP"),
+            ("zh", "zh_CN"),
+            ("ar", "ar_SA"),
+        ):
+            if accept_lang.startswith(prefix) or f",{prefix}" in accept_lang:
+                return code
+    except Exception:
+        pass
+    return "en_US"
+
+
+def _tr(text: str) -> str:
+    lang = _resolve_lang()
+    if lang == "en_US":
+        return text
+    return UI_STRINGS.get(lang, {}).get(text, text)
+
+
+def _load_config() -> dict[str, Any]:
+    cfg: dict[str, Any] = {}
+    if CONFIG_PATH.is_file():
+        try:
+            cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    # Always default fresh boots to FP32 & filter off until explicitly changed in Settings
+    if not cfg.get("nr_precision_initialized"):
+        cfg["precision"] = "fp32"
+    if not cfg.get("nr_discord_initialized"):
+        cfg["discord_presence"] = False
+    if "filter" not in cfg:
+        cfg["filter"] = False
+    return cfg
+
+
+def _save_config(cfg: dict[str, Any]) -> None:
+    try:
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_PATH.write_text(json.dumps(cfg, indent=4, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+CORE_MOD = None
+try:
+    import core as CORE_MOD  # type: ignore
+except Exception:
+    CORE_MOD = None
+
+
+def _run_core_sync(fn_name: str, kwargs: dict[str, Any]) -> tuple[int, str]:
+    if CORE_MOD is None or not hasattr(CORE_MOD, fn_name):
+        return 1, f"core.{fn_name} is unavailable in current working directory ({now_dir})."
+    fn = getattr(CORE_MOD, fn_name)
+    try:
+        sig = inspect.signature(fn)
+        valid_params = set(sig.parameters.keys())
+        has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        call_kw = kwargs if has_varkw else {k: v for k, v in kwargs.items() if k in valid_params}
+        buf = io.StringIO()
+        orig_out, orig_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout = buf
+            sys.stderr = buf
+            res = fn(**call_kw)
+        finally:
+            sys.stdout = orig_out
+            sys.stderr = orig_err
+        out_str = buf.getvalue().strip()
+        if isinstance(res, tuple):
+            msg = " ".join(str(x) for x in res if x is not None)
+            out_str = f"{out_str}\\n{msg}".strip() if out_str else msg
+        elif res is not None and not out_str:
+            out_str = str(res)
+        return 0, out_str or f"{fn_name} completed."
+    except Exception as exc:
+        return 1, f"Error in {fn_name}: {exc}"
+
+
+def _train_log_path(model_name: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", model_name.strip() or "UnnamedModel")
+    p = Path(now_dir) / "logs" / safe / "nr_train.log"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _read_train_log(model_name: str, max_chars: int = 32000) -> str:
+    candidates: list[Path] = []
+    if model_name.strip():
+        candidates.append(_train_log_path(model_name))
+    if ACTIVE_TRAIN_META.is_file():
+        try:
+            lp = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8")).get("log_path", "")
+            if lp:
+                candidates.append(Path(lp))
+        except Exception:
+            pass
+    for p in candidates:
+        if p.is_file():
+            try:
+                return p.read_text(encoding="utf-8", errors="replace")[-max_chars:]
+            except Exception:
+                pass
+    return ""
+
+
+def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
+    log_p = _train_log_path(model_name)
+    pid_p = log_p.parent / "nr_train.pid"
+    if pid_p.is_file():
+        try:
+            old_pid = int(pid_p.read_text().strip())
+            os.kill(old_pid, 0)
+            return f"Training already running (PID {old_pid})."
+        except Exception:
+            pid_p.unlink(missing_ok=True)
+
+    cmd_script = (
+        "import sys, os, inspect; sys.path.insert(0, os.getcwd()); import core; "
+        f"kw = {json.dumps(kwargs)}; "
+        "fn = core.run_train_script; "
+        "sig = inspect.signature(fn); "
+        "kw = kw if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()) else {k: v for k, v in kw.items() if k in sig.parameters}; "
+        "fn(**kw)"
+    )
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    lf = open(log_p, "w", encoding="utf-8", buffering=1)
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", cmd_script],
+        cwd=now_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        env=env,
+        start_new_session=True,
+    )
+    pid_p.write_text(str(proc.pid), encoding="utf-8")
+    try:
+        ACTIVE_TRAIN_META.parent.mkdir(parents=True, exist_ok=True)
+        ACTIVE_TRAIN_META.write_text(
+            json.dumps({"pid": proc.pid, "model_name": model_name, "log_path": str(log_p), "started": time.time()}),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+    def _pump() -> None:
+        try:
+            if proc.stdout is not None:
+                for ln in proc.stdout:
+                    lf.write(ln)
+                    lf.flush()
+                    print(ln, end="", flush=True)
+        finally:
+            proc.wait()
+            lf.close()
+
+    threading.Thread(target=_pump, daemon=True).start()
+    st.session_state["nr_is_training"] = True
+    return f"Training '{model_name}' started (PID {proc.pid}) -> streaming live to Training & Diagnostics."
+
+
+def _stop_training(model_name: str) -> str:
+    pid_p = _train_log_path(model_name).parent / "nr_train.pid"
+    st.session_state["nr_is_training"] = False
+    killed = 0
+    pids: list[int] = []
+    if pid_p.is_file():
+        try:
+            pids.append(int(pid_p.read_text().strip()))
+        except Exception:
+            pass
+        pid_p.unlink(missing_ok=True)
+    if ACTIVE_TRAIN_META.is_file():
+        try:
+            meta = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8"))
+            if isinstance(meta.get("pid"), int):
+                pids.append(meta["pid"])
+        except Exception:
+            pass
+    for pid in set(pids):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+            killed += 1
+        except Exception:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed += 1
+            except Exception:
+                pass
+    return f"Stop signal sent to training ({killed} process group(s))."
+
+
+def _is_training_process_alive(model_name: str) -> bool:
+    pid_p = _train_log_path(model_name).parent / "nr_train.pid"
+    if not pid_p.is_file():
+        return False
+    try:
+        pid = int(pid_p.read_text().strip())
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _list_models() -> list[str]:
+    logs_dir = Path(now_dir) / "logs"
+    if not logs_dir.is_dir():
+        return []
+    skip = {"mute", "mute_spin", "reference", "zips", "downloads"}
+    return sorted(p.name for p in logs_dir.iterdir() if p.is_dir() and p.name not in skip)
+
+
+def _list_datasets() -> list[str]:
+    found: list[str] = []
+    for base in (Path("/kaggle/input"), Path(now_dir) / "assets" / "datasets"):
+        if base.is_dir():
+            for p in sorted(base.rglob("*")):
+                if p.is_dir() and any(
+                    f.suffix.lower() in (".wav", ".mp3", ".flac", ".ogg", ".m4a")
+                    for f in p.iterdir()
+                    if f.is_file()
+                ):
+                    found.append(str(p))
+    return found
+
+
+def _list_files_rel(exts: tuple[str, ...], roots: tuple[str, ...], query: str = "") -> list[str]:
+    found: list[str] = []
+    q = query.strip().lower()
+    for r in roots:
+        rp = Path(now_dir) / r
+        if not rp.exists():
+            continue
+        for p in sorted(rp.rglob("*")):
+            if p.is_file() and p.suffix.lower() in exts:
+                if "pretrained" in str(p).lower():
+                    continue
+                if p.suffix.lower() == ".pth" and p.name.startswith(("G_", "D_", "f0")):
+                    continue
+                if p.suffix.lower() == ".index" and "trained" in p.name.lower():
+                    continue
+                rel = str(p.relative_to(now_dir))
+                if not q or q in rel.lower():
+                    found.append(rel)
+    return found
+
+
+def _list_pth_files(q: str = "") -> list[str]:
+    return _list_files_rel((".pth",), ("logs",), q)
+
+
+def _list_index_files(q: str = "") -> list[str]:
+    return _list_files_rel((".index",), ("logs",), q)
+
+
+def _list_audio_inputs() -> list[str]:
+    return _list_files_rel((".wav", ".mp3", ".flac", ".ogg", ".m4a"), ("assets/audios", "assets/free_samples"))
+
+
+def _list_custom_pretrains(prefix: str) -> list[str]:
+    cdir = Path(now_dir) / "rvc" / "models" / "pretraineds" / "custom"
+    if not cdir.exists():
+        return []
+    out: list[str] = []
+    for p in sorted(cdir.rglob("*.pth")):
+        if not prefix or prefix.upper() in p.name.upper():
+            out.append(str(p.relative_to(now_dir)))
+    return out
+
+
+def _load_tts_voices() -> list[str]:
+    vf = Path(now_dir) / "rvc" / "lib" / "tools" / "tts_voices.json"
+    if vf.is_file():
+        try:
+            data = json.loads(vf.read_text(encoding="utf-8"))
+            names = [v.get("ShortName", "") for v in data if isinstance(v, dict) and v.get("ShortName")]
+            if names:
+                return names
+        except Exception:
+            pass
+    return list(TTS_VOICES)
+
+
+def _match_index(pth_rel: str, indexes: list[str]) -> str:
+    if not pth_rel:
+        return ""
+    parent = str(Path(pth_rel).parent)
+    stem = Path(pth_rel).stem.split("_")[0].lower()
+    for idx in indexes:
+        if str(Path(idx).parent) == parent:
+            return idx
+    for idx in indexes:
+        if stem and stem in Path(idx).name.lower():
+            return idx
+    return ""
+
+
+def _infer_matching_d_url(g_url: str) -> str:
+    if not g_url:
+        return ""
+    trimmed = g_url.strip()
+    if "f0G" in trimmed:
+        return trimmed.replace("f0G", "f0D", 1)
+    if "G_" in trimmed:
+        return trimmed.replace("G_", "D_", 1)
+    if "/G." in trimmed:
+        return trimmed.replace("/G.", "/D.", 1)
+    return ""
+
+
+def _gpu_info_lines(gpu_num: str) -> str:
+    parts = [p.strip() for p in (gpu_num or "0").split("-") if p.strip()]
+    if not parts:
+        return "No GPU specified (CPU fallback)."
+    try:
+        import torch
+        if torch.cuda.is_available():
+            lines = []
+            for p in parts:
+                idx = int(p) if p.isdigit() else 0
+                if idx < torch.cuda.device_count():
+                    props = torch.cuda.get_device_properties(idx)
+                    gb = max(1, round(props.total_memory / (1024 ** 3)))
+                    lines.append(f"{p}: {props.name} ({gb} GB)")
+                else:
+                    lines.append(f"{p}: Tesla T4 (14 GB)")
+            return "\\n".join(lines)
+    except Exception:
+        pass
+    return "\\n".join(f"{p}: Tesla T4 (14 GB)" for p in parts)
+
+
+def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
+    if not raw_text or not raw_text.strip():
+        return None
+    text = raw_text
+    try:
+        nb = json.loads(raw_text)
+        if isinstance(nb, dict) and isinstance(nb.get("cells"), list):
+            parts = []
+            for cell in nb["cells"]:
+                for out in cell.get("outputs", []):
+                    for k in ("text", "data"):
+                        val = out.get(k)
+                        if isinstance(val, list):
+                            parts.append("".join(str(x) for x in val))
+                        elif isinstance(val, str):
+                            parts.append(val)
+            if parts:
+                text = "\\n".join(parts)
+    except Exception:
+        pass
+
+    epoch_re = re.compile(r"epoch=(\\d+)\\s*\\|\\s*step=(\\d+)", re.IGNORECASE)
+    speed_re = re.compile(r"training_speed=([\\d:]+)", re.IGNORECASE)
+    low_re = re.compile(r"lowest_value=([\\d.]+)(?:\\s*\\(epoch\\s*(\\d+))?", re.IGNORECASE)
+    tqdm_re = re.compile(
+        r"(\\d+)%\\|[^|]*\\|\\s*(?:batch=)?(\\d+)/(\\d+)\\s*\\[([\\d:]+)<([\\d:?]+),\\s*([\\d.]+)\\s*(it/s|s/it)\\]"
+    )
+
+    by_epoch: dict[int, dict[str, Any]] = {}
+    last_tq = None
+    last_tq_ep = None
+    last_tq_stp = None
+    best_recorded: tuple[float, int] | None = None
+    for raw_ln in text.splitlines():
+        tq = tqdm_re.search(raw_ln)
+        m = epoch_re.search(raw_ln)
+        if tq:
+            last_tq = tq
+            last_tq_ep = int(m.group(1)) if m else None
+            last_tq_stp = int(m.group(2)) if m else None
+            continue
+        if m:
+            ep = int(m.group(1))
+            stp = int(m.group(2))
+            sm = speed_re.search(raw_ln)
+            spd_sec = None
+            if sm:
+                segs = [int(x) for x in sm.group(1).split(":")]
+                if len(segs) == 3:
+                    spd_sec = segs[0] * 3600 + segs[1] * 60 + segs[2]
+            lm = low_re.search(raw_ln)
+            low = float(lm.group(1)) if lm else None
+            if lm:
+                low_ep = int(lm.group(2)) if lm.group(2) else ep
+                if best_recorded is None or low < best_recorded[0]:
+                    best_recorded = (low, low_ep)
+            by_epoch[ep] = {"epoch": ep, "step": stp, "speed_sec": spd_sec, "lowest_loss": low}
+
+    live = None
+    if last_tq:
+        raw_val = float(last_tq.group(6))
+        unit = last_tq.group(7)
+        it_s = raw_val if unit == "it/s" else (1.0 / raw_val if raw_val > 0 else 1.0)
+        max_ep = max(by_epoch.keys()) if by_epoch else 0
+        max_stp = max((v["step"] for v in by_epoch.values()), default=0)
+        live = {
+            "epoch": last_tq_ep if last_tq_ep is not None else (max_ep + 1),
+            "step": last_tq_stp if last_tq_stp is not None else (max_stp + int(last_tq.group(2))),
+            "percent": int(last_tq.group(1)),
+            "batch_done": int(last_tq.group(2)),
+            "batch_total": int(last_tq.group(3)),
+            "elapsed": last_tq.group(4),
+            "eta": last_tq.group(5),
+            "it_per_sec": it_s,
+        }
+
+    points = [by_epoch[k] for k in sorted(by_epoch.keys())]
+    if not points and not live:
+        return None
+    spds = [p["speed_sec"] for p in points if p["speed_sec"] is not None]
+    avg_spd = round(sum(spds) / len(spds), 1) if spds else 0.0
+    best_ep = best_recorded[1] if best_recorded is not None else None
+    ep_max = points[-1]["epoch"] if points else (live["epoch"] - 1 if live else 0)
+    return {
+        "points": points,
+        "epochs_completed": ep_max,
+        "avg_speed_sec": avg_spd,
+        "lowest_loss_epoch": best_ep,
+        "live": live,
+    }
+
+
+def _snap_up(val: int, step: int) -> int:
+    s = max(1, step)
+    return max(s, int(math.ceil(val / s) * s))
+
+
+def _snap_near(val: int, step: int) -> int:
+    s = max(1, step)
+    return max(s, int(round(val / s) * s))
+
+
+def _analyze_zones(parsed: dict[str, Any] | None, save_every: int, total_epoch: int, sr: int, sound_feedback: str) -> dict[str, Any]:
+    s = max(1, int(save_every))
+    sr_bump = 10 if sr >= 48000 else (5 if sr >= 40000 else 0)
+    base_sweet = _snap_near((55 if total_epoch >= 120 else 45) + sr_bump, s)
+    observed = False
+    if parsed and parsed.get("lowest_loss_epoch"):
+        observed = True
+        base_sweet = _snap_near(int(parsed["lowest_loss_epoch"]), s)
+
+    if sound_feedback == "undertrained":
+        sweet_mid = _snap_up(max(base_sweet + s * 2, (parsed["epochs_completed"] if parsed else 0) + s * 2), s)
+    elif sound_feedback == "overtrained":
+        sweet_mid = _snap_near(max(s * 2, base_sweet - s * 2), s)
+    elif sound_feedback == "clean" and parsed and parsed["epochs_completed"] >= s:
+        sweet_mid = _snap_near(parsed["epochs_completed"], s)
+    else:
+        sweet_mid = base_sweet
+
+    sweet_min = max(s, sweet_mid - s * 2)
+    sweet_max = max(sweet_min + s, sweet_mid + s * 2)
+    under_end = max(s, sweet_min - s)
+    over_start = sweet_max + s * 5
+    summary = (
+        f"Checkpoints {sweet_min}-{sweet_max} offer your cleanest timbre window (snapped to ×{s} save interval)."
+        if sound_feedback == "untested"
+        else f"Adjusted to your sound check ({sound_feedback}): audition checkpoints {sweet_min}-{sweet_max} in Samples."
+    )
+    return {
+        "confidence": "observed" if observed else "estimated",
+        "save_every": s,
+        "under_end": under_end,
+        "sweet_min": sweet_min,
+        "sweet_mid": sweet_mid,
+        "sweet_max": sweet_max,
+        "over_start": over_start,
+        "under_label": f"e{s} – e{under_end}",
+        "sweet_label": f"e{sweet_min} – e{sweet_max}",
+        "over_label": f"e{over_start}+",
+        "summary": summary,
+    }
+
+
+def _synced_slider_num(
+    label: str,
+    help_text: str,
+    state_key: str,
+    min_v: int,
+    max_v: int,
+    default_v: int,
+    step: int = 1,
+) -> int:
+    s_key = f"{state_key}__sl"
+    n_key = f"{state_key}__nm"
+    cur = max(min_v, min(max_v, int(st.session_state.get(state_key, default_v))))
+    if s_key not in st.session_state:
+        st.session_state[s_key] = cur
+    if n_key not in st.session_state:
+        st.session_state[n_key] = cur
+
+    def _from_sl() -> None:
+        v = int(st.session_state[s_key])
+        st.session_state[state_key] = v
+        st.session_state[n_key] = v
+
+    def _from_nm() -> None:
+        v = max(min_v, min(max_v, int(st.session_state[n_key])))
+        st.session_state[state_key] = v
+        st.session_state[s_key] = v
+
+    with st.container(border=True):
+        c_lbl, c_num, c_rst = st.columns([4.2, 1.35, 0.55], gap="small")
+        with c_lbl:
+            st.markdown(
+                f'<div class="nr-field-title">{html.escape(label)}</div>'
+                f'<div class="nr-field-help">{html.escape(help_text)}</div>',
+                unsafe_allow_html=True,
+            )
+        with c_num:
+            st.number_input(
+                label,
+                min_value=min_v,
+                max_value=max_v,
+                step=step,
+                key=n_key,
+                on_change=_from_nm,
+                label_visibility="collapsed",
+            )
+        with c_rst:
+            if st.button("↺", key=f"{state_key}__rst", help=f"Reset {label} to {default_v}", use_container_width=True):
+                st.session_state[state_key] = default_v
+                st.session_state[s_key] = default_v
+                st.session_state[n_key] = default_v
+                st.rerun()
+        st.slider(
+            label,
+            min_value=min_v,
+            max_value=max_v,
+            step=step,
+            key=s_key,
+            on_change=_from_sl,
+            label_visibility="collapsed",
+        )
+    return int(st.session_state[state_key])
+
+
+def _step_head(num: int, title: str, desc: str) -> None:
+    st.markdown(
+        f'<div class="nr-step-head"><span class="nr-step-num">{num}</span>'
+        f'<div><div class="nr-step-title">{html.escape(_tr(title))}</div>'
+        f'<div class="nr-step-desc">{html.escape(desc)}</div></div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _page_header(title: str, subtitle: str, show_readme: bool = True) -> None:
+    readme_html = (
+        f'<a class="nr-link-btn" href="{html.escape(README_URL)}" target="_blank" rel="noopener noreferrer">GitHub README ↗</a>'
+        if show_readme
+        else ""
+    )
+    st.markdown(
+        f'<div class="nr-section-header">'
+        f'<div><h2 class="nr-section-h2">{html.escape(_tr(title))}</h2>'
+        f'<div class="nr-section-sub">{html.escape(subtitle)}</div></div>'
+        f'{readme_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _output_box(label: str, text: str) -> None:
+    st.markdown(f'<div style="font-size:12px;font-weight:500;color:#DFBFC3;margin:6px 0 4px 0">{html.escape(label)}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="nr-output-box">{html.escape(text or "The output information will be displayed here.")}</div>', unsafe_allow_html=True)
+
+
+def _ensure_state() -> None:
+    detected_ds = _list_datasets()
+    init_ds = ${JSON.stringify(defaultDatasetPath)}
+    if (not init_ds or "your-username" in init_ds) and detected_ds:
+        init_ds = detected_ds[0]
+    cfg_init = _load_config()
+    lang_init = "System Auto"
+    if isinstance(cfg_init.get("lang"), dict) and cfg_init["lang"].get("override"):
+        lang_init = str(cfg_init["lang"].get("selected_lang") or "System Auto")
+
+    defaults: dict[str, Any] = {
+        "nr_active_tab": ${JSON.stringify(enabledNav[0])},
+        "nr_model_name": ${JSON.stringify(defaultModelName)},
+        "nr_sr": ${Number(project.samplingRate)},
+        "nr_vocoder": ${JSON.stringify(project.vocoder)},
+        "nr_cpu_cores": ${project.cpuCores},
+        "nr_gpu_num": ${JSON.stringify(project.gpuNumber || '0-1')},
+        "nr_dataset_path": init_ds,
+        "nr_dataset_creator": ${project.datasetCreator ? 'True' : 'False'},
+        "nr_audio_cutting": ${JSON.stringify(project.audioCutting)},
+        "nr_chunk_len": ${project.chunkLengthSec},
+        "nr_overlap_len": ${project.overlapLengthSec},
+        "nr_trunc_sil": ${project.truncateSilenceEnabled ? 'True' : 'False'},
+        "nr_sil_ms": ${project.silenceDurationMs},
+        "nr_noise_filter": ${project.noiseFilter ? 'True' : 'False'},
+        "nr_loud_norm": ${project.loudnessNorm ? 'True' : 'False'},
+        "nr_f0": ${JSON.stringify(project.pitchExtractor)},
+        "nr_embedder": ${JSON.stringify(project.embedder)},
+        "nr_silent_files": ${project.silentTrainingFiles},
+        "nr_batch_size": ${project.batchSize},
+        "nr_save_every": ${project.saveEveryEpoch},
+        "nr_total_epoch": ${project.totalEpoch},
+        "nr_save_only_latest": ${project.saveOnlyLatest ? 'True' : 'False'},
+        "nr_save_every_weights": ${project.saveEveryWeights ? 'True' : 'False'},
+        "nr_pretrained": ${project.pretrained ? 'True' : 'False'},
+        "nr_fresh_cleanup": ${project.freshTraining ? 'True' : 'False'},
+        "nr_cache_gpu": ${project.cacheDatasetGpu ? 'True' : 'False'},
+        "nr_checkpointing": ${project.checkpointing ? 'True' : 'False'},
+        "nr_shutdown_finish": ${project.shutdownAfterFinish ? 'True' : 'False'},
+        "nr_custom_pre": ${project.customPretrained ? 'True' : 'False'},
+        "nr_custom_g": ${JSON.stringify(project.customPretrainedG || '')},
+        "nr_custom_d": ${JSON.stringify(project.customPretrainedD || '')},
+        "nr_index_algo": ${JSON.stringify(project.indexAlgorithm || 'Auto')},
+        "nr_is_training": False,
+        "nr_prep_log": "The output information will be displayed here.",
+        "nr_ext_log": "The output information will be displayed here.",
+        "nr_trn_log": "The output information will be displayed here.",
+        "nr_dl_log": "The output information will be displayed here.",
+        "nr_pre_log": [],
+        "nr_manifest": list(BOOT_MANIFEST_DEFAULTS),
+        "nr_inf_log": "The output information will be displayed here.",
+        "nr_inf_out": "",
+        "nr_sample_queue": [],
+        "nr_saved_samples": [],
+        "nr_selected_sample_path": "",
+        "nr_free_gender": "All",
+        "nr_diag_suggest": True,
+        "nr_diag_sound": "untested",
+        "nr_diag_log_input": "",
+        "nr_blend_log": "The output information will be displayed here.",
+        "nr_blend_out": "",
+        "nr_tts_log": "",
+        "nr_tts_out": "",
+        "nr_settings_subtab": "General",
+        "nr_list_filter": bool(cfg_init.get("filter", False)),
+        "nr_rmvpe_corr": bool((cfg_init.get("rmvpe_high_register") or {}).get("enabled", False)),
+        "nr_rmvpe_mode": str((cfg_init.get("rmvpe_high_register") or {}).get("mode", "true_pitch")),
+        "nr_rmvpe_ceil": int((cfg_init.get("rmvpe_high_register") or {}).get("ceiling_hz", 1250)),
+        "nr_discord": bool(cfg_init.get("discord_presence", False)),
+        "nr_lang": lang_init if lang_init in LANG_LABELS else "System Auto",
+        "nr_ver_status": f"${BRAND_NAME} Beta version {APP_VERSION} (newest version: {APP_VERSION}).",
+        "nr_author": str(cfg_init.get("model_author", "None")),
+        "nr_author_out": "The output information will be displayed here.",
+        "nr_precision": str(cfg_init.get("precision", "fp32")),
+        "nr_precision_out": "The output information will be displayed here.",
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+
+_ensure_state()
+
+# ==============================================================================
+# AUTH GATE (WHEN LAUNCHED VIA KAGGLE NOTEBOOK WITH RANDOM PASSWORD)
+# ==============================================================================
+_auth_user = os.environ.get("APPLIO_AUTH_USERNAME", "").strip()
+_auth_pass = os.environ.get("APPLIO_AUTH_PASSWORD", "").strip()
+if _auth_pass and not st.session_state.get("nr_authed", False):
+    _, col_mid, _ = st.columns([1, 1.35, 1])
+    with col_mid:
+        with st.container(border=True):
+            st.markdown(
+                '<div class="nr-topbar" style="margin-bottom:14px">'
+                '<div class="nr-brand-left">'
+                '<div class="nr-badge">NR</div>'
+                '<div><div><span class="nr-brand-title">${BRAND_NAME}</span>'
+                f'<span class="nr-brand-ver">Beta version {APP_VERSION}</span></div>'
+                '<div class="nr-brand-sub">Sign in with the credentials shown in your Kaggle Live Monitor</div>'
+                '</div></div></div>',
+                unsafe_allow_html=True,
+            )
+            u_in = st.text_input("Username", value=_auth_user or "noregrets")
+            p_in = st.text_input("Password", type="password", placeholder="Paste WebUI password from Kaggle monitor")
+            if st.button("Sign In", type="primary", use_container_width=True):
+                if hmac.compare_digest(u_in.strip(), _auth_user or "noregrets") and hmac.compare_digest(p_in.strip(), _auth_pass):
+                    st.session_state["nr_authed"] = True
+                    st.rerun()
+                else:
+                    st.error("Invalid WebUI username or password.")
+    st.stop()
+
+# ==============================================================================
+# TOP BAR & 8-TAB NAVIGATION (EXACT PREVIEW MATCH)
+# ==============================================================================
+gpu_cnt = max(1, len([x for x in str(st.session_state["nr_gpu_num"]).split("-") if x.strip()]))
+eff_batch = int(st.session_state["nr_batch_size"]) * gpu_cnt
+active_model_label = st.session_state["nr_model_name"].strip() or "Untitled Model"
+
+st.markdown(
+    f'<div class="nr-topbar">'
+    f'<div class="nr-brand-left">'
+    f'<div class="nr-badge">NR</div>'
+    f'<div><div><span class="nr-brand-title">${BRAND_NAME}</span>'
+    f'<span class="nr-brand-ver">Beta version {APP_VERSION}</span></div>'
+    f'<div class="nr-brand-sub">RVC Voice Model Training, Inference &amp; Kaggle Studio</div></div></div>'
+    f'<div class="nr-model-pill">'
+    f'<div class="nr-model-pill-name">{html.escape(active_model_label)} ({st.session_state["nr_sr"]})</div>'
+    f'<div class="nr-model-pill-meta">{html.escape(str(st.session_state["nr_vocoder"]))} · Batch {st.session_state["nr_batch_size"]} ({eff_batch} eff.) · {st.session_state["nr_total_epoch"]} ep</div>'
+    f'</div></div>',
+    unsafe_allow_html=True,
+)
+
+NAV_TABS = ${JSON.stringify(enabledNav)}
+if st.session_state["nr_active_tab"] not in NAV_TABS:
+    st.session_state["nr_active_tab"] = NAV_TABS[0]
+
+if _resolve_lang() == "ar_SA":
+    st.markdown("<style>[data-testid='stMain'] { direction: rtl; text-align: right; }</style>", unsafe_allow_html=True)
+
+with st.container(border=True):
+    st.markdown('<span class="nr-nav-marker" style="display:none"></span>', unsafe_allow_html=True)
+    nav_weights = [max(7, len(lbl) + 3) for lbl in NAV_TABS]
+    nav_cols = st.columns(nav_weights, gap="small")
+    for idx, tab_id in enumerate(NAV_TABS):
+        with nav_cols[idx]:
+            is_active = st.session_state["nr_active_tab"] == tab_id
+            if st.button(
+                _tr(tab_id),
+                key=f"nr_nav_{tab_id}",
+                type="primary" if is_active else "secondary",
+                use_container_width=True,
+            ):
+                if not is_active:
+                    st.session_state["nr_active_tab"] = tab_id
+                    st.rerun()
+
+active_tab = st.session_state["nr_active_tab"]
+`;
+}
+
