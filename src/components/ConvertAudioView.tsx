@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -21,7 +21,11 @@ import {
   SampleClipItem,
   VoiceModelProject,
 } from '../types/studio';
-import { computeCleanupParameters, processAudioUrlWithCleanup } from '../utils/audioCleanup';
+import {
+  collectUnusedBlobUrls,
+  computeCleanupParameters,
+  processAudioUrlWithCleanup,
+} from '../utils/audioCleanup';
 import { buildInferCliCommand, sanitizeModelName } from '../utils/rvcTuning';
 import { useI18n } from '../utils/i18n';
 import { CrimsonAudioPlayer } from './CrimsonAudioPlayer';
@@ -71,6 +75,17 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
   const [dragActive, setDragActive] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState('');
   const [expandedClipAdv, setExpandedClipAdv] = useState<Record<string, boolean>>({});
+  const [cliOpen, setCliOpen] = useState(false);
+  const clipSeqRef = useRef(1);
+  const refreshTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
+    };
+  }, []);
 
   const cleanupCalibration = useMemo(
     () => computeCleanupParameters(convertAudio.noiseReductionStrength),
@@ -80,12 +95,13 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
   const toggleSub = (key: string) =>
     setSubOpen((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const safeRevokeConvertedUrl = (url: string, queue = sampleQueue) => {
-    if (!url) return;
-    const stillUsedAsSource = queue.some((c) => c.sourceUrl === url);
-    if (!stillUsedAsSource) {
-      revokeUrl(url);
-    }
+  const revokeUnused = (
+    candidateUrls: Array<string | undefined | null>,
+    nextQueue: SampleClipItem[] = sampleQueue,
+    nextSaved: GeneratedSampleItem[] = convertAudio.savedSamples
+  ) => {
+    const dead = collectUnusedBlobUrls(candidateUrls, nextQueue, nextSaved);
+    dead.forEach((url) => revokeUrl(url));
   };
 
   const modelOptions = useMemo(() => {
@@ -108,17 +124,32 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
     );
   }, [projects, importedModels]);
 
-  const inferCliCommand = useMemo(
-    () => buildInferCliCommand(convertAudio),
-    [convertAudio]
-  );
+  const inferCliCommand = useMemo(() => {
+    if (convertAudio.sourceMode !== 'single' || sampleQueue.length === 0) {
+      return buildInferCliCommand(convertAudio);
+    }
+    const first = sampleQueue[0];
+    return buildInferCliCommand({
+      ...convertAudio,
+      audioFileName: first.fileName,
+      voiceModel: first.voiceModel || convertAudio.voiceModel,
+      indexFile: first.indexFile || convertAudio.indexFile,
+      pitch: first.pitch,
+      indexRate: first.indexRate,
+      protect: first.protect,
+      volumeEnvelope: first.volumeEnvelope,
+      autotune: first.autotune,
+      proposedPitch: first.proposedPitch,
+      splitAudio: first.splitAudio,
+      outputFormat: first.outputFormat,
+    });
+  }, [convertAudio, sampleQueue]);
 
   const buildQueueItem = (
     fileName: string,
-    sourceUrl: string,
-    offsetIdx: number
+    sourceUrl: string
   ): SampleClipItem => ({
-    id: `clip-${Date.now()}-${offsetIdx}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `clip-${Date.now()}-${clipSeqRef.current++}`,
     fileName,
     sourceUrl,
     pitch: convertAudio.pitch,
@@ -142,9 +173,9 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
   const handleFilesChosen = (files: FileList | null | undefined) => {
     if (!files || files.length === 0) return;
     const fileArray = Array.from(files);
-    const addedClips: SampleClipItem[] = fileArray.map((file, idx) => {
+    const addedClips: SampleClipItem[] = fileArray.map((file) => {
       const objUrl = registerUrl(URL.createObjectURL(file));
-      return buildQueueItem(file.name, objUrl, idx);
+      return buildQueueItem(file.name, objUrl);
     });
 
     setSampleQueue((prev) => [...prev, ...addedClips]);
@@ -165,38 +196,33 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
   };
 
   const handleDiscardClip = (clipId: string) => {
-    setSampleQueue((prev) => {
-      const target = prev.find((c) => c.id === clipId);
-      if (target) {
-        revokeUrl(target.sourceUrl);
-        revokeUrl(target.convertedUrl);
-      }
-      const remaining = prev.filter((c) => c.id !== clipId);
-      const nextActive = remaining[0];
-      onUpdateConvertAudio({
-        ...convertAudio,
-        audioFileName:
-          remaining.length === 0
-            ? ''
-            : remaining.length === 1
-              ? nextActive.fileName
-              : `${remaining.length} audio clips loaded`,
-        audioObjectUrl: nextActive ? nextActive.sourceUrl : '',
-        conversionOutput:
-          remaining.length === 0
-            ? 'Discarded sample recording. Upload or drop new audio files when ready.'
-            : `Discarded "${target?.fileName ?? 'clip'}". ${remaining.length} clip${remaining.length === 1 ? '' : 's'} remaining.`,
-      });
-      return remaining;
+    const target = sampleQueue.find((c) => c.id === clipId);
+    const remaining = sampleQueue.filter((c) => c.id !== clipId);
+    if (target) {
+      revokeUnused([target.sourceUrl, target.convertedUrl], remaining, convertAudio.savedSamples);
+    }
+    setSampleQueue(remaining);
+    const nextActive = remaining[0];
+    onUpdateConvertAudio({
+      ...convertAudio,
+      audioFileName:
+        remaining.length === 0
+          ? ''
+          : remaining.length === 1
+            ? nextActive.fileName
+            : `${remaining.length} audio clips loaded`,
+      audioObjectUrl: nextActive ? nextActive.sourceUrl : '',
+      conversionOutput:
+        remaining.length === 0
+          ? 'Discarded sample recording. Upload or drop new audio files when ready.'
+          : `Discarded "${target?.fileName ?? 'clip'}". ${remaining.length} clip${remaining.length === 1 ? '' : 's'} remaining.`,
     });
   };
 
   const handleClearAllClips = () => {
-    sampleQueue.forEach((c) => {
-      revokeUrl(c.sourceUrl);
-      revokeUrl(c.convertedUrl);
-    });
+    const removedUrls = sampleQueue.flatMap((c) => [c.sourceUrl, c.convertedUrl]);
     setSampleQueue([]);
+    revokeUnused(removedUrls, [], convertAudio.savedSamples);
     onUpdateConvertAudio({
       ...convertAudio,
       audioFileName: '',
@@ -207,10 +233,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
 
   const handleDiscardSavedSample = (sampleId: string) => {
     const target = convertAudio.savedSamples.find((s) => s.id === sampleId);
-    if (target) {
-      safeRevokeConvertedUrl(target.url);
-    }
     const nextSaved = convertAudio.savedSamples.filter((s) => s.id !== sampleId);
+    if (target) {
+      revokeUnused([target.url], sampleQueue, nextSaved);
+    }
     onUpdateConvertAudio({
       ...convertAudio,
       savedSamples: nextSaved,
@@ -221,18 +247,16 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
   };
 
   const handleClearAllOutputs = () => {
-    convertAudio.savedSamples.forEach((s) => safeRevokeConvertedUrl(s.url));
-    setSampleQueue((prev) =>
-      prev.map((c) => {
-        safeRevokeConvertedUrl(c.convertedUrl, prev);
-        return {
-          ...c,
-          convertedUrl: '',
-          convertedName: '',
-          status: 'queued',
-        };
-      })
-    );
+    const removedSavedUrls = convertAudio.savedSamples.map((s) => s.url);
+    const removedConvertedUrls = sampleQueue.map((c) => c.convertedUrl);
+    const nextQueue = sampleQueue.map((c) => ({
+      ...c,
+      convertedUrl: '',
+      convertedName: '',
+      status: 'queued' as const,
+    }));
+    setSampleQueue(nextQueue);
+    revokeUnused([...removedSavedUrls, ...removedConvertedUrls], nextQueue, []);
     onUpdateConvertAudio({
       ...convertAudio,
       savedSamples: [],
@@ -247,6 +271,94 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
   ) => {
     setSampleQueue((prev) =>
       prev.map((c) => (c.id === clipId ? { ...c, ...patch } : c))
+    );
+  };
+
+  const updateDefaultsAndSync = (patch: Partial<ConvertAudioState>) => {
+    const nextState: ConvertAudioState = { ...convertAudio, ...patch };
+    onUpdateConvertAudio(nextState);
+
+    const hasSyncableChange =
+      patch.pitch !== undefined ||
+      patch.indexRate !== undefined ||
+      patch.protect !== undefined ||
+      patch.volumeEnvelope !== undefined ||
+      patch.autotune !== undefined ||
+      patch.proposedPitch !== undefined ||
+      patch.splitAudio !== undefined ||
+      patch.outputFormat !== undefined;
+
+    if (!hasSyncableChange) return;
+
+    setSampleQueue((prev) => {
+      if (prev.length === 0) return prev;
+      const single = prev.length === 1;
+      return prev.map((c) => {
+        const nextClip: SampleClipItem = { ...c };
+        if (patch.pitch !== undefined && (single || !c.customPitch)) {
+          nextClip.pitch = patch.pitch;
+          nextClip.customPitch = false;
+        }
+        if (patch.indexRate !== undefined && (single || !c.customIndex)) {
+          nextClip.indexRate = patch.indexRate;
+          nextClip.customIndex = false;
+        }
+        if (patch.protect !== undefined && (single || !c.customProtect)) {
+          nextClip.protect = patch.protect;
+          nextClip.customProtect = false;
+        }
+        if (patch.volumeEnvelope !== undefined && (single || !c.customVol)) {
+          nextClip.volumeEnvelope = patch.volumeEnvelope;
+          nextClip.customVol = false;
+        }
+        if (patch.autotune !== undefined && (single || !c.customAt)) {
+          nextClip.autotune = patch.autotune;
+          nextClip.customAt = false;
+        }
+        if (patch.proposedPitch !== undefined && (single || !c.customPp)) {
+          nextClip.proposedPitch = patch.proposedPitch;
+          nextClip.customPp = false;
+        }
+        if (patch.splitAudio !== undefined && (single || !c.customSp)) {
+          nextClip.splitAudio = patch.splitAudio;
+          nextClip.customSp = false;
+        }
+        if (patch.outputFormat !== undefined && (single || !c.customFmt)) {
+          nextClip.outputFormat = patch.outputFormat;
+          nextClip.customFmt = false;
+        }
+        return nextClip;
+      });
+    });
+  };
+
+  const handleResetClipOverrides = (clipId: string) => {
+    setSampleQueue((prev) =>
+      prev.map((c) =>
+        c.id === clipId
+          ? {
+              ...c,
+              pitch: convertAudio.pitch,
+              indexRate: convertAudio.indexRate,
+              protect: convertAudio.protect,
+              volumeEnvelope: convertAudio.volumeEnvelope,
+              autotune: convertAudio.autotune,
+              proposedPitch: convertAudio.proposedPitch,
+              splitAudio: convertAudio.splitAudio,
+              outputFormat: convertAudio.outputFormat,
+              voiceModel: '',
+              indexFile: '',
+              customPitch: false,
+              customIndex: false,
+              customProtect: false,
+              customVol: false,
+              customAt: false,
+              customPp: false,
+              customSp: false,
+              customFmt: false,
+            }
+          : c
+      )
     );
   };
 
@@ -267,11 +379,19 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
         autotune: convertAudio.autotune,
         proposedPitch: convertAudio.proposedPitch,
         outputFormat: convertAudio.outputFormat,
+        customPitch: false,
+        customIndex: false,
+        customProtect: false,
+        customVol: false,
+        customAt: false,
+        customPp: false,
+        customSp: false,
+        customFmt: false,
       }))
     );
     onUpdateConvertAudio({
       ...convertAudio,
-      conversionOutput: `Applied default settings (Pitch ${convertAudio.pitch >= 0 ? `+${convertAudio.pitch}` : convertAudio.pitch}, Index ${convertAudio.indexRate.toFixed(2)}) to all ${sampleQueue.length} queued clips.`,
+      conversionOutput: `Applied Step 3 settings (Pitch ${convertAudio.pitch >= 0 ? `+${convertAudio.pitch}` : convertAudio.pitch}, Index ${convertAudio.indexRate.toFixed(2)}) to all ${sampleQueue.length} queued clips.`,
     });
   };
 
@@ -286,7 +406,13 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
 
   const handleRefreshModels = () => {
     setRefreshMsg('Refreshed trained and imported .pth models and .index files.');
-    setTimeout(() => setRefreshMsg(''), 2200);
+    if (refreshTimerRef.current !== null) {
+      window.clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = window.setTimeout(() => {
+      setRefreshMsg('');
+      refreshTimerRef.current = null;
+    }, 2200);
   };
 
   const renderClipSample = async (
@@ -365,11 +491,16 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
     setIsConverting(true);
     try {
       const { updatedClip, sampleRecord, cleanedApplied } = await renderClipSample(clip);
-      setSampleQueue((prev) => prev.map((c) => (c.id === clipId ? updatedClip : c)));
+      const nextQueue = sampleQueue.map((c) => (c.id === clipId ? updatedClip : c));
+      setSampleQueue(nextQueue);
 
       const nextSamples = [sampleRecord, ...convertAudio.savedSamples].slice(0, 12);
-      const evicted = convertAudio.savedSamples.slice(11);
-      evicted.forEach((s) => safeRevokeConvertedUrl(s.url));
+      const evicted = [sampleRecord, ...convertAudio.savedSamples].slice(12);
+      revokeUnused(
+        [clip.convertedUrl, ...evicted.map((s) => s.url)],
+        nextQueue,
+        nextSamples
+      );
 
       const cleanupNote = cleanedApplied
         ? ` · Audio cleanup ${cleanupCalibration.tierLabel} (${convertAudio.noiseReductionStrength} dB)`
@@ -433,12 +564,17 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
     setIsConverting(true);
     try {
       const rendered = await Promise.all(sampleQueue.map((c) => renderClipSample(c)));
-      setSampleQueue(rendered.map((r) => r.updatedClip));
+      const nextQueue = rendered.map((r) => r.updatedClip);
+      setSampleQueue(nextQueue);
 
       const newRecords = rendered.map((r) => r.sampleRecord).reverse();
       const nextSamples = [...newRecords, ...convertAudio.savedSamples].slice(0, 12);
       const evicted = [...newRecords, ...convertAudio.savedSamples].slice(12);
-      evicted.forEach((s) => safeRevokeConvertedUrl(s.url));
+      revokeUnused(
+        [...sampleQueue.map((c) => c.convertedUrl), ...evicted.map((s) => s.url)],
+        nextQueue,
+        nextSamples
+      );
 
       const anyCleaned = rendered.some((r) => r.cleanedApplied);
       const cleanSummary = anyCleaned
@@ -580,7 +716,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                 Audio Source
               </h3>
               <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
-                Drop or select one or multiple recordings, customize Pitch &amp; Index per sample, or point to a Kaggle folder.
+                Upload or add recordings below, or switch to Batch to convert a whole folder. Pitch &amp; settings live in Step 3.
               </p>
             </div>
           </div>
@@ -669,7 +805,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         onClick={handleApplyDefaultsToQueue}
                         className="rounded-md border border-[#47161D] bg-[#200B0E] px-2.5 py-1 text-[11px] font-medium text-[#DFBFC3] hover:text-white hover:border-[#E51923] whitespace-nowrap"
                       >
-                        Apply Default Pitch/Index to All
+                        Apply Step 3 Settings to All
                       </button>
                     )}
                     <button
@@ -686,6 +822,18 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                 {sampleQueue.map((clip, idx) => {
                   const isAdvExpanded = Boolean(expandedClipAdv[clip.id]);
                   const pitchText = clip.pitch > 0 ? `+${clip.pitch}` : `${clip.pitch}`;
+                  const hasCustom = Boolean(
+                    clip.customPitch ||
+                      clip.customIndex ||
+                      clip.customProtect ||
+                      clip.customVol ||
+                      clip.customAt ||
+                      clip.customPp ||
+                      clip.customSp ||
+                      clip.customFmt ||
+                      clip.voiceModel ||
+                      clip.indexFile
+                  );
                   return (
                     <div
                       key={clip.id}
@@ -701,7 +849,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                               {clip.fileName}
                             </p>
                             <p className="text-[13px] text-[#C89EA4] truncate tabular-nums">
-                              Pitch {pitchText} · Index {clip.indexRate.toFixed(2)} · {clip.outputFormat.toUpperCase()}
+                              Pitch {pitchText} {clip.customPitch ? '(custom)' : '(from Step 3)'} · Index {clip.indexRate.toFixed(2)} · {clip.outputFormat.toUpperCase()}
                               {clip.status === 'ready' ? ' · Converted' : ''}
                             </p>
                           </div>
@@ -734,72 +882,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         compact
                       />
 
-                      {/* Easy Per-Sample Pitch & Index Controls */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                        <div className="rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2.5">
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <label
-                              htmlFor={`clip-pitch-${clip.id}`}
-                              className="text-xs font-semibold text-[#FDF7F7]"
-                            >
-                              Pitch
-                            </label>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-xs text-[#FDF7F7] tabular-nums">
-                                {pitchText}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateClip(clip.id, { pitch: 0 })}
-                                aria-label={`Reset pitch for ${clip.fileName}`}
-                                className="rounded p-1 text-[#AD8288] hover:text-white"
-                              >
-                                <RotateCcw className="h-3 w-3" />
-                              </button>
-                            </div>
-                          </div>
-                          <input
-                            id={`clip-pitch-${clip.id}`}
-                            type="range"
-                            min={-32}
-                            max={32}
-                            step={1}
-                            value={clip.pitch}
-                            onChange={(e) =>
-                              handleUpdateClip(clip.id, { pitch: Number(e.target.value) })
-                            }
-                            className="w-full scarlet-slider"
-                          />
-                        </div>
-
-                        <div className="rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2.5">
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <label
-                              htmlFor={`clip-index-${clip.id}`}
-                              className="text-xs font-semibold text-[#FDF7F7]"
-                            >
-                              Index Rate
-                            </label>
-                            <span className="font-mono text-xs text-[#FDF7F7] tabular-nums">
-                              {clip.indexRate.toFixed(2)}
-                            </span>
-                          </div>
-                          <input
-                            id={`clip-index-${clip.id}`}
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={clip.indexRate}
-                            onChange={(e) =>
-                              handleUpdateClip(clip.id, { indexRate: Number(e.target.value) })
-                            }
-                            className="w-full scarlet-slider"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Optional per-sample full overrides */}
+                      {/* Optional per-sample pitch & parameter overrides (kept collapsed so Step 3 Pitch stays the single primary slider) */}
                       <div>
                         <button
                           type="button"
@@ -815,160 +898,244 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           <SlidersHorizontal className="h-3 w-3 text-[#E51923]" />
                           <span>
                             {isAdvExpanded
-                              ? 'Hide clip model & advanced overrides'
-                              : 'Customize model, protect, format & advanced'}
+                              ? 'Hide per-clip overrides'
+                              : 'Override pitch, index & model for this clip (optional)'}
                           </span>
                         </button>
 
                         {isAdvExpanded && (
-                          <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 rounded-lg border border-[#47161D] bg-[#160709] p-3">
-                            <div>
-                              <label
-                                htmlFor={`clip-model-${clip.id}`}
-                                className="block text-xs font-medium text-[#C89EA4] mb-1"
-                              >
-                                Clip Voice Model
-                              </label>
-                              <select
-                                id={`clip-model-${clip.id}`}
-                                value={clip.voiceModel}
-                                onChange={(e) =>
-                                  handleUpdateClip(clip.id, { voiceModel: e.target.value })
-                                }
-                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs font-mono text-[#FDF7F7]"
-                              >
-                                <option value="">Use Default (Step 1)</option>
-                                {modelOptions.map((m) => (
-                                  <option key={m} value={m}>
-                                    {m}
-                                  </option>
-                                ))}
-                              </select>
+                          <div className="mt-2.5 rounded-lg border border-[#47161D] bg-[#160709] p-3.5 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-[12px] text-[#C89EA4]">
+                                Changes here only apply to this clip. Leave untouched to follow Step 3 automatically.
+                              </p>
+                              {hasCustom && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetClipOverrides(clip.id)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-[#47161D] bg-[#200B0E] px-2.5 py-1 text-[11px] font-medium text-[#FDF7F7] hover:border-[#E51923]"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  <span>Use Step 3 Settings</span>
+                                </button>
+                              )}
                             </div>
 
-                            <div>
-                              <label
-                                htmlFor={`clip-idxfile-${clip.id}`}
-                                className="block text-xs font-medium text-[#C89EA4] mb-1"
-                              >
-                                Clip Index File
-                              </label>
-                              <select
-                                id={`clip-idxfile-${clip.id}`}
-                                value={clip.indexFile}
-                                onChange={(e) =>
-                                  handleUpdateClip(clip.id, { indexFile: e.target.value })
-                                }
-                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs font-mono text-[#FDF7F7]"
-                              >
-                                <option value="">Use Default / None</option>
-                                {indexOptions.map((idxOpt) => (
-                                  <option key={idxOpt} value={idxOpt}>
-                                    {idxOpt}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label
-                                htmlFor={`clip-format-${clip.id}`}
-                                className="block text-xs font-medium text-[#C89EA4] mb-1"
-                              >
-                                Export Format
-                              </label>
-                              <select
-                                id={`clip-format-${clip.id}`}
-                                value={clip.outputFormat}
-                                onChange={(e) =>
-                                  handleUpdateClip(clip.id, {
-                                    outputFormat: e.target.value as 'wav' | 'mp3' | 'flac',
-                                  })
-                                }
-                                className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs text-[#FDF7F7]"
-                              >
-                                <option value="wav">WAV</option>
-                                <option value="mp3">MP3</option>
-                                <option value="flac">FLAC</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="text-[#C89EA4]">Protect</span>
-                                <span className="font-mono text-[#FDF7F7] tabular-nums">
-                                  {clip.protect.toFixed(2)}
-                                </span>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <label htmlFor={`clip-pitch-${clip.id}`} className="text-[#FDF7F7] font-medium">
+                                    Clip Pitch Override
+                                  </label>
+                                  <span className="font-mono text-[#FDF7F7] tabular-nums">{pitchText}</span>
+                                </div>
+                                <input
+                                  id={`clip-pitch-${clip.id}`}
+                                  type="range"
+                                  min={-32}
+                                  max={32}
+                                  step={1}
+                                  value={clip.pitch}
+                                  onChange={(e) =>
+                                    handleUpdateClip(clip.id, {
+                                      pitch: Number(e.target.value),
+                                      customPitch: true,
+                                    })
+                                  }
+                                  className="w-full scarlet-slider"
+                                />
                               </div>
-                              <input
-                                type="range"
-                                min={0}
-                                max={0.5}
-                                step={0.01}
-                                value={clip.protect}
-                                aria-label={`Protect consonants for ${clip.fileName}`}
-                                onChange={(e) =>
-                                  handleUpdateClip(clip.id, { protect: Number(e.target.value) })
-                                }
-                                className="w-full scarlet-slider"
-                              />
-                            </div>
 
-                            <div>
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="text-[#C89EA4]">Volume Envelope</span>
-                                <span className="font-mono text-[#FDF7F7] tabular-nums">
-                                  {clip.volumeEnvelope.toFixed(2)}
-                                </span>
+                              <div>
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <label htmlFor={`clip-index-${clip.id}`} className="text-[#FDF7F7] font-medium">
+                                    Clip Index Rate Override
+                                  </label>
+                                  <span className="font-mono text-[#FDF7F7] tabular-nums">{clip.indexRate.toFixed(2)}</span>
+                                </div>
+                                <input
+                                  id={`clip-index-${clip.id}`}
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={clip.indexRate}
+                                  onChange={(e) =>
+                                    handleUpdateClip(clip.id, {
+                                      indexRate: Number(e.target.value),
+                                      customIndex: true,
+                                    })
+                                  }
+                                  className="w-full scarlet-slider"
+                                />
                               </div>
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.05}
-                                value={clip.volumeEnvelope}
-                                aria-label={`Volume envelope for ${clip.fileName}`}
-                                onChange={(e) =>
-                                  handleUpdateClip(clip.id, { volumeEnvelope: Number(e.target.value) })
-                                }
-                                className="w-full scarlet-slider"
-                              />
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-3.5 pt-2">
-                              <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={clip.autotune}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              <div>
+                                <label
+                                  htmlFor={`clip-model-${clip.id}`}
+                                  className="block text-xs font-medium text-[#C89EA4] mb-1"
+                                >
+                                  Clip Voice Model
+                                </label>
+                                <select
+                                  id={`clip-model-${clip.id}`}
+                                  value={clip.voiceModel}
                                   onChange={(e) =>
-                                    handleUpdateClip(clip.id, { autotune: e.target.checked })
+                                    handleUpdateClip(clip.id, { voiceModel: e.target.value })
                                   }
-                                  className="h-3.5 w-3.5 rounded accent-[#E51923]"
-                                />
-                                <span>Autotune</span>
-                              </label>
-                              <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={clip.proposedPitch}
+                                  className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs font-mono text-[#FDF7F7]"
+                                >
+                                  <option value="">Use Default (Step 1)</option>
+                                  {modelOptions.map((m) => (
+                                    <option key={m} value={m}>
+                                      {m}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label
+                                  htmlFor={`clip-idxfile-${clip.id}`}
+                                  className="block text-xs font-medium text-[#C89EA4] mb-1"
+                                >
+                                  Clip Index File
+                                </label>
+                                <select
+                                  id={`clip-idxfile-${clip.id}`}
+                                  value={clip.indexFile}
                                   onChange={(e) =>
-                                    handleUpdateClip(clip.id, { proposedPitch: e.target.checked })
+                                    handleUpdateClip(clip.id, { indexFile: e.target.value })
                                   }
-                                  className="h-3.5 w-3.5 rounded accent-[#E51923]"
-                                />
-                                <span>Proposed Pitch</span>
-                              </label>
-                              <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={clip.splitAudio}
+                                  className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs font-mono text-[#FDF7F7]"
+                                >
+                                  <option value="">Use Default / None</option>
+                                  {indexOptions.map((idxOpt) => (
+                                    <option key={idxOpt} value={idxOpt}>
+                                      {idxOpt}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label
+                                  htmlFor={`clip-format-${clip.id}`}
+                                  className="block text-xs font-medium text-[#C89EA4] mb-1"
+                                >
+                                  Export Format
+                                </label>
+                                <select
+                                  id={`clip-format-${clip.id}`}
+                                  value={clip.outputFormat}
                                   onChange={(e) =>
-                                    handleUpdateClip(clip.id, { splitAudio: e.target.checked })
+                                    handleUpdateClip(clip.id, {
+                                      outputFormat: e.target.value as 'wav' | 'mp3' | 'flac',
+                                      customFmt: true,
+                                    })
                                   }
-                                  className="h-3.5 w-3.5 rounded accent-[#E51923]"
+                                  className="w-full rounded-md bg-[#100506] border border-[#47161D] px-2.5 py-1.5 text-xs text-[#FDF7F7]"
+                                >
+                                  <option value="wav">WAV</option>
+                                  <option value="mp3">MP3</option>
+                                  <option value="flac">FLAC</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="text-[#C89EA4]">Protect</span>
+                                  <span className="font-mono text-[#FDF7F7] tabular-nums">
+                                    {clip.protect.toFixed(2)}
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={0.5}
+                                  step={0.01}
+                                  value={clip.protect}
+                                  aria-label={`Protect consonants for ${clip.fileName}`}
+                                  onChange={(e) =>
+                                    handleUpdateClip(clip.id, {
+                                      protect: Number(e.target.value),
+                                      customProtect: true,
+                                    })
+                                  }
+                                  className="w-full scarlet-slider"
                                 />
-                                <span>Split</span>
-                              </label>
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="text-[#C89EA4]">Volume Envelope</span>
+                                  <span className="font-mono text-[#FDF7F7] tabular-nums">
+                                    {clip.volumeEnvelope.toFixed(2)}
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={clip.volumeEnvelope}
+                                  aria-label={`Volume envelope for ${clip.fileName}`}
+                                  onChange={(e) =>
+                                    handleUpdateClip(clip.id, {
+                                      volumeEnvelope: Number(e.target.value),
+                                      customVol: true,
+                                    })
+                                  }
+                                  className="w-full scarlet-slider"
+                                />
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-3.5 pt-2">
+                                <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={clip.autotune}
+                                    onChange={(e) =>
+                                      handleUpdateClip(clip.id, {
+                                        autotune: e.target.checked,
+                                        customAt: true,
+                                      })
+                                    }
+                                    className="h-3.5 w-3.5 rounded accent-[#E51923]"
+                                  />
+                                  <span>Autotune</span>
+                                </label>
+                                <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={clip.proposedPitch}
+                                    onChange={(e) =>
+                                      handleUpdateClip(clip.id, {
+                                        proposedPitch: e.target.checked,
+                                        customPp: true,
+                                      })
+                                    }
+                                    className="h-3.5 w-3.5 rounded accent-[#E51923]"
+                                  />
+                                  <span>Proposed Pitch</span>
+                                </label>
+                                <label className="inline-flex items-center gap-1.5 text-xs text-[#DFBFC3] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={clip.splitAudio}
+                                    onChange={(e) =>
+                                      handleUpdateClip(clip.id, {
+                                        splitAudio: e.target.checked,
+                                        customSp: true,
+                                      })
+                                    }
+                                    className="h-3.5 w-3.5 rounded accent-[#E51923]"
+                                  />
+                                  <span>Split</span>
+                                </label>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -996,12 +1163,19 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             src={clip.convertedUrl}
                             compact
                             onDiscard={() => {
-                              safeRevokeConvertedUrl(clip.convertedUrl);
-                              handleUpdateClip(clip.id, {
-                                convertedUrl: '',
-                                convertedName: '',
-                                status: 'queued',
-                              });
+                              const oldConvertedUrl = clip.convertedUrl;
+                              const nextQueue = sampleQueue.map((c) =>
+                                c.id === clip.id
+                                  ? {
+                                      ...c,
+                                      convertedUrl: '',
+                                      convertedName: '',
+                                      status: 'queued' as const,
+                                    }
+                                  : c
+                              );
+                              setSampleQueue(nextQueue);
+                              revokeUnused([oldConvertedUrl], nextQueue, convertAudio.savedSamples);
                             }}
                             discardLabel={`Discard converted output for ${clip.fileName}`}
                           />
@@ -1037,21 +1211,21 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
         )}
       </section>
 
-      {/* STEP 3: Default Conversion Parameters & Run */}
+      {/* STEP 3: Pitch & Settings */}
       <section className="rounded-xl border border-[#47161D] bg-[#160709] p-6 space-y-5">
         <div className="flex items-start gap-3">
           <StepBadge num={3} />
           <div>
             <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
-              Conversion Parameters
+              Pitch &amp; Settings
             </h3>
             <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
-              Set default Pitch, Index Rate, and export options for incoming clips or batch folders.
+              Adjust Pitch and voice quality here. Changes update queued clips and batch mode automatically.
             </p>
           </div>
         </div>
 
-        {/* Pitch Slider */}
+        {/* Single Primary Pitch Slider */}
         <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
             <div>
@@ -1059,10 +1233,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                 htmlFor="convert-pitch-slider"
                 className="block text-[13.5px] font-semibold text-[#FDF7F7]"
               >
-                Default Pitch
+                Pitch
               </label>
               <p className="text-[13px] text-[#C89EA4] mt-0.5">
-                Shift the vocal register up or down in semitones between -32 and +32.
+                Shift pitch in semitones (-32 to +32). Use +12 for male to female, -12 for female to male, or 0 to match original pitch.
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -1071,7 +1245,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
               </span>
               <button
                 type="button"
-                onClick={() => onUpdateConvertAudio({ ...convertAudio, pitch: 0 })}
+                onClick={() => updateDefaultsAndSync({ pitch: 0 })}
                 aria-label="Reset pitch to 0"
                 className="rounded-md border border-[#47161D] bg-[#200B0E] p-1.5 text-[#DFBFC3] hover:text-white"
               >
@@ -1087,10 +1261,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
             step={1}
             value={convertAudio.pitch}
             onChange={(e) =>
-              onUpdateConvertAudio({
-                ...convertAudio,
-                pitch: Number(e.target.value),
-              })
+              updateDefaultsAndSync({ pitch: Number(e.target.value) })
             }
             className="w-full scarlet-slider"
           />
@@ -1173,7 +1344,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           </span>
                           <button
                             type="button"
-                            onClick={() => onUpdateConvertAudio({ ...convertAudio, indexRate: 0.75 })}
+                            onClick={() => updateDefaultsAndSync({ indexRate: 0.75 })}
                             aria-label="Reset search feature ratio to 0.75"
                             className="rounded border border-[#47161D] bg-[#200B0E] p-1 text-[#DFBFC3] hover:text-white"
                           >
@@ -1192,7 +1363,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         step={0.05}
                         value={convertAudio.indexRate}
                         onChange={(e) =>
-                          onUpdateConvertAudio({ ...convertAudio, indexRate: Number(e.target.value) })
+                          updateDefaultsAndSync({ indexRate: Number(e.target.value) })
                         }
                         className="w-full scarlet-slider"
                       />
@@ -1214,7 +1385,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           </span>
                           <button
                             type="button"
-                            onClick={() => onUpdateConvertAudio({ ...convertAudio, volumeEnvelope: 1 })}
+                            onClick={() => updateDefaultsAndSync({ volumeEnvelope: 1 })}
                             aria-label="Reset volume envelope to 1"
                             className="rounded border border-[#47161D] bg-[#200B0E] p-1 text-[#DFBFC3] hover:text-white"
                           >
@@ -1233,7 +1404,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         step={0.05}
                         value={convertAudio.volumeEnvelope}
                         onChange={(e) =>
-                          onUpdateConvertAudio({ ...convertAudio, volumeEnvelope: Number(e.target.value) })
+                          updateDefaultsAndSync({ volumeEnvelope: Number(e.target.value) })
                         }
                         className="w-full scarlet-slider"
                       />
@@ -1255,7 +1426,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           </span>
                           <button
                             type="button"
-                            onClick={() => onUpdateConvertAudio({ ...convertAudio, protect: 0.5 })}
+                            onClick={() => updateDefaultsAndSync({ protect: 0.5 })}
                             aria-label="Reset protect voiceless consonants to 0.5"
                             className="rounded border border-[#47161D] bg-[#200B0E] p-1 text-[#DFBFC3] hover:text-white"
                           >
@@ -1274,7 +1445,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         step={0.01}
                         value={convertAudio.protect}
                         onChange={(e) =>
-                          onUpdateConvertAudio({ ...convertAudio, protect: Number(e.target.value) })
+                          updateDefaultsAndSync({ protect: Number(e.target.value) })
                         }
                         className="w-full scarlet-slider"
                       />
@@ -1419,7 +1590,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         type="checkbox"
                         checked={convertAudio.autotune}
                         onChange={(e) =>
-                          onUpdateConvertAudio({ ...convertAudio, autotune: e.target.checked })
+                          updateDefaultsAndSync({ autotune: e.target.checked })
                         }
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
@@ -1436,10 +1607,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         type="checkbox"
                         checked={convertAudio.proposedPitch}
                         onChange={(e) =>
-                          onUpdateConvertAudio({
-                            ...convertAudio,
-                            proposedPitch: e.target.checked,
-                          })
+                          updateDefaultsAndSync({ proposedPitch: e.target.checked })
                         }
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
@@ -1458,7 +1626,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                         type="checkbox"
                         checked={convertAudio.splitAudio}
                         onChange={(e) =>
-                          onUpdateConvertAudio({ ...convertAudio, splitAudio: e.target.checked })
+                          updateDefaultsAndSync({ splitAudio: e.target.checked })
                         }
                         className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
                       />
@@ -1740,8 +1908,7 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                           id="conv-output-format"
                           value={convertAudio.outputFormat}
                           onChange={(e) =>
-                            onUpdateConvertAudio({
-                              ...convertAudio,
+                            updateDefaultsAndSync({
                               outputFormat: e.target.value as 'wav' | 'mp3' | 'flac',
                             })
                           }
@@ -1767,6 +1934,21 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
               </div>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* STEP 4: Convert & Output */}
+      <section className="rounded-xl border border-[#47161D] bg-[#160709] p-6 space-y-5">
+        <div className="flex items-start gap-3">
+          <StepBadge num={4} />
+          <div>
+            <h3 className="font-display text-[17px] font-semibold text-[#FDF7F7]">
+              Convert &amp; Output
+            </h3>
+            <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
+              Render your queued recordings or batch folder, then listen and download results below.
+            </p>
+          </div>
         </div>
 
         {/* Terms of Use */}
@@ -1868,9 +2050,26 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
           </div>
         )}
 
-        <pre className="rounded-lg border border-[#47161D] bg-[#100506] p-3 text-[11px] font-mono text-[#AD8288] overflow-x-auto">
-          {inferCliCommand}
-        </pre>
+        <div className="rounded-lg border border-[#47161D] bg-[#100506]">
+          <button
+            type="button"
+            onClick={() => setCliOpen((v) => !v)}
+            aria-expanded={cliOpen}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-[#C89EA4] hover:text-[#FDF7F7]"
+          >
+            <span>View Generated core.py CLI Command</span>
+            {cliOpen ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </button>
+          {cliOpen && (
+            <pre className="border-t border-[#47161D] p-3 text-[11px] font-mono text-[#AD8288] overflow-x-auto">
+              {inferCliCommand}
+            </pre>
+          )}
+        </div>
       </section>
     </div>
   );

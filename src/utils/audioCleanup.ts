@@ -250,3 +250,30 @@ export async function processAudioUrlWithCleanup(
     void ctx.close().catch(() => {});
   }
 }
+
+export function collectUnusedBlobUrls(
+  candidateUrls: Iterable<string | undefined | null>,
+  remainingQueue: ReadonlyArray<{ sourceUrl?: string; convertedUrl?: string }>,
+  remainingSavedSamples: ReadonlyArray<{ url?: string }>
+): string[] {
+  const activeRefs = new Set<string>();
+  for (const clip of remainingQueue) {
+    if (clip.sourceUrl) activeRefs.add(clip.sourceUrl);
+    if (clip.convertedUrl) activeRefs.add(clip.convertedUrl);
+  }
+  for (const sample of remainingSavedSamples) {
+    if (sample.url) activeRefs.add(sample.url);
+  }
+
+  const unused: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of candidateUrls) {
+    if (!raw || !raw.startsWith('blob:') || seen.has(raw)) continue;
+    seen.add(raw);
+    if (!activeRefs.has(raw)) {
+      unused.push(raw);
+    }
+  }
+  return unused;
+}
+

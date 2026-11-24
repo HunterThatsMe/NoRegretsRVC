@@ -427,6 +427,7 @@ if active_tab == "Training":
                                 inferred_d = _infer_matching_d_url(g_in)
                                 if inferred_d:
                                     st.session_state["nr_custom_d"] = inferred_d
+                                    st.session_state["nr_cp_d_inp"] = inferred_d
                             st.rerun()
 
                     cpre_dir = Path(now_dir) / "rvc" / "models" / "pretraineds" / "custom"
@@ -506,9 +507,9 @@ if active_tab == "Training":
             st.session_state["nr_index_algo"] = st.selectbox("Index Algorithm", options=idx_opts, index=idx_opts.index(st.session_state["nr_index_algo"]) if st.session_state["nr_index_algo"] in idx_opts else 0, key="nr_idx_algo_sel")
 
         with _nr_card("nr_train_terms_box"):
+            st.session_state.setdefault("nr_train_terms", True)
             terms_ok = st.checkbox(
                 "I agree to the terms of use — Confirm that your training audio follows the usage guidelines for NoRegretsRVC.",
-                value=True,
                 key="nr_train_terms",
             )
 

@@ -1,7 +1,7 @@
 export function buildStreamlitTabsPart3(): string {
   return `
 # ==============================================================================
-# TAB 3: SAMPLES (EXACT 3-STEP MULTI-CLIP QUEUE & ADVANCED SETTINGS)
+# TAB 3: SAMPLES (4-STEP WORKFLOW: VOICE, SOURCE, PITCH & SETTINGS, CONVERT)
 # ==============================================================================
 elif active_tab == "Samples":
     _page_header(
@@ -70,232 +70,444 @@ elif active_tab == "Samples":
                 _clear_fs_caches()
                 st.rerun()
 
-    # --- STEP 2: Audio Source & Multi-Sample Queue ---
-    with _nr_card("nr_samples_step_2"):
-        s2_l, s2_r = st.columns([3.5, 1.5], gap="small")
-        with s2_l:
-            _step_head(2, "Audio Source", "Drop or select one or multiple recordings, customize Pitch & Index per sample, or point to a Kaggle folder.")
-        with s2_r:
-            st.session_state.setdefault("nr_inf_mode", "Audio Files")
-            m1, m2 = st.columns(2, gap="small")
-            if m1.button("Audio Files", type="primary" if st.session_state["nr_inf_mode"] == "Audio Files" else "secondary", use_container_width=True, key="nr_mode_files"):
-                st.session_state["nr_inf_mode"] = "Audio Files"
-                st.rerun()
-            if m2.button("Batch", type="primary" if st.session_state["nr_inf_mode"] == "Batch" else "secondary", use_container_width=True, key="nr_mode_batch"):
-                st.session_state["nr_inf_mode"] = "Batch"
-                st.rerun()
+    # --- STEP 2 & STEP 3 SHARED WORKSPACE FRAGMENT (INSTANT BIDIRECTIONAL PITCH SYNC) ---
+    def _audio_mime(p_obj: Path) -> str:
+        ext = p_obj.suffix.lower().lstrip(".")
+        if ext == "mp3":
+            return "audio/mpeg"
+        if ext == "m4a":
+            return "audio/mp4"
+        return f"audio/{ext or 'wav'}"
 
-        if st.session_state["nr_inf_mode"] == "Audio Files":
-            up_clips = st.file_uploader(
-                "Drop Audio Here — or — Click to Upload (WAV, MP3, FLAC, OGG)",
-                type=["wav", "mp3", "flac", "ogg", "m4a"],
-                accept_multiple_files=True,
-                key="nr_inf_up",
-            )
-            if up_clips:
-                au_dir = Path(now_dir) / "assets" / "audios"
-                au_dir.mkdir(parents=True, exist_ok=True)
-                queued_paths = {c["path"] for c in st.session_state["nr_sample_queue"]}
-                added_n = 0
-                for uf in up_clips:
-                    dst = au_dir / uf.name
-                    if not dst.is_file():
-                        dst.write_bytes(uf.getvalue())
-                    rel_dst = str(dst.relative_to(now_dir))
-                    if rel_dst not in queued_paths:
-                        st.session_state["nr_sample_queue"].append({
-                            "id": f"clip-{int(time.time()*1000)}-{added_n}",
-                            "name": uf.name,
-                            "path": rel_dst,
-                            "pitch": int(st.session_state.get("nr_def_pitch", 0)),
-                            "index_rate": float(st.session_state.get("nr_def_idx_rate", 0.75)),
-                            "protect": float(st.session_state.get("nr_def_protect", 0.5)),
-                            "volume_envelope": float(st.session_state.get("nr_def_vol_env", 1.0)),
-                            "autotune": bool(st.session_state.get("nr_def_autotune", False)),
-                            "proposed_pitch": bool(st.session_state.get("nr_def_proposed", False)),
-                            "split_audio": bool(st.session_state.get("nr_def_split", False)),
-                            "format": str(st.session_state.get("nr_def_fmt", "WAV")),
-                            "model": "",
-                            "index": "",
-                            "converted_path": "",
-                        })
-                        queued_paths.add(rel_dst)
-                        added_n += 1
-                if added_n > 0:
-                    st.session_state["nr_inf_log"] = f"Added {added_n} uploaded clip(s) to sample queue."
+    def _sync_samples_state() -> None:
+        adv_map = [
+            ("nr_adv_idx", "nr_def_idx_rate", float, 0.75),
+            ("nr_adv_vol", "nr_def_vol_env", float, 1.0),
+            ("nr_adv_prot", "nr_def_protect", float, 0.5),
+            ("nr_adv_sid", "nr_def_sid", int, 0),
+            ("nr_adv_f0", "nr_def_f0", str, "rmvpe"),
+            ("nr_adv_emb", "nr_def_emb", str, "contentvec"),
+            ("nr_adv_at", "nr_def_autotune", bool, False),
+            ("nr_adv_pp", "nr_def_proposed", bool, False),
+            ("nr_adv_sp", "nr_def_split", bool, False),
+            ("nr_adv_clean", "nr_def_clean", bool, False),
+            ("nr_adv_cleandb", "nr_def_clean_db", int, 12),
+            ("nr_adv_fmt_on", "nr_def_formant", bool, False),
+            ("nr_adv_qf", "nr_def_qf", float, 1.0),
+            ("nr_adv_tf", "nr_def_tf", float, 1.0),
+            ("nr_adv_outp", "nr_def_out_path", str, "assets/audios/output.wav"),
+            ("nr_adv_fmt", "nr_def_fmt", str, "WAV"),
+        ]
+        for w_key, state_key, caster, fallback_v in adv_map:
+            if state_key not in st.session_state:
+                st.session_state[state_key] = fallback_v
+            if w_key in st.session_state:
+                st.session_state[state_key] = caster(st.session_state[w_key])
+            else:
+                st.session_state[w_key] = caster(st.session_state[state_key])
 
-            if audio_inputs:
-                ex_l, ex_r = st.columns([3.5, 1.2], gap="small")
-                with ex_l:
-                    pick_au = st.selectbox(
-                        "Pick existing recording from assets/audios or free_samples",
-                        options=[""] + audio_inputs,
-                        format_func=lambda x: "Add existing clip from library..." if x == "" else x,
-                        key="nr_pick_existing_au",
-                    )
-                with ex_r:
-                    st.markdown('<div style="height:26px"></div>', unsafe_allow_html=True)
-                    if st.button("Add Clip", type="secondary", use_container_width=True, key="nr_btn_add_lib_clip") and pick_au:
-                        st.session_state["nr_sample_queue"].append({
-                            "id": f"clip-{int(time.time()*1000)}",
-                            "name": Path(pick_au).name,
-                            "path": pick_au,
-                            "pitch": int(st.session_state.get("nr_def_pitch", 0)),
-                            "index_rate": float(st.session_state.get("nr_def_idx_rate", 0.75)),
-                            "protect": float(st.session_state.get("nr_def_protect", 0.5)),
-                            "volume_envelope": float(st.session_state.get("nr_def_vol_env", 1.0)),
-                            "autotune": bool(st.session_state.get("nr_def_autotune", False)),
-                            "proposed_pitch": bool(st.session_state.get("nr_def_proposed", False)),
-                            "split_audio": bool(st.session_state.get("nr_def_split", False)),
-                            "format": str(st.session_state.get("nr_def_fmt", "WAV")),
-                            "model": "",
-                            "index": "",
-                            "converted_path": "",
-                        })
-                        st.rerun()
+        q_list = st.session_state.get("nr_sample_queue", [])
+        for c in q_list:
+            cid = c["id"]
+            cp_k = f"nr_cp_{cid}"
+            ci_k = f"nr_ci_{cid}"
+            cprot_k = f"nr_cprot_{cid}"
+            cvol_k = f"nr_cvol_{cid}"
+            cat_k = f"nr_cat_{cid}"
+            cpp_k = f"nr_cpp_{cid}"
+            csp_k = f"nr_csp_{cid}"
+            cf_k = f"nr_cf_{cid}"
+            cm_k = f"nr_cm_{cid}"
+            cx_k = f"nr_cx_{cid}"
+            if cp_k in st.session_state:
+                nv = int(st.session_state[cp_k])
+                if nv != int(c.get("pitch", 0)):
+                    c["pitch"] = nv
+                    c["custom_pitch"] = True
+            if ci_k in st.session_state:
+                nv_f = float(st.session_state[ci_k])
+                if abs(nv_f - float(c.get("index_rate", 0.75))) > 1e-6:
+                    c["index_rate"] = nv_f
+                    c["custom_index"] = True
+            if cprot_k in st.session_state:
+                nv_f = float(st.session_state[cprot_k])
+                if abs(nv_f - float(c.get("protect", 0.5))) > 1e-6:
+                    c["protect"] = nv_f
+                    c["custom_protect"] = True
+            if cvol_k in st.session_state:
+                nv_f = float(st.session_state[cvol_k])
+                if abs(nv_f - float(c.get("volume_envelope", 1.0))) > 1e-6:
+                    c["volume_envelope"] = nv_f
+                    c["custom_vol"] = True
+            if cat_k in st.session_state:
+                nv_b = bool(st.session_state[cat_k])
+                if nv_b != bool(c.get("autotune", False)):
+                    c["autotune"] = nv_b
+                    c["custom_at"] = True
+            if cpp_k in st.session_state:
+                nv_b = bool(st.session_state[cpp_k])
+                if nv_b != bool(c.get("proposed_pitch", False)):
+                    c["proposed_pitch"] = nv_b
+                    c["custom_pp"] = True
+            if csp_k in st.session_state:
+                nv_b = bool(st.session_state[csp_k])
+                if nv_b != bool(c.get("split_audio", False)):
+                    c["split_audio"] = nv_b
+                    c["custom_sp"] = True
+            if cf_k in st.session_state:
+                nv_s = str(st.session_state[cf_k]).upper()
+                if nv_s != str(c.get("format", "WAV")).upper():
+                    c["format"] = nv_s
+                    c["custom_fmt"] = True
+            if cm_k in st.session_state:
+                c["model"] = str(st.session_state[cm_k])
+            if cx_k in st.session_state:
+                c["index"] = str(st.session_state[cx_k])
 
-            def _render_samples_queue_body() -> None:
-                q_items = st.session_state["nr_sample_queue"]
-                if not q_items:
-                    return
-                qh_l, qh_m, qh_r = st.columns([3, 1.8, 1], gap="small")
-                qh_l.markdown(f'<div class="nr-field-title" style="padding-top:8px">Queued Audio Samples ({len(q_items)})</div>', unsafe_allow_html=True)
-                if len(q_items) > 1 and qh_m.button("Apply Default Pitch/Index to All", type="secondary", use_container_width=True, key="nr_apply_def_all"):
-                    for c in q_items:
-                        c["pitch"] = int(st.session_state.get("nr_def_pitch", 0))
-                        c["index_rate"] = float(st.session_state.get("nr_def_idx_rate", 0.75))
-                        st.session_state[f"nr_cp_{c['id']}"] = c["pitch"]
-                        st.session_state[f"nr_ci_{c['id']}"] = c["index_rate"]
-                if qh_r.button("Clear All", type="secondary", use_container_width=True, key="nr_clear_all_clips"):
-                    st.session_state["nr_sample_queue"] = []
-                    try:
-                        st.rerun(scope="app")
-                    except TypeError:
-                        st.rerun()
+        def_specs = [
+            ("nr_def_pitch", "pitch", "nr_cp_", "custom_pitch", int, 0),
+            ("nr_def_idx_rate", "index_rate", "nr_ci_", "custom_index", float, 0.75),
+            ("nr_def_protect", "protect", "nr_cprot_", "custom_protect", float, 0.5),
+            ("nr_def_vol_env", "volume_envelope", "nr_cvol_", "custom_vol", float, 1.0),
+            ("nr_def_autotune", "autotune", "nr_cat_", "custom_at", bool, False),
+            ("nr_def_proposed", "proposed_pitch", "nr_cpp_", "custom_pp", bool, False),
+            ("nr_def_split", "split_audio", "nr_csp_", "custom_sp", bool, False),
+            ("nr_def_fmt", "format", "nr_cf_", "custom_fmt", str, "WAV"),
+        ]
+        single_clip = len(q_list) == 1
+        for def_key, clip_field, w_prefix, custom_flag, caster, fallback_v in def_specs:
+            cur_v = caster(st.session_state.get(def_key, fallback_v))
+            if caster is str:
+                cur_v = cur_v.upper()
+            prev_key = f"_nr_prev_{def_key}"
+            if prev_key not in st.session_state:
+                st.session_state[prev_key] = cur_v
+                continue
+            prev_v = caster(st.session_state[prev_key])
+            if caster is str:
+                prev_v = prev_v.upper()
+            changed = (abs(cur_v - prev_v) > 1e-6) if caster is float else (cur_v != prev_v)
+            if changed:
+                st.session_state[prev_key] = cur_v
+                for c in q_list:
+                    if single_clip or not bool(c.get(custom_flag, False)):
+                        c[clip_field] = cur_v
+                        st.session_state[f"{w_prefix}{c['id']}"] = cur_v
+                        c[custom_flag] = False
 
-                for idx_c, clip in enumerate(list(q_items)):
-                    with st.container(border=True):
-                        ch1, ch2, ch3 = st.columns([4, 1.3, 0.55], gap="small")
-                        p_str = f'+{clip["pitch"]}' if clip["pitch"] > 0 else str(clip["pitch"])
-                        status_tag = " · Converted" if clip.get("converted_path") else ""
-                        ch1.markdown(
-                            f'<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:#FDF7F7">{idx_c + 1}. {html.escape(clip["name"])}</div>'
-                            f'<div style="font-size:12.5px;color:#C89EA4">Pitch {p_str} · Index {clip["index_rate"]:.2f} · {clip["format"].upper()}{status_tag}</div>',
-                            unsafe_allow_html=True,
+    def _clear_clip_widget_keys(cid: str) -> None:
+        for pfx in ("nr_cp_", "nr_ci_", "nr_cprot_", "nr_cvol_", "nr_cat_", "nr_cpp_", "nr_csp_", "nr_cf_", "nr_cm_", "nr_cx_"):
+            st.session_state.pop(f"{pfx}{cid}", None)
+
+    def _render_samples_workspace_body() -> None:
+        _sync_samples_state()
+
+        # --- STEP 2: Audio Source & Multi-Sample Queue ---
+        with _nr_card("nr_samples_step_2"):
+            s2_l, s2_r = st.columns([3.5, 1.5], gap="small")
+            with s2_l:
+                _step_head(2, "Audio Source", "Upload or add recordings below, or switch to Batch to convert a whole folder. Pitch & settings live in Step 3.")
+            with s2_r:
+                st.session_state.setdefault("nr_inf_mode", "Audio Files")
+                m1, m2 = st.columns(2, gap="small")
+                if m1.button("Audio Files", type="primary" if st.session_state["nr_inf_mode"] == "Audio Files" else "secondary", use_container_width=True, key="nr_mode_files"):
+                    st.session_state["nr_inf_mode"] = "Audio Files"
+                    st.rerun()
+                if m2.button("Batch", type="primary" if st.session_state["nr_inf_mode"] == "Batch" else "secondary", use_container_width=True, key="nr_mode_batch"):
+                    st.session_state["nr_inf_mode"] = "Batch"
+                    st.rerun()
+
+            if st.session_state["nr_inf_mode"] == "Audio Files":
+                up_clips = st.file_uploader(
+                    "Drop Audio Here — or — Click to Upload (WAV, MP3, FLAC, OGG)",
+                    type=["wav", "mp3", "flac", "ogg", "m4a"],
+                    accept_multiple_files=True,
+                    key="nr_inf_up",
+                )
+                seen_ups = st.session_state.setdefault("nr_inf_seen_ups", set())
+                active_sigs = {f"{uf.name}:{uf.size}" for uf in (up_clips or [])}
+                seen_ups.intersection_update(active_sigs)
+                if up_clips:
+                    au_dir = Path(now_dir) / "assets" / "audios"
+                    au_dir.mkdir(parents=True, exist_ok=True)
+                    queued_paths = {c["path"] for c in st.session_state["nr_sample_queue"]}
+                    added_n = 0
+                    for uf in up_clips:
+                        up_sig = f"{uf.name}:{uf.size}"
+                        if up_sig in seen_ups:
+                            continue
+                        seen_ups.add(up_sig)
+                        dst = au_dir / uf.name
+                        if not dst.is_file():
+                            dst.write_bytes(uf.getvalue())
+                        rel_dst = str(dst.relative_to(now_dir))
+                        if rel_dst not in queued_paths:
+                            st.session_state["nr_sample_queue"].append({
+                                "id": _next_clip_id("clip"),
+                                "name": uf.name,
+                                "path": rel_dst,
+                                "pitch": int(st.session_state.get("nr_def_pitch", 0)),
+                                "index_rate": float(st.session_state.get("nr_def_idx_rate", 0.75)),
+                                "protect": float(st.session_state.get("nr_def_protect", 0.5)),
+                                "volume_envelope": float(st.session_state.get("nr_def_vol_env", 1.0)),
+                                "autotune": bool(st.session_state.get("nr_def_autotune", False)),
+                                "proposed_pitch": bool(st.session_state.get("nr_def_proposed", False)),
+                                "split_audio": bool(st.session_state.get("nr_def_split", False)),
+                                "format": str(st.session_state.get("nr_def_fmt", "WAV")).upper(),
+                                "model": "",
+                                "index": "",
+                                "converted_path": "",
+                            })
+                            queued_paths.add(rel_dst)
+                            added_n += 1
+                    if added_n > 0:
+                        st.session_state["nr_inf_log"] = f"Added {added_n} uploaded clip(s) to sample queue."
+
+                if audio_inputs:
+                    ex_l, ex_r = st.columns([3.5, 1.2], gap="small")
+                    with ex_l:
+                        pick_au = st.selectbox(
+                            "Pick existing recording from assets/audios or free_samples",
+                            options=[""] + audio_inputs,
+                            format_func=lambda x: "Add existing clip from library..." if x == "" else x,
+                            key="nr_pick_existing_au",
                         )
-                        if ch2.button("Re-Convert" if clip.get("converted_path") else "Convert", type="primary", use_container_width=True, key=f"nr_conv_one_{clip['id']}"):
-                            chosen_pth = clip.get("model") or st.session_state.get("nr_inf_pth", "")
-                            if not chosen_pth:
-                                st.warning("Select a Voice Model (.pth) in Step 1 first.")
-                            else:
-                                chosen_idx = clip.get("index") or st.session_state.get("nr_inf_idx", "")
-                                fmt_ext = clip.get("format", "WAV").lower()
-                                out_name = f"{Path(clip['name']).stem}_p{p_str}.{fmt_ext}"
-                                out_abs = str(Path(now_dir) / "assets" / "audios" / out_name)
-                                with st.spinner(f"Converting {clip['name']}..."):
-                                    rc, msg = _run_core_sync(
-                                        "run_infer_script",
-                                        {
-                                            "pitch": int(clip["pitch"]),
-                                            "index_rate": float(clip["index_rate"]),
-                                            "volume_envelope": float(clip["volume_envelope"]),
-                                            "protect": float(clip["protect"]),
-                                            "f0_method": st.session_state.get("nr_def_f0", "rmvpe"),
-                                            "input_path": str(Path(now_dir) / clip["path"]),
-                                            "output_path": out_abs,
-                                            "pth_path": str(Path(now_dir) / chosen_pth),
-                                            "index_path": str(Path(now_dir) / chosen_idx) if chosen_idx else "",
-                                            "split_audio": bool(clip["split_audio"]),
-                                            "f0_autotune": bool(clip["autotune"]),
-                                            "f0_autotune_strength": 1.0,
-                                            "proposed_pitch": bool(clip["proposed_pitch"]),
-                                            "proposed_pitch_threshold": 155.0,
-                                            "clean_audio": bool(st.session_state.get("nr_def_clean", False)),
-                                            "clean_strength": float(st.session_state.get("nr_def_clean_db", 12)) / 30.0,
-                                            "export_format": clip.get("format", "WAV").upper(),
-                                            "embedder_model": st.session_state.get("nr_def_emb", "contentvec"),
-                                            "sid": int(st.session_state.get("nr_def_sid", 0)),
-                                            "formant_shifting": bool(st.session_state.get("nr_def_formant", False)),
-                                            "formant_qfrency": float(st.session_state.get("nr_def_qf", 1.0)),
-                                            "formant_timbre": float(st.session_state.get("nr_def_tf", 1.0)),
-                                        },
-                                    )
-                                    st.session_state["nr_inf_log"] = _filter_status_lines(msg, msg)
-                                    if rc == 0 and os.path.isfile(out_abs):
-                                        clip["converted_path"] = out_abs
-                                        st.session_state["nr_saved_samples"].insert(0, {
-                                            "id": f"out-{int(time.time()*1000)}",
-                                            "name": out_name,
-                                            "path": out_abs,
-                                            "pitch": int(clip["pitch"]),
-                                            "index_rate": float(clip["index_rate"]),
-                                            "model": Path(chosen_pth).name,
-                                            "created_at": time.strftime("%H:%M:%S"),
-                                        })
-                                try:
-                                    st.rerun(scope="app")
-                                except TypeError:
+                    with ex_r:
+                        st.markdown('<div style="height:26px"></div>', unsafe_allow_html=True)
+                        if st.button("Add Clip", type="secondary", use_container_width=True, key="nr_btn_add_lib_clip") and pick_au:
+                            st.session_state["nr_sample_queue"].append({
+                                "id": _next_clip_id("clip"),
+                                "name": Path(pick_au).name,
+                                "path": pick_au,
+                                "pitch": int(st.session_state.get("nr_def_pitch", 0)),
+                                "index_rate": float(st.session_state.get("nr_def_idx_rate", 0.75)),
+                                "protect": float(st.session_state.get("nr_def_protect", 0.5)),
+                                "volume_envelope": float(st.session_state.get("nr_def_vol_env", 1.0)),
+                                "autotune": bool(st.session_state.get("nr_def_autotune", False)),
+                                "proposed_pitch": bool(st.session_state.get("nr_def_proposed", False)),
+                                "split_audio": bool(st.session_state.get("nr_def_split", False)),
+                                "format": str(st.session_state.get("nr_def_fmt", "WAV")).upper(),
+                                "model": "",
+                                "index": "",
+                                "converted_path": "",
+                            })
+                            st.rerun()
+
+                q_items = st.session_state["nr_sample_queue"]
+                if q_items:
+                    qh_l, qh_m, qh_r = st.columns([3, 1.8, 1], gap="small")
+                    qh_l.markdown(f'<div class="nr-field-title" style="padding-top:8px">Queued Audio Samples ({len(q_items)})</div>', unsafe_allow_html=True)
+                    if len(q_items) > 1 and qh_m.button("Apply Step 3 Settings to All", type="secondary", use_container_width=True, key="nr_apply_def_all"):
+                        for c in q_items:
+                            cid_c = c["id"]
+                            c["pitch"] = int(st.session_state.get("nr_def_pitch", 0))
+                            c["index_rate"] = float(st.session_state.get("nr_def_idx_rate", 0.75))
+                            c["protect"] = float(st.session_state.get("nr_def_protect", 0.5))
+                            c["volume_envelope"] = float(st.session_state.get("nr_def_vol_env", 1.0))
+                            c["autotune"] = bool(st.session_state.get("nr_def_autotune", False))
+                            c["proposed_pitch"] = bool(st.session_state.get("nr_def_proposed", False))
+                            c["split_audio"] = bool(st.session_state.get("nr_def_split", False))
+                            c["format"] = str(st.session_state.get("nr_def_fmt", "WAV")).upper()
+                            for cf in ("custom_pitch", "custom_index", "custom_protect", "custom_vol", "custom_at", "custom_pp", "custom_sp", "custom_fmt"):
+                                c[cf] = False
+                            st.session_state[f"nr_cp_{cid_c}"] = c["pitch"]
+                            st.session_state[f"nr_ci_{cid_c}"] = c["index_rate"]
+                            st.session_state[f"nr_cprot_{cid_c}"] = c["protect"]
+                            st.session_state[f"nr_cvol_{cid_c}"] = c["volume_envelope"]
+                            st.session_state[f"nr_cat_{cid_c}"] = c["autotune"]
+                            st.session_state[f"nr_cpp_{cid_c}"] = c["proposed_pitch"]
+                            st.session_state[f"nr_csp_{cid_c}"] = c["split_audio"]
+                            st.session_state[f"nr_cf_{cid_c}"] = c["format"]
+                        st.rerun()
+                    if qh_r.button("Clear All", type="secondary", use_container_width=True, key="nr_clear_all_clips"):
+                        for c in list(q_items):
+                            _clear_clip_widget_keys(c["id"])
+                        st.session_state["nr_sample_queue"] = []
+                        st.rerun()
+
+                    for idx_c, clip in enumerate(list(q_items)):
+                        cid = clip["id"]
+                        cp_k = f"nr_cp_{cid}"
+                        ci_k = f"nr_ci_{cid}"
+                        cm_k = f"nr_cm_{cid}"
+                        cx_k = f"nr_cx_{cid}"
+                        cf_k = f"nr_cf_{cid}"
+                        cprot_k = f"nr_cprot_{cid}"
+                        cvol_k = f"nr_cvol_{cid}"
+                        cat_k = f"nr_cat_{cid}"
+                        cpp_k = f"nr_cpp_{cid}"
+                        csp_k = f"nr_csp_{cid}"
+
+                        st.session_state.setdefault(cp_k, int(clip["pitch"]))
+                        st.session_state.setdefault(ci_k, float(clip["index_rate"]))
+                        st.session_state.setdefault(cm_k, str(clip.get("model", "")))
+                        st.session_state.setdefault(cx_k, str(clip.get("index", "")))
+                        fmt_cur_u = str(clip.get("format", "WAV")).upper()
+                        st.session_state.setdefault(cf_k, fmt_cur_u if fmt_cur_u in ("WAV", "MP3", "FLAC") else "WAV")
+                        st.session_state.setdefault(cprot_k, float(clip["protect"]))
+                        st.session_state.setdefault(cvol_k, float(clip["volume_envelope"]))
+                        st.session_state.setdefault(cat_k, bool(clip["autotune"]))
+                        st.session_state.setdefault(cpp_k, bool(clip["proposed_pitch"]))
+                        st.session_state.setdefault(csp_k, bool(clip["split_audio"]))
+
+                        with st.container(border=True):
+                            ch1, ch2, ch3 = st.columns([4, 1.3, 0.55], gap="small")
+                            p_str = f'+{clip["pitch"]}' if clip["pitch"] > 0 else str(clip["pitch"])
+                            p_src = "(custom)" if clip.get("custom_pitch") else "(from Step 3)"
+                            status_tag = " · Converted" if clip.get("converted_path") else ""
+                            ch1.markdown(
+                                f'<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:#FDF7F7">{idx_c + 1}. {html.escape(clip["name"])}</div>'
+                                f'<div style="font-size:12.5px;color:#C89EA4">Pitch {p_str} {p_src} · Index {clip["index_rate"]:.2f} · {clip["format"].upper()}{status_tag}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if ch2.button("Re-Convert" if clip.get("converted_path") else "Convert", type="primary", use_container_width=True, key=f"nr_conv_one_{cid}"):
+                                chosen_pth = clip.get("model") or st.session_state.get("nr_inf_pth", "")
+                                if not chosen_pth:
+                                    st.warning("Select a Voice Model (.pth) in Step 1 first.")
+                                else:
+                                    chosen_idx = clip.get("index") or st.session_state.get("nr_inf_idx", "")
+                                    fmt_ext = clip.get("format", "WAV").lower()
+                                    out_name = f"{Path(clip['name']).stem}_p{p_str}.{fmt_ext}"
+                                    out_abs = str(Path(now_dir) / "assets" / "audios" / out_name)
+                                    with st.spinner(f"Converting {clip['name']}..."):
+                                        rc, msg = _run_core_sync(
+                                            "run_infer_script",
+                                            {
+                                                "pitch": int(clip["pitch"]),
+                                                "index_rate": float(clip["index_rate"]),
+                                                "volume_envelope": float(clip["volume_envelope"]),
+                                                "protect": float(clip["protect"]),
+                                                "f0_method": st.session_state.get("nr_def_f0", "rmvpe"),
+                                                "input_path": str(Path(now_dir) / clip["path"]),
+                                                "output_path": out_abs,
+                                                "pth_path": str(Path(now_dir) / chosen_pth),
+                                                "index_path": str(Path(now_dir) / chosen_idx) if chosen_idx else "",
+                                                "split_audio": bool(clip["split_audio"]),
+                                                "f0_autotune": bool(clip["autotune"]),
+                                                "f0_autotune_strength": 1.0,
+                                                "proposed_pitch": bool(clip["proposed_pitch"]),
+                                                "proposed_pitch_threshold": 155.0,
+                                                "clean_audio": bool(st.session_state.get("nr_def_clean", False)),
+                                                "clean_strength": float(st.session_state.get("nr_def_clean_db", 12)) / 30.0,
+                                                "export_format": clip.get("format", "WAV").upper(),
+                                                "embedder_model": st.session_state.get("nr_def_emb", "contentvec"),
+                                                "sid": int(st.session_state.get("nr_def_sid", 0)),
+                                                "formant_shifting": bool(st.session_state.get("nr_def_formant", False)),
+                                                "formant_qfrency": float(st.session_state.get("nr_def_qf", 1.0)),
+                                                "formant_timbre": float(st.session_state.get("nr_def_tf", 1.0)),
+                                            },
+                                        )
+                                        st.session_state["nr_inf_log"] = _filter_status_lines(msg, msg)
+                                        if rc == 0 and os.path.isfile(out_abs):
+                                            clip["converted_path"] = out_abs
+                                            st.session_state["nr_saved_samples"].insert(0, {
+                                                "id": _next_clip_id("out"),
+                                                "name": out_name,
+                                                "path": out_abs,
+                                                "pitch": int(clip["pitch"]),
+                                                "index_rate": float(clip["index_rate"]),
+                                                "model": Path(chosen_pth).name,
+                                                "created_at": time.strftime("%H:%M:%S"),
+                                            })
                                     st.rerun()
-                        if ch3.button("✕", key=f"nr_rm_clip_{clip['id']}", help="Discard clip"):
-                            st.session_state["nr_sample_queue"].pop(idx_c)
-                            try:
-                                st.rerun(scope="app")
-                            except TypeError:
+                            if ch3.button("✕", key=f"nr_rm_clip_{cid}", help="Discard clip"):
+                                st.session_state["nr_sample_queue"].pop(idx_c)
+                                _clear_clip_widget_keys(cid)
                                 st.rerun()
 
-                        src_abs = Path(now_dir) / clip["path"]
-                        if src_abs.is_file():
-                            st.audio(str(src_abs))
+                            src_abs = Path(now_dir) / clip["path"]
+                            if src_abs.is_file():
+                                st.audio(_read_file_bytes_cached(str(src_abs), src_abs.stat().st_mtime), format=_audio_mime(src_abs))
 
-                        cp1, cp2 = st.columns(2, gap="medium")
-                        with cp1:
-                            clip["pitch"] = st.slider("Pitch", -32, 32, int(clip["pitch"]), step=1, key=f"nr_cp_{clip['id']}")
-                        with cp2:
-                            clip["index_rate"] = st.slider("Index Rate", 0.0, 1.0, float(clip["index_rate"]), step=0.05, key=f"nr_ci_{clip['id']}")
+                            has_custom = any(bool(clip.get(cf, False)) for cf in ("custom_pitch", "custom_index", "custom_protect", "custom_vol", "custom_at", "custom_pp", "custom_sp", "custom_fmt")) or bool(clip.get("model")) or bool(clip.get("index"))
+                            with st.expander("Override pitch, index, model & advanced (optional)", expanded=False):
+                                st.caption("Changes here apply only to this clip. Leave untouched to follow Step 3 automatically.")
+                                if has_custom and st.button("Use Step 3 Settings", type="secondary", key=f"nr_reset_clip_{cid}"):
+                                    clip["pitch"] = int(st.session_state.get("nr_def_pitch", 0))
+                                    clip["index_rate"] = float(st.session_state.get("nr_def_idx_rate", 0.75))
+                                    clip["protect"] = float(st.session_state.get("nr_def_protect", 0.5))
+                                    clip["volume_envelope"] = float(st.session_state.get("nr_def_vol_env", 1.0))
+                                    clip["autotune"] = bool(st.session_state.get("nr_def_autotune", False))
+                                    clip["proposed_pitch"] = bool(st.session_state.get("nr_def_proposed", False))
+                                    clip["split_audio"] = bool(st.session_state.get("nr_def_split", False))
+                                    clip["format"] = str(st.session_state.get("nr_def_fmt", "WAV")).upper()
+                                    clip["model"] = ""
+                                    clip["index"] = ""
+                                    for cf in ("custom_pitch", "custom_index", "custom_protect", "custom_vol", "custom_at", "custom_pp", "custom_sp", "custom_fmt"):
+                                        clip[cf] = False
+                                    st.session_state[cp_k] = clip["pitch"]
+                                    st.session_state[ci_k] = clip["index_rate"]
+                                    st.session_state[cprot_k] = clip["protect"]
+                                    st.session_state[cvol_k] = clip["volume_envelope"]
+                                    st.session_state[cat_k] = clip["autotune"]
+                                    st.session_state[cpp_k] = clip["proposed_pitch"]
+                                    st.session_state[csp_k] = clip["split_audio"]
+                                    st.session_state[cf_k] = clip["format"]
+                                    st.session_state[cm_k] = ""
+                                    st.session_state[cx_k] = ""
+                                    st.rerun()
+                                cp1, cp2 = st.columns(2, gap="medium")
+                                with cp1:
+                                    new_cp = int(st.slider("Clip Pitch Override", -32, 32, step=1, key=cp_k))
+                                    if new_cp != int(clip["pitch"]):
+                                        clip["pitch"] = new_cp
+                                        clip["custom_pitch"] = True
+                                with cp2:
+                                    new_ci = float(st.slider("Clip Index Rate Override", 0.0, 1.0, step=0.05, key=ci_k))
+                                    if abs(new_ci - float(clip["index_rate"])) > 1e-6:
+                                        clip["index_rate"] = new_ci
+                                        clip["custom_index"] = True
+                                ov1, ov2, ov3 = st.columns(3, gap="small")
+                                clip["model"] = ov1.selectbox("Clip Voice Model", options=[""] + pths, format_func=lambda x: "Use Default (Step 1)" if x == "" else x, key=cm_k)
+                                clip["index"] = ov2.selectbox("Clip Index File", options=[""] + idxs, format_func=lambda x: "Use Default / None" if x == "" else x, key=cx_k)
+                                new_cf = str(ov3.selectbox("Export Format", ["WAV", "MP3", "FLAC"], key=cf_k)).upper()
+                                if new_cf != str(clip["format"]).upper():
+                                    clip["format"] = new_cf
+                                    clip["custom_fmt"] = True
+                                ov4, ov5 = st.columns(2, gap="small")
+                                new_cprot = float(ov4.slider("Protect", 0.0, 0.5, step=0.01, key=cprot_k))
+                                if abs(new_cprot - float(clip["protect"])) > 1e-6:
+                                    clip["protect"] = new_cprot
+                                    clip["custom_protect"] = True
+                                new_cvol = float(ov5.slider("Volume Envelope", 0.0, 1.0, step=0.05, key=cvol_k))
+                                if abs(new_cvol - float(clip["volume_envelope"])) > 1e-6:
+                                    clip["volume_envelope"] = new_cvol
+                                    clip["custom_vol"] = True
+                                t1, t2, t3 = st.columns(3, gap="small")
+                                new_cat = bool(t1.checkbox("Autotune", key=cat_k))
+                                if new_cat != bool(clip["autotune"]):
+                                    clip["autotune"] = new_cat
+                                    clip["custom_at"] = True
+                                new_cpp = bool(t2.checkbox("Proposed Pitch", key=cpp_k))
+                                if new_cpp != bool(clip["proposed_pitch"]):
+                                    clip["proposed_pitch"] = new_cpp
+                                    clip["custom_pp"] = True
+                                new_csp = bool(t3.checkbox("Split", key=csp_k))
+                                if new_csp != bool(clip["split_audio"]):
+                                    clip["split_audio"] = new_csp
+                                    clip["custom_sp"] = True
 
-                        with st.expander("Customize model, protect, format & advanced", expanded=False):
-                            ov1, ov2, ov3 = st.columns(3, gap="small")
-                            clip["model"] = ov1.selectbox("Clip Voice Model", options=[""] + pths, format_func=lambda x: "Use Default (Step 1)" if x == "" else x, key=f"nr_cm_{clip['id']}")
-                            clip["index"] = ov2.selectbox("Clip Index File", options=[""] + idxs, format_func=lambda x: "Use Default / None" if x == "" else x, key=f"nr_cx_{clip['id']}")
-                            clip["format"] = ov3.selectbox("Export Format", ["WAV", "MP3", "FLAC"], index=["WAV", "MP3", "FLAC"].index(clip["format"].upper()) if clip["format"].upper() in ("WAV", "MP3", "FLAC") else 0, key=f"nr_cf_{clip['id']}")
-                            ov4, ov5 = st.columns(2, gap="small")
-                            clip["protect"] = ov4.slider("Protect", 0.0, 0.5, float(clip["protect"]), step=0.01, key=f"nr_cprot_{clip['id']}")
-                            clip["volume_envelope"] = ov5.slider("Volume Envelope", 0.0, 1.0, float(clip["volume_envelope"]), step=0.05, key=f"nr_cvol_{clip['id']}")
-                            t1, t2, t3 = st.columns(3, gap="small")
-                            clip["autotune"] = t1.checkbox("Autotune", value=bool(clip["autotune"]), key=f"nr_cat_{clip['id']}")
-                            clip["proposed_pitch"] = t2.checkbox("Proposed Pitch", value=bool(clip["proposed_pitch"]), key=f"nr_cpp_{clip['id']}")
-                            clip["split_audio"] = t3.checkbox("Split", value=bool(clip["split_audio"]), key=f"nr_csp_{clip['id']}")
-
-                        if clip.get("converted_path") and os.path.isfile(clip["converted_path"]):
-                            conv_p = Path(clip["converted_path"])
-                            st.markdown(f'<div style="font-size:12.5px;font-weight:600;color:#FDF7F7;margin-top:6px">Converted Output ({html.escape(conv_p.name)})</div>', unsafe_allow_html=True)
-                            st.audio(str(conv_p))
-                            st.download_button("Save Converted Clip", data=_read_file_bytes_cached(str(conv_p), conv_p.stat().st_mtime), file_name=conv_p.name, type="secondary", key=f"nr_dl_c_{clip['id']}")
-
-            if _HAS_FRAGMENT:
-                @st.fragment
-                def _render_samples_queue_frag() -> None:
-                    _render_samples_queue_body()
-
-                _render_samples_queue_frag()
+                            if clip.get("converted_path") and os.path.isfile(clip["converted_path"]):
+                                conv_p = Path(clip["converted_path"])
+                                st.markdown(f'<div style="font-size:12.5px;font-weight:600;color:#FDF7F7;margin-top:6px">Converted Output ({html.escape(conv_p.name)})</div>', unsafe_allow_html=True)
+                                conv_bytes = _read_file_bytes_cached(str(conv_p), conv_p.stat().st_mtime)
+                                st.audio(conv_bytes, format=_audio_mime(conv_p))
+                                st.download_button("Save Converted Clip", data=conv_bytes, file_name=conv_p.name, type="secondary", key=f"nr_dl_c_{cid}")
             else:
-                _render_samples_queue_body()
-        else:
-            st.session_state["nr_batch_folder"] = st.text_input(
-                "Input Folder Path (Batch)",
-                value=st.session_state.get("nr_batch_folder", "/kaggle/working/audio_inputs"),
-                key="nr_batch_folder_inp",
-            )
+                st.session_state.setdefault("nr_batch_folder_inp", st.session_state.get("nr_batch_folder", "/kaggle/working/audio_inputs"))
+                st.session_state["nr_batch_folder"] = st.text_input(
+                    "Input Folder Path (Batch)",
+                    key="nr_batch_folder_inp",
+                )
 
-    # --- STEP 3: Conversion Parameters ---
-    with _nr_card("nr_samples_step_3"):
-        _step_head(3, "Conversion Parameters", "Set default Pitch, Index Rate, and export options for incoming clips or batch folders.")
+        # --- STEP 3: Pitch & Settings ---
+        with _nr_card("nr_samples_step_3"):
+            _step_head(3, "Pitch & Settings", "Adjust Pitch and voice quality here. Changes update queued clips and batch mode automatically.")
 
-        def _render_samples_params_body() -> None:
             st.session_state.setdefault("nr_def_pitch", 0)
             st.session_state["nr_def_pitch"] = _synced_slider_num(
-                "Default Pitch",
-                "Shift the vocal register up or down in semitones between -32 and +32.",
+                "Pitch",
+                "Shift pitch in semitones (-32 to +32). Use +12 for male to female, -12 for female to male, or 0 to match original pitch.",
                 "nr_def_pitch",
                 -32,
                 32,
@@ -309,36 +521,36 @@ elif active_tab == "Samples":
             adv_lbl = f"Advanced Settings ({f0_cur} · index {idx_cur:.2f} · env {env_cur:g} · protect {prot_cur:g})"
             with st.expander(adv_lbl, expanded=False):
                 with st.expander("Voice Matching", expanded=True):
-                    st.session_state["nr_def_idx_rate"] = st.slider("Search Feature Ratio", 0.0, 1.0, float(st.session_state.get("nr_def_idx_rate", 0.75)), step=0.05, key="nr_adv_idx")
-                    st.session_state["nr_def_vol_env"] = st.slider("Volume Envelope", 0.0, 1.0, float(st.session_state.get("nr_def_vol_env", 1.0)), step=0.05, key="nr_adv_vol")
-                    st.session_state["nr_def_protect"] = st.slider("Protect Voiceless Consonants", 0.0, 0.5, float(st.session_state.get("nr_def_protect", 0.5)), step=0.01, key="nr_adv_prot")
+                    st.session_state["nr_def_idx_rate"] = st.slider("Search Feature Ratio", 0.0, 1.0, step=0.05, key="nr_adv_idx")
+                    st.session_state["nr_def_vol_env"] = st.slider("Volume Envelope", 0.0, 1.0, step=0.05, key="nr_adv_vol")
+                    st.session_state["nr_def_protect"] = st.slider("Protect Voiceless Consonants", 0.0, 0.5, step=0.01, key="nr_adv_prot")
 
                 with st.expander("Models & Algorithms", expanded=False):
                     ma1, ma2, ma3 = st.columns(3, gap="small")
-                    st.session_state["nr_def_sid"] = ma1.number_input("Speaker ID", 0, 100, int(st.session_state.get("nr_def_sid", 0)), step=1, key="nr_adv_sid")
+                    st.session_state["nr_def_sid"] = ma1.number_input("Speaker ID", 0, 100, step=1, key="nr_adv_sid")
                     st.session_state["nr_def_f0"] = ma2.selectbox("Pitch extraction algorithm", ["rmvpe", "fcpe", "swift-f0", "crepe"], key="nr_adv_f0")
                     st.session_state["nr_def_emb"] = ma3.selectbox("Embedder Model", ["contentvec", "spin", "chinese-hubert-base"], key="nr_adv_emb")
 
                 with st.expander("Advanced Pitch & Tuning", expanded=False):
                     pt1, pt2, pt3 = st.columns(3, gap="small")
-                    st.session_state["nr_def_autotune"] = pt1.checkbox("Autotune", value=bool(st.session_state.get("nr_def_autotune", False)), key="nr_adv_at")
-                    st.session_state["nr_def_proposed"] = pt2.checkbox("Proposed Pitch", value=bool(st.session_state.get("nr_def_proposed", False)), key="nr_adv_pp")
-                    st.session_state["nr_def_split"] = pt3.checkbox("Split Audio", value=bool(st.session_state.get("nr_def_split", False)), key="nr_adv_sp")
+                    st.session_state["nr_def_autotune"] = pt1.checkbox("Autotune", key="nr_adv_at")
+                    st.session_state["nr_def_proposed"] = pt2.checkbox("Proposed Pitch", key="nr_adv_pp")
+                    st.session_state["nr_def_split"] = pt3.checkbox("Split Audio", key="nr_adv_sp")
 
                 with st.expander("Audio Cleanup", expanded=False):
-                    st.session_state["nr_def_clean"] = st.checkbox("Audio cleanup (balanced rumble filter & gentle de-noise)", value=bool(st.session_state.get("nr_def_clean", False)), key="nr_adv_clean")
-                    st.session_state["nr_def_clean_db"] = st.slider("Noise reduction limit (dB)", 1, 30, int(st.session_state.get("nr_def_clean_db", 12)), step=1, disabled=not bool(st.session_state["nr_def_clean"]), key="nr_adv_cleandb")
+                    st.session_state["nr_def_clean"] = st.checkbox("Audio cleanup (balanced rumble filter & gentle de-noise)", key="nr_adv_clean")
+                    st.session_state["nr_def_clean_db"] = st.slider("Noise reduction limit (dB)", 1, 30, step=1, disabled=not bool(st.session_state["nr_def_clean"]), key="nr_adv_cleandb")
 
                 with st.expander("Formant Shifting", expanded=False):
-                    st.session_state["nr_def_formant"] = st.checkbox("Enable Formant Shifting", value=bool(st.session_state.get("nr_def_formant", False)), key="nr_adv_fmt_on")
+                    st.session_state["nr_def_formant"] = st.checkbox("Enable Formant Shifting", key="nr_adv_fmt_on")
                     if st.session_state["nr_def_formant"]:
                         fs1, fs2 = st.columns(2, gap="small")
-                        st.session_state["nr_def_qf"] = fs1.slider("Formant Quefrency", 0.0, 16.0, float(st.session_state.get("nr_def_qf", 1.0)), step=0.1, key="nr_adv_qf")
-                        st.session_state["nr_def_tf"] = fs2.slider("Formant Timbre", 0.0, 16.0, float(st.session_state.get("nr_def_tf", 1.0)), step=0.1, key="nr_adv_tf")
+                        st.session_state["nr_def_qf"] = fs1.slider("Formant Quefrency", 0.0, 16.0, step=0.1, key="nr_adv_qf")
+                        st.session_state["nr_def_tf"] = fs2.slider("Formant Timbre", 0.0, 16.0, step=0.1, key="nr_adv_tf")
 
                 with st.expander("Output Settings", expanded=False):
                     os1, os2 = st.columns([3, 1.2], gap="small")
-                    st.session_state["nr_def_out_path"] = os1.text_input("Output Path", value=st.session_state.get("nr_def_out_path", "assets/audios/output.wav"), key="nr_adv_outp")
+                    st.session_state["nr_def_out_path"] = os1.text_input("Output Path", key="nr_adv_outp")
                     st.session_state["nr_def_fmt"] = os2.selectbox("Export Format", ["WAV", "MP3", "FLAC"], key="nr_adv_fmt")
                     if st.button("Clear Outputs (Deletes all audios in assets/audios)", type="secondary", use_container_width=True, key="nr_btn_clr_out"):
                         au_dir = Path(now_dir) / "assets" / "audios"
@@ -346,15 +558,23 @@ elif active_tab == "Samples":
                             for f in au_dir.iterdir():
                                 if f.is_file():
                                     f.unlink(missing_ok=True)
+                        for c_out in st.session_state["nr_sample_queue"]:
+                            c_out["converted_path"] = ""
                         st.session_state["nr_saved_samples"] = []
                         st.session_state["nr_inf_log"] = "Cleared all generated outputs in assets/audios."
+                        _clear_fs_caches()
                         try:
                             st.rerun(scope="app")
                         except TypeError:
                             st.rerun()
 
+        # --- STEP 4: Convert & Output ---
+        with _nr_card("nr_samples_step_4"):
+            _step_head(4, "Convert & Output", "Render your queued recordings or batch folder, then listen and download results below.")
+
             with st.container(border=True):
-                inf_terms = st.checkbox("I agree to the terms of use — Confirm responsible usage guidelines prior to rendering voice conversion samples.", value=True, key="nr_inf_terms")
+                st.session_state.setdefault("nr_inf_terms", True)
+                inf_terms = st.checkbox("I agree to the terms of use — Confirm responsible usage guidelines prior to rendering voice conversion samples.", key="nr_inf_terms")
             q_len = len(st.session_state["nr_sample_queue"])
             conv_btn_lbl = f"Convert All ({q_len} Samples)" if (st.session_state["nr_inf_mode"] == "Audio Files" and q_len > 1) else _tr("Convert")
             if st.button(conv_btn_lbl, type="primary", use_container_width=True, key="nr_btn_conv_all"):
@@ -384,10 +604,7 @@ elif active_tab == "Samples":
                             },
                         )
                         st.session_state["nr_inf_log"] = _filter_status_lines(msg, msg)
-                    try:
-                        st.rerun(scope="app")
-                    except TypeError:
-                        st.rerun()
+                    st.rerun()
                 elif not q_len:
                     st.warning("Upload or add audio files in Step 2 first.")
                 else:
@@ -430,7 +647,7 @@ elif active_tab == "Samples":
                             if rc == 0 and os.path.isfile(out_abs):
                                 clip["converted_path"] = out_abs
                                 st.session_state["nr_saved_samples"].insert(0, {
-                                    "id": f"out-{int(time.time()*1000)}-{clip['id']}",
+                                    "id": _next_clip_id("out"),
                                     "name": out_name,
                                     "path": out_abs,
                                     "pitch": int(clip["pitch"]),
@@ -439,12 +656,32 @@ elif active_tab == "Samples":
                                     "created_at": time.strftime("%H:%M:%S"),
                                 })
                         st.session_state["nr_inf_log"] = "\\n".join(msgs)
-                    try:
-                        st.rerun(scope="app")
-                    except TypeError:
-                        st.rerun()
+                    st.rerun()
 
             _output_box("Sample output", _filter_status_lines(st.session_state["nr_inf_log"], st.session_state["nr_inf_log"]))
+
+            saved_list = st.session_state.get("nr_saved_samples", [])
+            if saved_list:
+                with st.container(border=True):
+                    st.markdown(f'<div class="nr-field-title">Recent Generated Samples ({len(saved_list)})</div>', unsafe_allow_html=True)
+                    for s_item in list(saved_list[:12]):
+                        s_id = str(s_item["id"])
+                        with st.container(border=True):
+                            sr1, sr2, sr3 = st.columns([4, 1.1, 0.5], gap="small")
+                            sp_str = f'+{s_item["pitch"]}' if s_item["pitch"] > 0 else str(s_item["pitch"])
+                            sr1.markdown(
+                                f'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:#FDF7F7">{html.escape(s_item["name"])}</div>'
+                                f'<div style="font-size:11px;color:#AD8288">{html.escape(s_item["model"])} · Pitch {sp_str} · idx {s_item["index_rate"]:.2f} · {s_item["created_at"]}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if os.path.isfile(s_item["path"]):
+                                sp_obj = Path(s_item["path"])
+                                sp_bytes = _read_file_bytes_cached(str(sp_obj), sp_obj.stat().st_mtime)
+                                sr2.download_button("Save", data=sp_bytes, file_name=s_item["name"], type="secondary", use_container_width=True, key=f"nr_dl_sav_{s_id}")
+                                st.audio(sp_bytes, format=_audio_mime(sp_obj))
+                            if sr3.button("✕", key=f"nr_rm_sav_{s_id}"):
+                                st.session_state["nr_saved_samples"] = [x for x in st.session_state["nr_saved_samples"] if x.get("id") != s_id]
+                                st.rerun()
 
             cli_pth = st.session_state.get("nr_inf_pth", "") or "logs/Model/Model.pth"
             cli_idx = st.session_state.get("nr_inf_idx", "") or "logs/Model/Model.index"
@@ -470,36 +707,17 @@ elif active_tab == "Samples":
                 f'  --f0_autotune {cli_at} --proposed_pitch {cli_pp} --split_audio {cli_sp}',
                 f'  --export_format {cli_fmt}',
             ])
-            st.code(cli_cmd, language="bash")
+            with st.expander("View Generated core.py CLI Command", expanded=False):
+                st.code(cli_cmd, language="bash")
 
-        if _HAS_FRAGMENT:
-            @st.fragment
-            def _render_samples_params_frag() -> None:
-                _render_samples_params_body()
+    if _HAS_FRAGMENT:
+        @st.fragment
+        def _render_samples_workspace_frag() -> None:
+            _render_samples_workspace_body()
 
-            _render_samples_params_frag()
-        else:
-            _render_samples_params_body()
-
-        saved_list = st.session_state.get("nr_saved_samples", [])
-        if saved_list:
-            with st.container(border=True):
-                st.markdown(f'<div class="nr-field-title">Recent Generated Samples ({len(saved_list)})</div>', unsafe_allow_html=True)
-                for idx_s, s_item in enumerate(list(saved_list[:12])):
-                    sr1, sr2, sr3 = st.columns([4, 1.1, 0.5], gap="small")
-                    sp_str = f'+{s_item["pitch"]}' if s_item["pitch"] > 0 else str(s_item["pitch"])
-                    sr1.markdown(
-                        f'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:#FDF7F7">{html.escape(s_item["name"])}</div>'
-                        f'<div style="font-size:11px;color:#AD8288">{html.escape(s_item["model"])} · Pitch {sp_str} · idx {s_item["index_rate"]:.2f} · {s_item["created_at"]}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    if os.path.isfile(s_item["path"]):
-                        sp_obj = Path(s_item["path"])
-                        sr2.download_button("Save", data=_read_file_bytes_cached(str(sp_obj), sp_obj.stat().st_mtime), file_name=s_item["name"], type="secondary", use_container_width=True, key=f"nr_dl_sav_{idx_s}")
-                        st.audio(s_item["path"])
-                    if sr3.button("✕", key=f"nr_rm_sav_{idx_s}"):
-                        st.session_state["nr_saved_samples"].pop(idx_s)
-                        st.rerun()
+        _render_samples_workspace_frag()
+    else:
+        _render_samples_workspace_body()
 
 # ==============================================================================
 # TAB 4: FREE SAMPLES (6 DRY MONO 32k WAV CLIPS + 3-COLUMN CARDS)
@@ -522,21 +740,22 @@ elif active_tab == "Free Samples":
             rel_p = str(local_p.relative_to(now_dir))
             if rel_p not in queued_paths:
                 st.session_state["nr_sample_queue"].append({
-                    "id": f"fs-{item['id']}-{int(time.time()*1000)}",
+                    "id": _next_clip_id(f"fs-{item['id']}"),
                     "name": item["fileName"],
                     "path": rel_p,
                     "pitch": int(st.session_state.get("nr_def_pitch", 0)),
                     "index_rate": float(st.session_state.get("nr_def_idx_rate", 0.75)),
-                    "protect": 0.5,
-                    "volume_envelope": 1.0,
-                    "autotune": False,
-                    "proposed_pitch": False,
-                    "split_audio": False,
-                    "format": "WAV",
+                    "protect": float(st.session_state.get("nr_def_protect", 0.5)),
+                    "volume_envelope": float(st.session_state.get("nr_def_vol_env", 1.0)),
+                    "autotune": bool(st.session_state.get("nr_def_autotune", False)),
+                    "proposed_pitch": bool(st.session_state.get("nr_def_proposed", False)),
+                    "split_audio": bool(st.session_state.get("nr_def_split", False)),
+                    "format": str(st.session_state.get("nr_def_fmt", "WAV")).upper(),
                     "model": "",
                     "index": "",
                     "converted_path": "",
                 })
+                queued_paths.add(rel_p)
         st.session_state["nr_active_tab"] = "Samples"
         st.rerun()
     with fh3:
@@ -597,17 +816,17 @@ elif active_tab == "Free Samples":
                                 except Exception:
                                     pass
                             st.session_state["nr_sample_queue"].append({
-                                "id": f"fs-{sample['id']}-{int(time.time()*1000)}",
+                                "id": _next_clip_id(f"fs-{sample['id']}"),
                                 "name": sample["fileName"],
                                 "path": str(local_wav.relative_to(now_dir)),
                                 "pitch": int(st.session_state.get("nr_def_pitch", 0)),
                                 "index_rate": float(st.session_state.get("nr_def_idx_rate", 0.75)),
-                                "protect": 0.5,
-                                "volume_envelope": 1.0,
-                                "autotune": False,
-                                "proposed_pitch": False,
-                                "split_audio": False,
-                                "format": "WAV",
+                                "protect": float(st.session_state.get("nr_def_protect", 0.5)),
+                                "volume_envelope": float(st.session_state.get("nr_def_vol_env", 1.0)),
+                                "autotune": bool(st.session_state.get("nr_def_autotune", False)),
+                                "proposed_pitch": bool(st.session_state.get("nr_def_proposed", False)),
+                                "split_audio": bool(st.session_state.get("nr_def_split", False)),
+                                "format": str(st.session_state.get("nr_def_fmt", "WAV")).upper(),
                                 "model": "",
                                 "index": "",
                                 "converted_path": "",
@@ -864,13 +1083,17 @@ elif active_tab == "Voice Blender":
             st.markdown('<div class="nr-field-title">Sampling Rate</div><div class="nr-field-help">Must match the target rate of both source checkpoints.</div>', unsafe_allow_html=True)
             blend_sr = st.selectbox("Sampling Rate", ["32000", "40000", "48000"], label_visibility="collapsed", key="nr_vb_sr")
         with st.container(border=True):
+            st.session_state.setdefault("nr_vb_ratio", 0.5)
+            st.session_state.setdefault("nr_vb_ratio_sl", float(st.session_state["nr_vb_ratio"]))
+            cur_vb_ratio = float(st.session_state.get("nr_vb_ratio_sl", 0.5))
             br_l, br_val, br_rst = st.columns([4.4, 0.85, 0.55], gap="small")
             br_l.markdown('<div class="nr-field-title">Blend Ratio</div><div class="nr-field-help">Balance influence between checkpoints: 0 leans 100% toward Model B, while 1 leans 100% toward Model A.</div>', unsafe_allow_html=True)
-            br_val.markdown(f'<div style="background:#160709;border:1px solid #47161D;border-radius:8px;padding:6px 10px;text-align:center;font-family:JetBrains Mono,monospace;font-size:13px;color:#FDF7F7">{float(st.session_state.get("nr_vb_ratio", 0.5)):g}</div>', unsafe_allow_html=True)
+            br_val.markdown(f'<div style="background:#160709;border:1px solid #47161D;border-radius:8px;padding:6px 10px;text-align:center;font-family:JetBrains Mono,monospace;font-size:13px;color:#FDF7F7">{cur_vb_ratio:g}</div>', unsafe_allow_html=True)
             if br_rst.button("↺", key="nr_vb_rst_ratio", help="Reset Blend Ratio to 0.5", use_container_width=True):
                 st.session_state["nr_vb_ratio"] = 0.5
+                st.session_state["nr_vb_ratio_sl"] = 0.5
                 st.rerun()
-            blend_ratio = st.slider("Blend Ratio", 0.0, 1.0, float(st.session_state.get("nr_vb_ratio", 0.5)), step=0.05, label_visibility="collapsed", key="nr_vb_ratio_sl")
+            blend_ratio = st.slider("Blend Ratio", 0.0, 1.0, step=0.05, label_visibility="collapsed", key="nr_vb_ratio_sl")
             st.session_state["nr_vb_ratio"] = blend_ratio
 
     with _nr_card("nr_vb_step_3"):

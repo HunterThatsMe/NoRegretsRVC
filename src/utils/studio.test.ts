@@ -24,6 +24,7 @@ import { generateForkBundle, generateTurboTrainerPython } from './forkGenerator.
 import {
   applyBalancedAudioCleanup,
   clampCleanupStrength,
+  collectUnusedBlobUrls,
   computeCleanupParameters,
   encodePcm16Wav,
 } from './audioCleanup.ts';
@@ -275,11 +276,21 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.match(appFile.content, /def _start_pretrain_download_bg/);
   assert.match(appFile.content, /Pretrained Download Complete/);
   assert.match(appFile.content, /def _read_file_bytes_cached/);
-  assert.match(appFile.content, /def _render_samples_queue_frag/);
-  assert.match(appFile.content, /def _render_samples_params_frag/);
+  assert.match(appFile.content, /def _render_samples_workspace_frag/);
+  assert.match(appFile.content, /def _sync_samples_state/);
+  assert.match(appFile.content, /_nr_prev_\{def_key\}/);
   assert.match(appFile.content, /_nr_bg_watcher/);
   assert.match(appFile.content, /_nr_card\("nr_train_step_5"\)/);
   assert.match(appFile.content, /_nr_card\("nr_samples_step_1"\)/);
+  assert.match(appFile.content, /_nr_card\("nr_samples_step_2"\)/);
+  assert.match(appFile.content, /_nr_card\("nr_samples_step_3"\)/);
+  assert.match(appFile.content, /_nr_card\("nr_samples_step_4"\)/);
+  assert.match(appFile.content, /"Pitch & Settings"/);
+  assert.match(appFile.content, /"Convert & Output"/);
+  assert.match(appFile.content, /"Clip Pitch Override"/);
+  assert.match(appFile.content, /"Override pitch, index, model & advanced \(optional\)"/);
+  assert.match(appFile.content, /"View Generated core\.py CLI Command"/);
+  assert.doesNotMatch(appFile.content, /"Default Pitch"/);
   assert.match(appFile.content, /key="nr_cp_g_up"/);
   assert.match(appFile.content, /key="nr_cp_d_up"/);
   assert.match(appFile.content, /overflow-anchor:\s*none/);
@@ -288,6 +299,17 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.match(nbFile.content, /STREAMLIT_SERVER_FILE_WATCHER_TYPE/);
   assert.match(nbFile.content, /local_sources_watcher/);
   assert.match(nbFile.content, /⏳ Downloading pretrained/);
+
+  // Performance & bugfix assertions
+  assert.doesNotMatch(appFile.content, /background-attachment:\s*fixed/i);
+  assert.match(appFile.content, /def _next_clip_id\(/);
+  assert.match(appFile.content, /def _read_tail_text\(/);
+  assert.match(appFile.content, /os\.walk\(str\(base\)\)/);
+  assert.match(appFile.content, /nr_inf_seen_ups/);
+  assert.match(appFile.content, /nr_dl_sav_\{s_id\}/);
+  assert.match(appFile.content, /st\.session_state\["nr_vb_ratio_sl"\] = 0\.5/);
+  assert.match(appFile.content, /st\.session_state\["nr_cp_d_inp"\] = inferred_d/);
+  assert.match(appFile.content, /\("nr_adv_idx",\s*"nr_def_idx_rate",\s*float,\s*0\.75\)/);
 
   const zipBytes = buildZipArchive(files.map((f) => ({ path: f.zipPath, content: f.content })));
   assert.equal(zipBytes[0], 0x50);
@@ -580,5 +602,31 @@ test('inferMatchingDUrl, HF repo detection, ZIP detection, auto-D CLI & Streamli
   assert.match(appPy.content, /scrollbar-color:\s*#e51923\s+#100506/i);
   assert.match(appPy.content, /::-webkit-scrollbar-thumb/);
 });
+
+test('collectUnusedBlobUrls protects duplicate queue items and Recent Generated Samples from premature revocation', () => {
+  const sharedBlob = 'blob:http://localhost:3000/shared-source-1';
+  const deadConverted = 'blob:http://localhost:3000/old-converted-2';
+  const savedConverted = 'blob:http://localhost:3000/still-in-saved-3';
+  const staticAsset = '/assets/aistudio/male_sample_1.wav';
+
+  // Removing one duplicate clip must NOT revoke sharedBlob if another clip OR saved sample references it
+  const remainingQueue = [{ sourceUrl: sharedBlob, convertedUrl: '' }];
+  const remainingSaved = [{ url: savedConverted }];
+  const dead = collectUnusedBlobUrls(
+    [sharedBlob, deadConverted, savedConverted, staticAsset],
+    remainingQueue,
+    remainingSaved
+  );
+  assert.deepEqual(dead, [deadConverted]);
+
+  // Discarding a converted output from Recent Generated Samples leaves nothing referencing it -> revokes once
+  const deadAfterClear = collectUnusedBlobUrls(
+    [sharedBlob, savedConverted, savedConverted],
+    [],
+    []
+  );
+  assert.deepEqual(deadAfterClear, [sharedBlob, savedConverted]);
+});
+
 
 

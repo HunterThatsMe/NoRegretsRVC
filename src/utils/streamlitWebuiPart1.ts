@@ -104,7 +104,6 @@ CRIMSON_CSS = """
 html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
   background-color: var(--nr-bg) !important;
   background-image: radial-gradient(ellipse 90% 45% at 50% -10%, rgba(229, 25, 35, 0.13), transparent 70%) !important;
-  background-attachment: fixed !important;
   color: var(--nr-text) !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   overflow-anchor: none !important;
@@ -1083,6 +1082,29 @@ def _clear_fs_caches() -> None:
             pass
 
 
+def _next_clip_id(prefix: str = "clip") -> str:
+    seq = int(st.session_state.get("_nr_qid_seq", 0)) + 1
+    st.session_state["_nr_qid_seq"] = seq
+    return f"{prefix}-{seq}-{int(time.time() * 1000)}"
+
+
+def _read_tail_text(path_obj: Path, max_bytes: int = 32768) -> str:
+    try:
+        size = path_obj.stat().st_size
+        if size <= 0:
+            return ""
+        with path_obj.open("rb") as fh:
+            if size > max_bytes:
+                fh.seek(size - max_bytes)
+            chunk = fh.read(max_bytes)
+        text = chunk.decode("utf-8", errors="replace")
+        if size > max_bytes and "\\n" in text:
+            text = text.split("\\n", 1)[1]
+        return text
+    except Exception:
+        return ""
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def _read_file_bytes_cached(path_str: str, mtime: float) -> bytes:
     return Path(path_str).read_bytes()
@@ -1424,7 +1446,7 @@ def _poll_core_tasks() -> tuple[bool, bool]:
         txt = ""
         if log_p.is_file() and lkey:
             try:
-                txt = log_p.read_text(encoding="utf-8", errors="replace").strip()
+                txt = _read_tail_text(log_p, 32768).strip()
                 if txt:
                     tail_txt = "\\n".join(txt.splitlines()[-80:])
                     if lkey == "nr_trn_log":
@@ -1438,6 +1460,8 @@ def _poll_core_tasks() -> tuple[bool, bool]:
             try:
                 os.kill(int(meta["pid"]), 0)
             except Exception:
+                if not txt and log_p.is_file():
+                    txt = _read_tail_text(log_p, 32768)
                 has_err = ("Traceback (" in txt) or (f"✖ {task_kind.capitalize()} failed" in txt) or ("✖ Pretrained download failed" in txt) or ("NameError:" in txt)
                 meta["status"] = "error" if has_err else "done"
                 try:
@@ -1494,7 +1518,7 @@ def _poll_core_tasks() -> tuple[bool, bool]:
             alive = _is_training_process_alive(tmodel)
             tlp = Path(str(tmeta.get("log_path", "")))
             if tlp.is_file():
-                raw_trn = tlp.read_text(encoding="utf-8", errors="replace")[-16384:]
+                raw_trn = _read_tail_text(tlp, 32768)
                 ttail = _filter_status_lines(
                     raw_trn,
                     "⏳ Training in progress — monitor live epochs in Kaggle cell & progress meter above.",
@@ -1507,7 +1531,7 @@ def _poll_core_tasks() -> tuple[bool, bool]:
                 train_err = False
                 if tlp.is_file():
                     try:
-                        t_txt = tlp.read_text(encoding="utf-8", errors="replace")
+                        t_txt = _read_tail_text(tlp, 32768)
                         train_err = ("Traceback (" in t_txt) or ("✖ Training exited with error code" in t_txt) or ("NameError:" in t_txt)
                     except Exception:
                         pass
@@ -1569,10 +1593,9 @@ def _read_train_log(model_name: str, max_chars: int = 16384) -> str:
             pass
     for p in candidates:
         if p.is_file():
-            try:
-                return p.read_text(encoding="utf-8", errors="replace")[-max_chars:]
-            except Exception:
-                pass
+            tail = _read_tail_text(p, max(32768, max_chars * 2))
+            if tail:
+                return tail[-max_chars:]
     return ""
 
 
@@ -1719,16 +1742,21 @@ def _dataset_slice_count(model_name: str) -> int:
 @st.cache_data(ttl=6, show_spinner=False)
 def _list_datasets() -> list[str]:
     found: list[str] = []
+    audio_exts = (".wav", ".mp3", ".flac", ".ogg", ".m4a")
+    max_depth = 4
     for base in (Path("/kaggle/input"), Path(now_dir) / "assets" / "datasets"):
-        if base.is_dir():
-            for p in sorted(base.rglob("*")):
-                if p.is_dir() and any(
-                    f.suffix.lower() in (".wav", ".mp3", ".flac", ".ogg", ".m4a")
-                    for f in p.iterdir()
-                    if f.is_file()
-                ):
-                    found.append(str(p))
-    return found
+        if not base.is_dir():
+            continue
+        base_parts = len(base.parts)
+        for root_str, dirs, files in os.walk(str(base)):
+            cur_p = Path(root_str)
+            depth = len(cur_p.parts) - base_parts
+            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d != "__pycache__")
+            if depth >= max_depth:
+                dirs[:] = []
+            if any(fn.lower().endswith(audio_exts) for fn in files):
+                found.append(root_str)
+    return sorted(set(found))
 
 
 @st.cache_data(ttl=6, show_spinner=False)

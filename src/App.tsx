@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { DEFAULT_STUDIO_STATE } from './data/defaults';
 import {
@@ -21,6 +21,11 @@ import { FreeSampleItem } from './data/freeSamples';
 import { I18nProvider, resolveLocale } from './utils/i18n';
 import { TopBar } from './components/TopBar';
 import { TrainWorkspaceView } from './components/TrainWorkspaceView';
+import { ConvertAudioView } from './components/ConvertAudioView';
+import { FreeSamplesView } from './components/FreeSamplesView';
+import { WorkbenchView } from './components/WorkbenchView';
+import { TensorBoardView } from './components/TensorBoardView';
+import { SettingsView } from './components/SettingsView';
 
 interface ToastNotice {
   id: string;
@@ -28,23 +33,6 @@ interface ToastNotice {
   message: string;
   tone: 'success' | 'error';
 }
-
-const loadConvertAudioView = () =>
-  import('./components/ConvertAudioView').then((m) => ({ default: m.ConvertAudioView }));
-const loadFreeSamplesView = () =>
-  import('./components/FreeSamplesView').then((m) => ({ default: m.FreeSamplesView }));
-const loadWorkbenchView = () =>
-  import('./components/WorkbenchView').then((m) => ({ default: m.WorkbenchView }));
-const loadTensorBoardView = () =>
-  import('./components/TensorBoardView').then((m) => ({ default: m.TensorBoardView }));
-const loadSettingsView = () =>
-  import('./components/SettingsView').then((m) => ({ default: m.SettingsView }));
-
-const ConvertAudioView = lazy(loadConvertAudioView);
-const FreeSamplesView = lazy(loadFreeSamplesView);
-const WorkbenchView = lazy(loadWorkbenchView);
-const TensorBoardView = lazy(loadTensorBoardView);
-const SettingsView = lazy(loadSettingsView);
 
 const STORAGE_KEY = 'noregrets_rvc_studio_v5';
 
@@ -152,14 +140,6 @@ function loadInitialState(): StudioState {
   }
 }
 
-const SectionSkeleton = () => (
-  <div className="space-y-6" aria-busy="true" aria-label="Loading section">
-    <div className="h-14 rounded-xl border border-[#47161D] bg-[#160709]" />
-    <div className="h-56 rounded-xl border border-[#47161D] bg-[#160709]" />
-    <div className="h-56 rounded-xl border border-[#47161D] bg-[#160709]" />
-  </div>
-);
-
 export default function App() {
   const [state, setState] = useState<StudioState>(loadInitialState);
   const [sampleQueue, setSampleQueue] = useState<SampleClipItem[]>([]);
@@ -167,6 +147,7 @@ export default function App() {
   const sampleQueueRef = useRef<SampleClipItem[]>(sampleQueue);
   sampleQueueRef.current = sampleQueue;
   const createdBlobUrlsRef = useRef<Set<string>>(new Set());
+  const nextClipSeqRef = useRef<number>(1);
   const latestStateRef = useRef<StudioState>(state);
   latestStateRef.current = state;
 
@@ -211,7 +192,7 @@ export default function App() {
       } catch {
         // Ignore storage quota errors
       }
-    }, 250);
+    }, 450);
     return () => window.clearTimeout(timer);
   }, [state]);
 
@@ -243,29 +224,7 @@ export default function App() {
     document.documentElement.dir = resolved === 'ar_SA' ? 'rtl' : 'ltr';
   }, [state.generalSettings.language]);
 
-  const handlePrefetchSection = useCallback((section: StudioSection) => {
-    switch (section) {
-      case 'samples':
-        void loadConvertAudioView();
-        break;
-      case 'free_samples':
-        void loadFreeSamplesView();
-        break;
-      case 'models':
-      case 'blender':
-      case 'tts':
-        void loadWorkbenchView();
-        break;
-      case 'tensorboard':
-        void loadTensorBoardView();
-        break;
-      case 'settings':
-        void loadSettingsView();
-        break;
-      default:
-        break;
-    }
-  }, []);
+  const handlePrefetchSection = useCallback((_section: StudioSection) => {}, []);
 
   const handleSelectSection = useCallback((activeSection: StudioSection) => {
     setState((prev) =>
@@ -359,10 +318,12 @@ export default function App() {
   const handleQueueFreeSamples = useCallback((items: FreeSampleItem[]) => {
     if (items.length === 0) return;
     const conv = latestStateRef.current.convertAudio;
-    const added: SampleClipItem[] = items.map((s, idx) => ({
-      id: `clip-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
-      fileName: s.fileName,
-      sourceUrl: s.url,
+    const added: SampleClipItem[] = items.map((s) => {
+      const seq = nextClipSeqRef.current++;
+      return {
+        id: `clip-${Date.now()}-${seq}`,
+        fileName: s.fileName,
+        sourceUrl: s.url,
       pitch: conv.pitch,
       indexRate: conv.indexRate,
       voiceModel: conv.voiceModel,
@@ -394,7 +355,23 @@ export default function App() {
         audioObjectUrl: added[0].sourceUrl,
       },
     }));
+    };
   }, []);
+
+  const queuedFileNames = useMemo(
+    () => sampleQueue.map((c) => c.fileName),
+    [sampleQueue]
+  );
+
+  const handleUseSingleFreeSample = useCallback(
+    (sample: FreeSampleItem) => handleQueueFreeSamples([sample]),
+    [handleQueueFreeSamples]
+  );
+
+  const handleUseAllFreeSamples = useCallback(
+    (samples: FreeSampleItem[]) => handleQueueFreeSamples(samples),
+    [handleQueueFreeSamples]
+  );
 
   return (
     <I18nProvider language={state.generalSettings.language}>
@@ -445,70 +422,66 @@ export default function App() {
               />
             )}
 
-            {state.activeSection !== 'training' && (
-              <Suspense fallback={<SectionSkeleton />}>
-                {state.activeSection === 'samples' && (
-                  <ConvertAudioView
-                    convertAudio={state.convertAudio}
-                    projects={state.projects}
-                    importedModels={state.importedModels}
-                    sampleQueue={sampleQueue}
-                    onSetSampleQueue={setSampleQueue}
-                    onRegisterBlobUrl={registerBlobUrl}
-                    onRevokeUrl={revokeBlobUrl}
-                    onUpdateConvertAudio={handleUpdateConvertAudio}
-                  />
-                )}
+            {state.activeSection === 'samples' && (
+              <ConvertAudioView
+                convertAudio={state.convertAudio}
+                projects={state.projects}
+                importedModels={state.importedModels}
+                sampleQueue={sampleQueue}
+                onSetSampleQueue={setSampleQueue}
+                onRegisterBlobUrl={registerBlobUrl}
+                onRevokeUrl={revokeBlobUrl}
+                onUpdateConvertAudio={handleUpdateConvertAudio}
+              />
+            )}
 
-                {state.activeSection === 'free_samples' && (
-                  <FreeSamplesView
-                    queuedFileNames={sampleQueue.map((c) => c.fileName)}
-                    onUseSample={(sample) => handleQueueFreeSamples([sample])}
-                    onUseAllSamples={(samples) => handleQueueFreeSamples(samples)}
-                  />
-                )}
+            {state.activeSection === 'free_samples' && (
+              <FreeSamplesView
+                queuedFileNames={queuedFileNames}
+                onUseSample={handleUseSingleFreeSample}
+                onUseAllSamples={handleUseAllFreeSamples}
+              />
+            )}
 
-                {(state.activeSection === 'blender' ||
-                  state.activeSection === 'tts' ||
-                  state.activeSection === 'models') && (
-                  <WorkbenchView
-                    mode={state.activeSection}
-                    projects={state.projects}
-                    activeProject={activeProject}
-                    blender={state.blender}
-                    ttsDefaults={state.ttsDefaults}
-                    downloadManifest={state.downloadManifest}
-                    importedModels={state.importedModels}
-                    onUpdateBlender={handleUpdateBlender}
-                    onUpdateTts={handleUpdateTts}
-                    onUpdateManifest={handleUpdateManifest}
-                    onUpdateImportedModels={handleUpdateImportedModels}
-                    onApplyCustomPretrained={handleApplyCustomPretrained}
-                  />
-                )}
+            {(state.activeSection === 'blender' ||
+              state.activeSection === 'tts' ||
+              state.activeSection === 'models') && (
+              <WorkbenchView
+                mode={state.activeSection}
+                projects={state.projects}
+                activeProject={activeProject}
+                blender={state.blender}
+                ttsDefaults={state.ttsDefaults}
+                downloadManifest={state.downloadManifest}
+                importedModels={state.importedModels}
+                onUpdateBlender={handleUpdateBlender}
+                onUpdateTts={handleUpdateTts}
+                onUpdateManifest={handleUpdateManifest}
+                onUpdateImportedModels={handleUpdateImportedModels}
+                onApplyCustomPretrained={handleApplyCustomPretrained}
+              />
+            )}
 
-                {state.activeSection === 'tensorboard' && (
-                  <TensorBoardView
-                    activeProject={activeProject}
-                    lastAnalysis={state.lastAnalysis}
-                    onAnalysisChange={handleAnalysisChange}
-                  />
-                )}
+            {state.activeSection === 'tensorboard' && (
+              <TensorBoardView
+                activeProject={activeProject}
+                lastAnalysis={state.lastAnalysis}
+                onAnalysisChange={handleAnalysisChange}
+              />
+            )}
 
-                {state.activeSection === 'settings' && (
-                  <SettingsView
-                    generalSettings={state.generalSettings}
-                    trainingSettings={state.trainingSettings}
-                    forkConfig={state.forkConfig}
-                    activeProject={activeProject}
-                    downloadManifest={state.downloadManifest}
-                    onUpdateGeneral={handleUpdateGeneral}
-                    onUpdateTrainingSettings={handleUpdateTrainingSettings}
-                    onUpdatePrecisionAcrossProjects={handleUpdatePrecisionAcrossProjects}
-                    onUpdateForkConfig={handleUpdateForkConfig}
-                  />
-                )}
-              </Suspense>
+            {state.activeSection === 'settings' && (
+              <SettingsView
+                generalSettings={state.generalSettings}
+                trainingSettings={state.trainingSettings}
+                forkConfig={state.forkConfig}
+                activeProject={activeProject}
+                downloadManifest={state.downloadManifest}
+                onUpdateGeneral={handleUpdateGeneral}
+                onUpdateTrainingSettings={handleUpdateTrainingSettings}
+                onUpdatePrecisionAcrossProjects={handleUpdatePrecisionAcrossProjects}
+                onUpdateForkConfig={handleUpdateForkConfig}
+              />
             )}
           </div>
         </main>

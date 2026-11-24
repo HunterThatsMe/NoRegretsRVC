@@ -100,6 +100,14 @@ export interface SampleClipItem {
   convertedUrl: string;
   convertedName: string;
   status: 'queued' | 'ready';
+  customPitch?: boolean;
+  customIndex?: boolean;
+  customProtect?: boolean;
+  customVol?: boolean;
+  customAt?: boolean;
+  customPp?: boolean;
+  customSp?: boolean;
+  customFmt?: boolean;
 }
 
 export type ModelSoundFeedback =
