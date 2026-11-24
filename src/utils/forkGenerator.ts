@@ -47,10 +47,20 @@ export function generateAppPython(
   project: VoiceModelProject,
   downloads: DownloadModelItem[] = []
 ): string {
+  const rawBody = buildStreamlitTabsPart2() + buildStreamlitTabsPart3();
+  const marker = '# __NR_FOOTER_START__';
+  const markerIdx = rawBody.indexOf(marker);
+  const tabBody = markerIdx >= 0 ? rawBody.slice(0, markerIdx) : rawBody;
+  const footerBody = markerIdx >= 0 ? rawBody.slice(markerIdx) : '';
+  const indentedTabs = tabBody
+    .split('\n')
+    .map((line) => (line.length > 0 ? `        ${line}` : ''))
+    .join('\n');
   return (
     buildStreamlitHeaderAndTabsPart1(config, project, downloads) +
-    buildStreamlitTabsPart2() +
-    buildStreamlitTabsPart3()
+    indentedTabs +
+    '\n' +
+    footerBody
   );
 }
 
@@ -690,8 +700,8 @@ export function generateKaggleNotebookJson(
     `EPOCH_RE = re.compile(r"epoch=(\\d+)\\s*\\|\\s*step=(\\d+).*?training_speed=(\\d+:\\d{2}:\\d{2})(?:.*?lowest_value=([0-9.]+))?")`,
     `TQDM_RE = re.compile(r"(\\d+)%\\|[^|]*\\|\\s*(\\d+)/(\\d+)\\s*\\[([^,\\]]+),\\s*([0-9.]+\\s*(?:it/s|s/it))")`,
     `LOCAL_URL_RE = re.compile(r"(?:Running on local URL|Local URL|Network URL):\\s*(https?://\\S+)")`,
-    `NOISE_RE = re.compile(r"(FutureWarning|UserWarning|DeprecationWarning|RuntimeWarning|pkg_resources|warnings\\.warn|oneDNN|tensorflow/core|computation_placer|numa_node|Successfully opened dynamic library|weights_only|HTTP Request:|Checking out|libpng warning|ALSA|jack server|You can now view your Streamlit)", re.IGNORECASE)`,
-    `MILESTONE_RE = re.compile(r"(Starting (?:preprocess|extract|index|training)|⏳ Starting|✔ .* complete!|✖ .* failed|Preprocess completed|preprocessed successfully|Starting pitch extraction|Pitch extraction completed|Starting embedding extraction|Embedding extraction completed|Saved index file|Saving checkpoint|Saving model|Training finished|Training completed|Index file.*generated|Using .* vocoder|Using .* for training)", re.IGNORECASE)`,
+    `NOISE_RE = re.compile(r"(FutureWarning|UserWarning|DeprecationWarning|RuntimeWarning|pkg_resources|warnings\\.warn|oneDNN|tensorflow/core|computation_placer|numa_node|Successfully opened dynamic library|weights_only|HTTP Request:|Checking out|libpng warning|ALSA|jack server|You can now view your Streamlit|local_sources_watcher|No module named 'torchvision'|get_module_paths)", re.IGNORECASE)`,
+    `MILESTONE_RE = re.compile(r"(Starting (?:preprocess|extract|index|training)|⏳ Starting|⏳ Downloading pretrained|✔ .* complete!|✔ Pretrained|Downloaded .* from HF|Downloaded [GD] weight|Extracted .*|✖ .* failed|Preprocess completed|preprocessed successfully|Starting pitch extraction|Pitch extraction completed|Starting embedding extraction|Embedding extraction completed|Saved index file|Saving checkpoint|Saving model|Training finished|Training completed|Index file.*generated|Using .* vocoder|Using .* for training)", re.IGNORECASE)`,
     `ERROR_START_RE = re.compile(r"(Traceback \\(most recent call last\\)|NameError:|TypeError:|KeyError:|AttributeError:|SyntaxError:|RuntimeError:|ValueError:|FileNotFoundError:|OSError:|ModuleNotFoundError:|ImportError:|CUDA out of memory|OutOfMemoryError|Exception:|✖ .* failed|\\bERROR:)")`,
     ``,
     `session_links = []`,
@@ -761,6 +771,8 @@ export function generateKaggleNotebookJson(
     `        "TF_CPP_MIN_LOG_LEVEL": "3",`,
     `        "TORCH_CPP_LOG_LEVEL": "ERROR",`,
     `        "TOKENIZERS_PARALLELISM": "false",`,
+    `        "STREAMLIT_SERVER_FILE_WATCHER_TYPE": "none",`,
+    `        "STREAMLIT_SERVER_RUN_ON_SAVE": "false",`,
     `    })`,
     ``,
     `    if Tunnel == "Gradio + Cloudflare":`,
@@ -776,6 +788,8 @@ export function generateKaggleNotebookJson(
     `        "--server.address", "0.0.0.0",`,
     `        "--server.port", "6969",`,
     `        "--server.headless", "true",`,
+    `        "--server.fileWatcherType", "none",`,
+    `        "--server.runOnSave", "false",`,
     `        "--server.enableCORS", "false",`,
     `        "--server.enableXsrfProtection", "false",`,
     `    ]`,
@@ -805,7 +819,7 @@ export function generateKaggleNotebookJson(
     `        tq_m = TQDM_RE.search(line)`,
     `        if tq_m:`,
     `            now_ts = time.time()`,
-    `            if now_ts - last_tq_render >= 2.0 or tq_m.group(1) == "100":`,
+    `            if now_ts - last_tq_render >= 5.0 or tq_m.group(1) == "100":`,
     `                last_tq_render = now_ts`,
     `                live_mid_epoch = f"{tq_m.group(1)}% ({tq_m.group(2)}/{tq_m.group(3)}) · {tq_m.group(4)} · {tq_m.group(5)}"`,
     `                render_monitor("Training")`,
@@ -813,12 +827,14 @@ export function generateKaggleNotebookJson(
     `        if NOISE_RE.search(line) or "%|" in line or "it/s]" in line or "s/it]" in line:`,
     `            continue`,
     `        if tb_lines_seen > 0:`,
-    `            errors.append(line)`,
+    `            if not errors or errors[-1] != line:`,
+    `                errors.append(line)`,
     `            tb_lines_seen = 0 if re.match(r"^[A-Za-z_]*(Error|Exception):", line) else (tb_lines_seen - 1)`,
     `            render_monitor("Error")`,
     `            continue`,
     `        if ERROR_START_RE.search(line):`,
-    `            errors.append(line)`,
+    `            if not errors or errors[-1] != line:`,
+    `                errors.append(line)`,
     `            if "Traceback" in line:`,
     `                tb_lines_seen = 25`,
     `            render_monitor("Error")`,

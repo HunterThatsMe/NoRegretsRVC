@@ -49,7 +49,6 @@ export function buildStreamlitHeaderAndTabsPart1(
   return `"""${BRAND_NAME} Streamlit WebUI — exact parity with ${BRAND_NAME} Studio."""
 from __future__ import annotations
 
-import contextlib
 import hmac
 import html
 import inspect
@@ -191,8 +190,15 @@ div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlock
   from { opacity: 0.72; transform: translate3d(0, 5px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
-.st-key-nr_panel_root {
-  animation: nrPanelIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+.st-key-nr_panel_training,
+.st-key-nr_panel_models,
+.st-key-nr_panel_samples,
+.st-key-nr_panel_free_samples,
+.st-key-nr_panel_diagnostics,
+.st-key-nr_panel_voice_blender,
+.st-key-nr_panel_tts,
+.st-key-nr_panel_settings {
+  animation: nrPanelIn 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Inputs & Selects */
@@ -984,6 +990,27 @@ except Exception:
     CORE_MOD = None
 
 
+_EPOCH_TELEMETRY_RE = re.compile(
+    r"(?:epoch=\\d+\\s*\\|\\s*step=\\d+|training_speed=|lowest_value=|\\d+%\\|[^|]*\\||\\bit/s\\]|\\bs/it\\]|local_sources_watcher|No module named 'torchvision')",
+    re.IGNORECASE,
+)
+
+
+def _filter_status_lines(raw_text: str, fallback: str = "") -> str:
+    if not raw_text:
+        return fallback
+    kept: list[str] = []
+    for raw_ln in raw_text.replace("\\r", "\\n").splitlines():
+        ln = raw_ln.strip()
+        if not ln:
+            continue
+        if _EPOCH_TELEMETRY_RE.search(ln):
+            continue
+        kept.append(raw_ln.rstrip())
+    cleaned = "\\n".join(kept[-60:]).strip()
+    return cleaned or fallback
+
+
 def _run_core_sync(fn_name: str, kwargs: dict[str, Any]) -> tuple[int, str]:
     if CORE_MOD is None or not hasattr(CORE_MOD, fn_name):
         return 1, f"core.{fn_name} is unavailable in current working directory ({now_dir})."
@@ -1002,7 +1029,7 @@ def _run_core_sync(fn_name: str, kwargs: dict[str, Any]) -> tuple[int, str]:
         finally:
             sys.stdout = orig_out
             sys.stderr = orig_err
-        out_str = buf.getvalue().strip()
+        out_str = _filter_status_lines(buf.getvalue().strip())
         if isinstance(res, tuple):
             msg = " ".join(str(x) for x in res if x is not None)
             out_str = f"{out_str}\\n{msg}".strip() if out_str else msg
@@ -1049,11 +1076,16 @@ def _task_paths(task_kind: str) -> tuple[Path, Path]:
 
 
 def _clear_fs_caches() -> None:
-    for fn in (_list_models, _list_datasets, _list_files_rel, _load_tts_voices, _dataset_slice_count):
+    for fn in (_list_models, _list_datasets, _list_files_rel, _load_tts_voices, _dataset_slice_count, _read_file_bytes_cached):
         try:
             fn.clear()
         except Exception:
             pass
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _read_file_bytes_cached(path_str: str, mtime: float) -> bytes:
+    return Path(path_str).read_bytes()
 
 
 def _start_core_task_bg(
@@ -1188,10 +1220,199 @@ def _start_core_task_bg(
     return start_banner.strip()
 
 
+def _start_pretrain_download_bg(payload: dict[str, Any]) -> str:
+    meta_p, log_p = _task_paths("pretrained")
+    args_p = meta_p.with_suffix(".args.json")
+    res_p = meta_p.with_suffix(".result.json")
+    if meta_p.is_file():
+        try:
+            prev = json.loads(meta_p.read_text(encoding="utf-8"))
+            if prev.get("status") == "running" and prev.get("pid"):
+                os.kill(int(prev["pid"]), 0)
+                return f"Pretrained download is already running in background (PID {prev['pid']})."
+        except Exception:
+            pass
+
+    res_p.unlink(missing_ok=True)
+    args_p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    child_code = (
+        "import sys, os, json, time, zipfile, urllib.parse, urllib.request, traceback; from pathlib import Path\\n"
+        f"meta_p = Path({json.dumps(str(meta_p))})\\n"
+        f"args_p = Path({json.dumps(str(args_p))})\\n"
+        f"res_p = Path({json.dumps(str(res_p))})\\n"
+        "status = 'done'\\n"
+        "result = {'custom_g': '', 'custom_d': '', 'custom_pre': False, 'manifest_items': []}\\n"
+        "try:\\n"
+        "    cfg = json.loads(args_p.read_text(encoding='utf-8'))\\n"
+        "    cdir = Path(cfg['cdir'])\\n"
+        "    cdir.mkdir(parents=True, exist_ok=True)\\n"
+        "    if cfg.get('use_custom'):\\n"
+        "        g_val = str(cfg.get('g_val') or '').strip()\\n"
+        "        d_val = str(cfg.get('d_val') or '').strip()\\n"
+        "        result['custom_pre'] = True\\n"
+        "        g_path = urllib.parse.urlsplit(g_val).path.lower()\\n"
+        "        if 'huggingface.co/' in g_val.lower() and '/resolve/' not in g_val and not g_path.endswith(('.pth', '.zip')):\\n"
+        "            parts = [p for p in urllib.parse.urlsplit(g_val).path.strip('/').split('/') if p]\\n"
+        "            if len(parts) < 2:\\n"
+        "                raise ValueError(f'Invalid Hugging Face repo URL: {g_val}')\\n"
+        "            owner_repo = f'{parts[0]}/{parts[1]}'\\n"
+        "            api_u = f'https://huggingface.co/api/models/{owner_repo}/tree/main'\\n"
+        "            print(f'Scanning HF repo {owner_repo}...', flush=True)\\n"
+        "            with urllib.request.urlopen(api_u, timeout=30) as resp:\\n"
+        "                tree = json.loads(resp.read().decode('utf-8'))\\n"
+        "            found_cnt = 0\\n"
+        "            for node in tree:\\n"
+        "                fp = str(node.get('path', ''))\\n"
+        "                if fp.lower().endswith('.pth'):\\n"
+        "                    fn_p = Path(fp).name\\n"
+        "                    fu = f'https://huggingface.co/{owner_repo}/resolve/main/{urllib.parse.quote(fp)}?download=true'\\n"
+        "                    print(f'Downloading {fn_p} -> rvc/models/pretraineds/custom/{fn_p}', flush=True)\\n"
+        "                    urllib.request.urlretrieve(fu, cdir / fn_p)\\n"
+        "                    rel_p = f'rvc/models/pretraineds/custom/{fn_p}'\\n"
+        "                    print(f'Downloaded {fn_p} from HF repo -> {rel_p}', flush=True)\\n"
+        "                    found_cnt += 1\\n"
+        "                    if 'D' in fn_p.upper() and not result['custom_d']:\\n"
+        "                        result['custom_d'] = rel_p\\n"
+        "                    elif not result['custom_g']:\\n"
+        "                        result['custom_g'] = rel_p\\n"
+        "            if found_cnt == 0:\\n"
+        "                raise RuntimeError(f'No .pth weights found in HF repo {owner_repo}')\\n"
+        "            result['manifest_items'].append({'id': f'pre-hf-{int(time.time())}', 'name': owner_repo, 'category': 'pretrained', 'url': g_val})\\n"
+        "        elif g_path.endswith('.zip'):\\n"
+        "            z_tmp = cdir / 'custom_pretrains.zip'\\n"
+        "            print(f'Downloading pretrained ZIP -> {z_tmp.name}', flush=True)\\n"
+        "            urllib.request.urlretrieve(g_val, z_tmp)\\n"
+        "            with zipfile.ZipFile(z_tmp, 'r') as zf:\\n"
+        "                for mem in zf.namelist():\\n"
+        "                    if not mem.endswith('/') and Path(mem).name.lower().endswith('.pth'):\\n"
+        "                        out_pth = cdir / Path(mem).name\\n"
+        "                        out_pth.write_bytes(zf.read(mem))\\n"
+        "                        rel_p = f'rvc/models/pretraineds/custom/{out_pth.name}'\\n"
+        "                        print(f'Extracted {out_pth.name} -> {rel_p}', flush=True)\\n"
+        "                        if 'D' in out_pth.name.upper():\\n"
+        "                            result['custom_d'] = rel_p\\n"
+        "                        else:\\n"
+        "                            result['custom_g'] = rel_p\\n"
+        "            z_tmp.unlink(missing_ok=True)\\n"
+        "            result['manifest_items'].append({'id': f'pre-zip-{int(time.time())}', 'name': Path(urllib.parse.urlsplit(g_val).path).name, 'category': 'pretrained', 'url': g_val})\\n"
+        "        else:\\n"
+        "            if g_val.startswith(('http://', 'https://')) and g_path.endswith('.pth'):\\n"
+        "                gn = Path(urllib.parse.unquote(urllib.parse.urlsplit(g_val).path)).name or 'Custom_G.pth'\\n"
+        "                print(f'Downloading G weight -> rvc/models/pretraineds/custom/{gn}', flush=True)\\n"
+        "                urllib.request.urlretrieve(g_val, cdir / gn)\\n"
+        "                rel_g = f'rvc/models/pretraineds/custom/{gn}'\\n"
+        "                result['custom_g'] = rel_g\\n"
+        "                print(f'Downloaded G weight -> {rel_g}', flush=True)\\n"
+        "                result['manifest_items'].append({'id': f'pre-g-{int(time.time())}', 'name': gn, 'category': 'pretrained', 'url': g_val})\\n"
+        "            d_path = urllib.parse.urlsplit(d_val).path.lower()\\n"
+        "            if d_val.startswith(('http://', 'https://')) and d_path.endswith('.pth'):\\n"
+        "                dn = Path(urllib.parse.unquote(urllib.parse.urlsplit(d_val).path)).name or 'Custom_D.pth'\\n"
+        "                print(f'Downloading D weight -> rvc/models/pretraineds/custom/{dn}', flush=True)\\n"
+        "                urllib.request.urlretrieve(d_val, cdir / dn)\\n"
+        "                rel_d = f'rvc/models/pretraineds/custom/{dn}'\\n"
+        "                result['custom_d'] = rel_d\\n"
+        "                print(f'Downloaded D weight -> {rel_d}', flush=True)\\n"
+        "                result['manifest_items'].append({'id': f'pre-d-{int(time.time())}', 'name': dn, 'category': 'pretrained', 'url': d_val})\\n"
+        "        print('\\\\n✔ Pretrained download complete!', flush=True)\\n"
+        "    else:\\n"
+        "        pre_arch = str(cfg.get('pre_arch', 'Titan'))\\n"
+        "        pre_sr = str(cfg.get('pre_sr', '32k'))\\n"
+        "        pre_url = f'https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretraineds/{pre_arch}_{pre_sr}.pth'\\n"
+        "        out_p = cdir / f'{pre_arch}_{pre_sr}.pth'\\n"
+        "        print(f'Downloading {pre_arch} ({pre_sr}) into rvc/models/pretraineds/custom/{out_p.name}...', flush=True)\\n"
+        "        urllib.request.urlretrieve(pre_url, out_p)\\n"
+        "        result['manifest_items'].append({'id': f'pre-{int(time.time())}', 'name': f'{pre_arch} ({pre_sr})', 'category': 'pretrained', 'url': pre_url})\\n"
+        "        print(f'\\\\n✔ Pretrained download complete! ({pre_arch} {pre_sr})', flush=True)\\n"
+        "except Exception:\\n"
+        "    status = 'error'\\n"
+        "    traceback.print_exc()\\n"
+        "    sys.stdout.flush()\\n"
+        "    sys.stderr.flush()\\n"
+        "finally:\\n"
+        "    try:\\n"
+        "        res_p.write_text(json.dumps(result), encoding='utf-8')\\n"
+        "    except Exception:\\n"
+        "        pass\\n"
+        "    try:\\n"
+        "        meta = json.loads(meta_p.read_text(encoding='utf-8')) if meta_p.is_file() else {}\\n"
+        "        meta['status'] = status\\n"
+        "        meta['finished'] = time.time()\\n"
+        "        meta_p.write_text(json.dumps(meta), encoding='utf-8')\\n"
+        "    except Exception:\\n"
+        "        pass\\n"
+    )
+
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    label = str(payload.get("label") or "pretrained weights")
+    lf = open(log_p, "w", encoding="utf-8", buffering=1)
+    start_banner = f"⏳ Downloading pretrained {label}...\\n"
+    lf.write(start_banner)
+    lf.flush()
+    print(start_banner, end="", flush=True)
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", child_code],
+        cwd=now_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        env=env,
+        start_new_session=True,
+    )
+    meta_p.write_text(
+        json.dumps({
+            "task_kind": "pretrained",
+            "pid": proc.pid,
+            "model_name": label,
+            "log_state_key": "nr_pre_log_text",
+            "log_path": str(log_p),
+            "toast_title": "Pretrained Download Complete",
+            "done_note": f"Downloaded {label} — ready in rvc/models/pretraineds/custom.",
+            "status": "running",
+            "notified": False,
+            "result_applied": False,
+            "started": time.time(),
+        }),
+        encoding="utf-8",
+    )
+
+    def _pump_pre() -> None:
+        try:
+            if proc.stdout is not None:
+                for ln in proc.stdout:
+                    lf.write(ln)
+                    lf.flush()
+                    print(ln, end="", flush=True)
+        finally:
+            rc = proc.wait()
+            if rc != 0:
+                err_ln = f"\\n✖ Pretrained download failed (exit code {rc}).\\n"
+                lf.write(err_ln)
+                lf.flush()
+                print(err_ln, end="", flush=True)
+            lf.close()
+            try:
+                meta = json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.is_file() else {}
+                if meta.get("status") == "running":
+                    meta["status"] = "done" if rc == 0 else "error"
+                    meta["exit_code"] = rc
+                    meta["finished"] = time.time()
+                    meta_p.write_text(json.dumps(meta), encoding="utf-8")
+            except Exception:
+                pass
+
+    threading.Thread(target=_pump_pre, daemon=True).start()
+    return start_banner.strip()
+
+
 def _poll_core_tasks() -> tuple[bool, bool]:
     changed = False
     completed = False
-    for task_kind in ("preprocess", "extract", "index"):
+    for task_kind in ("preprocess", "extract", "index", "pretrained"):
         meta_p, log_p = _task_paths(task_kind)
         if not meta_p.is_file():
             continue
@@ -1206,6 +1427,8 @@ def _poll_core_tasks() -> tuple[bool, bool]:
                 txt = log_p.read_text(encoding="utf-8", errors="replace").strip()
                 if txt:
                     tail_txt = "\\n".join(txt.splitlines()[-80:])
+                    if lkey == "nr_trn_log":
+                        tail_txt = _filter_status_lines(tail_txt, "⏳ Task running...")
                     if st.session_state.get(lkey) != tail_txt:
                         st.session_state[lkey] = tail_txt
                         changed = True
@@ -1215,12 +1438,39 @@ def _poll_core_tasks() -> tuple[bool, bool]:
             try:
                 os.kill(int(meta["pid"]), 0)
             except Exception:
-                has_err = ("Traceback (" in txt) or (f"✖ {task_kind.capitalize()} failed" in txt) or ("NameError:" in txt)
+                has_err = ("Traceback (" in txt) or (f"✖ {task_kind.capitalize()} failed" in txt) or ("✖ Pretrained download failed" in txt) or ("NameError:" in txt)
                 meta["status"] = "error" if has_err else "done"
                 try:
                     meta_p.write_text(json.dumps(meta), encoding="utf-8")
                 except Exception:
                     pass
+        if task_kind == "pretrained" and meta.get("status") in ("done", "error") and not meta.get("result_applied"):
+            meta["result_applied"] = True
+            res_p = meta_p.with_suffix(".result.json")
+            if res_p.is_file():
+                try:
+                    res_data = json.loads(res_p.read_text(encoding="utf-8"))
+                    if res_data.get("custom_g"):
+                        st.session_state["nr_custom_g"] = res_data["custom_g"]
+                        st.session_state["nr_cp_g_inp"] = res_data["custom_g"]
+                    if res_data.get("custom_d"):
+                        st.session_state["nr_custom_d"] = res_data["custom_d"]
+                        st.session_state["nr_cp_d_inp"] = res_data["custom_d"]
+                    if res_data.get("custom_pre"):
+                        st.session_state["nr_custom_pre"] = True
+                    existing_urls = {str(m.get("url", "")) for m in st.session_state.get("nr_manifest", [])}
+                    for item in res_data.get("manifest_items", []):
+                        if str(item.get("url", "")) not in existing_urls:
+                            st.session_state["nr_manifest"].append(item)
+                            existing_urls.add(str(item.get("url", "")))
+                except Exception:
+                    pass
+            if txt:
+                st.session_state["nr_pre_log"].extend([ln for ln in txt.splitlines() if ln.strip()][-6:])
+            try:
+                meta_p.write_text(json.dumps(meta), encoding="utf-8")
+            except Exception:
+                pass
         if meta.get("status") in ("done", "error") and not meta.get("notified"):
             meta["notified"] = True
             try:
@@ -1233,8 +1483,8 @@ def _poll_core_tasks() -> tuple[bool, bool]:
             title = str(meta.get("toast_title", f"{task_kind.capitalize()} Complete"))
             msg = str(meta.get("done_note", f"{task_kind.capitalize()} finished."))
             if meta.get("status") == "error":
-                title = f"{task_kind.capitalize()} Failed"
-                msg = f"Error during {task_kind} — check {task_kind} output box for details."
+                title = "Pretrained Download Failed" if task_kind == "pretrained" else f"{task_kind.capitalize()} Failed"
+                msg = f"Error during {task_kind} — check output log for details."
             _push_toast(title, msg)
 
     if ACTIVE_TRAIN_META.is_file():
@@ -1244,7 +1494,11 @@ def _poll_core_tasks() -> tuple[bool, bool]:
             alive = _is_training_process_alive(tmodel)
             tlp = Path(str(tmeta.get("log_path", "")))
             if tlp.is_file():
-                ttail = "\\n".join(tlp.read_text(encoding="utf-8", errors="replace").splitlines()[-80:])
+                raw_trn = tlp.read_text(encoding="utf-8", errors="replace")[-16384:]
+                ttail = _filter_status_lines(
+                    raw_trn,
+                    "⏳ Training in progress — monitor live epochs in Kaggle cell & progress meter above.",
+                )
                 if ttail and st.session_state.get("nr_trn_log") != ttail:
                     st.session_state["nr_trn_log"] = ttail
                     changed = True
@@ -1289,7 +1543,7 @@ def _is_task_running(task_kind: str) -> bool:
 def _has_active_bg_work() -> bool:
     if st.session_state.get("nr_is_training") and _is_training_process_alive(st.session_state.get("nr_model_name", "")):
         return True
-    for task_kind in ("preprocess", "extract", "index"):
+    for task_kind in ("preprocess", "extract", "index", "pretrained"):
         if _is_task_running(task_kind):
             return True
     return False
@@ -1302,7 +1556,7 @@ def _train_log_path(model_name: str) -> Path:
     return p
 
 
-def _read_train_log(model_name: str, max_chars: int = 32000) -> str:
+def _read_train_log(model_name: str, max_chars: int = 16384) -> str:
     candidates: list[Path] = []
     if model_name.strip():
         candidates.append(_train_log_path(model_name))
@@ -1951,6 +2205,7 @@ def _ensure_state() -> None:
         "nr_trn_log": "The output information will be displayed here.",
         "nr_dl_log": "The output information will be displayed here.",
         "nr_pre_log": [],
+        "nr_pre_log_text": "",
         "nr_manifest": list(BOOT_MANIFEST_DEFAULTS),
         "nr_inf_log": "The output information will be displayed here.",
         "nr_inf_out": "",
@@ -2034,23 +2289,6 @@ if _auth_pass and not st.session_state.get("nr_authed", False):
                     st.error("Invalid WebUI username or password.")
     st.stop()
 
-_active_bg_now = _has_active_bg_work()
-_has_toasts_now = bool(st.session_state.get("nr_toasts"))
-if _HAS_FRAGMENT and (_active_bg_now or _has_toasts_now):
-    @st.fragment(run_every=2.0)
-    def _nr_bg_watcher() -> None:
-        _, done_f = _poll_core_tasks()
-        _render_toasts()
-        if done_f:
-            try:
-                st.rerun(scope="app")
-            except TypeError:
-                st.rerun()
-
-    _nr_bg_watcher()
-else:
-    _render_toasts()
-
 # ==============================================================================
 # TOP BAR & 8-TAB NAVIGATION (EXACT PREVIEW MATCH)
 # ==============================================================================
@@ -2079,6 +2317,11 @@ if st.session_state["nr_active_tab"] not in NAV_TABS:
 if _resolve_lang() == "ar_SA":
     st.markdown("<style>[data-testid='stMain'] { direction: rtl; text-align: right; }</style>", unsafe_allow_html=True)
 
+
+def _select_tab(target_tab: str) -> None:
+    st.session_state["nr_active_tab"] = target_tab
+
+
 with _nr_card("nr_nav_card"):
     st.markdown('<span class="nr-nav-marker" style="display:none"></span>', unsafe_allow_html=True)
     nav_weights = [max(7, len(lbl) + 3) for lbl in NAV_TABS]
@@ -2086,23 +2329,21 @@ with _nr_card("nr_nav_card"):
     for idx, tab_id in enumerate(NAV_TABS):
         with nav_cols[idx]:
             is_active = st.session_state["nr_active_tab"] == tab_id
-            if st.button(
+            st.button(
                 _tr(tab_id),
                 key=f"nr_nav_{tab_id}",
                 type="primary" if is_active else "secondary",
+                on_click=_select_tab,
+                args=(tab_id,),
                 use_container_width=True,
-            ):
-                if not is_active:
-                    st.session_state["nr_active_tab"] = tab_id
-                    st.rerun()
+            )
 
 active_tab = st.session_state["nr_active_tab"]
-_tab_slug = re.sub(r"[^a-z0-9]+", "_", active_tab.lower()).strip("_") or "tab"
-_tab_slot = st.empty()
-_tab_stack = contextlib.ExitStack()
-_tab_stack.enter_context(_tab_slot.container())
-_tab_stack.enter_context(_nr_box("nr_panel_root"))
-_tab_stack.enter_context(_nr_box(f"nr_panel_{_tab_slug}"))
+
+
+def _render_active_tab(active_tab: str) -> None:
+    _tab_slug = re.sub(r"[^a-z0-9]+", "_", active_tab.lower()).strip("_") or "tab"
+    with _nr_box(f"nr_panel_{_tab_slug}"):
 `;
 }
 

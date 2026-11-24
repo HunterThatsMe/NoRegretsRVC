@@ -254,7 +254,6 @@ if active_tab == "Training":
                     key="nr_ln_chk",
                 )
 
-        _prep_out_slot = st.empty()
         if st.button(_tr("Preprocess Dataset"), type="primary", use_container_width=True, key="nr_btn_preprocess"):
             m_clean = st.session_state["nr_model_name"].strip()
             ds_clean = st.session_state["nr_dataset_path"].strip()
@@ -289,8 +288,8 @@ if active_tab == "Training":
                 )
                 st.session_state["nr_prep_log"] = out_txt
 
-        with _prep_out_slot.container():
-            def _render_prep_live() -> None:
+        with _nr_box("nr_prep_out_box"):
+            def _render_prep_live_body() -> None:
                 _, done_p = _poll_core_tasks()
                 _output_box("Preprocess output", st.session_state["nr_prep_log"])
                 if done_p and _HAS_FRAGMENT:
@@ -299,7 +298,14 @@ if active_tab == "Training":
                     except TypeError:
                         st.rerun()
 
-            _run_live_section(_is_task_running("preprocess"), _render_prep_live)
+            if _HAS_FRAGMENT:
+                @st.fragment(run_every=1.5 if _is_task_running("preprocess") else None)
+                def _prep_live_frag() -> None:
+                    _render_prep_live_body()
+
+                _prep_live_frag()
+            else:
+                _render_prep_live_body()
 
     # --- STEP 3: Extract Features ---
     with _nr_card("nr_train_step_3"):
@@ -323,7 +329,6 @@ if active_tab == "Training":
             0,
         )
 
-        _ext_out_slot = st.empty()
         if st.button(_tr("Extract Features"), type="primary", use_container_width=True, key="nr_btn_extract"):
             m_clean = st.session_state["nr_model_name"].strip()
             if not m_clean:
@@ -349,8 +354,8 @@ if active_tab == "Training":
                 )
                 st.session_state["nr_ext_log"] = out_txt
 
-        with _ext_out_slot.container():
-            def _render_ext_live() -> None:
+        with _nr_box("nr_ext_out_box"):
+            def _render_ext_live_body() -> None:
                 _, done_e = _poll_core_tasks()
                 _output_box("Feature extraction output", st.session_state["nr_ext_log"])
                 if done_e and _HAS_FRAGMENT:
@@ -359,7 +364,14 @@ if active_tab == "Training":
                     except TypeError:
                         st.rerun()
 
-            _run_live_section(_is_task_running("extract"), _render_ext_live)
+            if _HAS_FRAGMENT:
+                @st.fragment(run_every=1.5 if _is_task_running("extract") else None)
+                def _ext_live_frag() -> None:
+                    _render_ext_live_body()
+
+                _ext_live_frag()
+            else:
+                _render_ext_live_body()
 
     # --- STEP 4: Train Model ---
     with _nr_card("nr_train_step_4"):
@@ -461,6 +473,8 @@ if active_tab == "Training":
                                     st.session_state["nr_custom_g"] = rel_g
                                     st.session_state["nr_cp_g_inp"] = rel_g
                                 _clear_fs_caches()
+                                print(f"✔ Pretrained uploaded: {up_cp_g.name}", flush=True)
+                                _push_toast("Pretrained Uploaded", f"Loaded custom G pretrain ({up_cp_g.name}).")
                                 st.rerun()
                     with cp_r:
                         if d_list:
@@ -484,6 +498,8 @@ if active_tab == "Training":
                                 st.session_state["nr_custom_d"] = rel_d
                                 st.session_state["nr_cp_d_inp"] = rel_d
                                 _clear_fs_caches()
+                                print(f"✔ Pretrained uploaded: {up_cp_d.name}", flush=True)
+                                _push_toast("Pretrained Uploaded", f"Loaded custom D pretrain ({up_cp_d.name}).")
                                 st.rerun()
 
             idx_opts = ["Auto", "Faiss", "KMeans"]
@@ -498,7 +514,6 @@ if active_tab == "Training":
 
         m_clean_cur = st.session_state["nr_model_name"].strip()
         is_running_now = _is_training_process_alive(m_clean_cur) or bool(st.session_state["nr_is_training"])
-        _trn_live_slot = st.empty()
 
         b_start, b_idx = st.columns(2, gap="small")
         with b_start:
@@ -546,7 +561,6 @@ if active_tab == "Training":
                             },
                         )
                         st.session_state["nr_trn_log"] = msg
-                        st.rerun()
         with b_idx:
             if st.button(_tr("Generate Index"), type="secondary", use_container_width=True, key="nr_btn_gen_index"):
                 if not m_clean_cur:
@@ -566,14 +580,19 @@ if active_tab == "Training":
                     )
                     st.session_state["nr_trn_log"] = out_txt
 
-        with _trn_live_slot.container():
-            def _render_trn_live() -> None:
+        with _nr_box("nr_trn_live_box"):
+            def _render_trn_live_body() -> None:
                 _, done_t = _poll_core_tasks()
                 m_now = st.session_state["nr_model_name"].strip()
                 run_now = _is_training_process_alive(m_now) or bool(st.session_state["nr_is_training"])
                 live_raw = _read_train_log(m_now)
                 if live_raw:
-                    st.session_state["nr_trn_log"] = "\\n".join(live_raw.splitlines()[-80:])
+                    filtered_trn = _filter_status_lines(
+                        live_raw,
+                        "⏳ Training in progress — monitor live epochs in Kaggle cell & progress meter above." if run_now else "Training log ready — open Diagnostics for epoch curve.",
+                    )
+                    if filtered_trn:
+                        st.session_state["nr_trn_log"] = filtered_trn
                 parsed_live = _parse_training_log(live_raw) if live_raw else None
                 if parsed_live and parsed_live.get("live"):
                     lp = parsed_live["live"]
@@ -611,30 +630,39 @@ if active_tab == "Training":
                             e_c1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">REMAINING TIME</div><div class="nr-metric-v">Finishes in {rem_lbl}</div></div>', unsafe_allow_html=True)
                             e_c2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">YOUR LOCAL TIME</div><div class="nr-metric-v">{fin_time}</div></div>', unsafe_allow_html=True)
                             e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v">{fin_day}</div></div>', unsafe_allow_html=True)
-                _output_box("Training output", st.session_state["nr_trn_log"])
+                _output_box("Training output", _filter_status_lines(st.session_state["nr_trn_log"], st.session_state["nr_trn_log"]))
                 if done_t and _HAS_FRAGMENT:
                     try:
                         st.rerun(scope="app")
                     except TypeError:
                         st.rerun()
 
-            _run_live_section(is_running_now or _is_task_running("index"), _render_trn_live)
+            if _HAS_FRAGMENT:
+                @st.fragment(run_every=2.0 if (is_running_now or _is_task_running("index")) else None)
+                def _trn_live_frag() -> None:
+                    _render_trn_live_body()
+
+                _trn_live_frag()
+            else:
+                _render_trn_live_body()
 
         with st.expander("View Generated Kaggle core.py Pipeline Commands", expanded=False):
             m_cmd_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", m_clean_cur or "MyVoice")
             ds_cmd = st.session_state["nr_dataset_path"].strip() or "/kaggle/input/datasets/your-username/voice-dataset"
             st.code(
-                f"""# 1. Preprocess dataset
-python core.py preprocess --model_name "{m_cmd_name}" --dataset_path "{ds_cmd}" --sample_rate {st.session_state["nr_sr"]} --cpu_cores {st.session_state["nr_cpu_cores"]} --cut_preprocess "{st.session_state["nr_audio_cutting"]}" --chunk_len {st.session_state["nr_chunk_len"]} --overlap_len {st.session_state["nr_overlap_len"]}
-
-# 2. Extract features ({st.session_state["nr_f0"]} + {st.session_state["nr_embedder"]})
-python core.py extract --model_name "{m_cmd_name}" --f0_method {st.session_state["nr_f0"]} --sample_rate {st.session_state["nr_sr"]} --embedder_model {st.session_state["nr_embedder"]} --gpu {st.session_state["nr_gpu_num"]} --include_mutes {st.session_state["nr_silent_files"]}
-
-# 3. Train {st.session_state["nr_vocoder"]} RVC model ({prec_val})
-python core.py train --model_name "{m_cmd_name}" --vocoder "{st.session_state["nr_vocoder"]}" --save_every_epoch {st.session_state["nr_save_every"]} --total_epoch {st.session_state["nr_total_epoch"]} --batch_size {st.session_state["nr_batch_size"]} --sample_rate {st.session_state["nr_sr"]} --gpu {st.session_state["nr_gpu_num"]}
-
-# 4. Generate {st.session_state["nr_index_algo"]} feature index
-python core.py index --model_name "{m_cmd_name}" --index_algorithm {st.session_state["nr_index_algo"]}""",
+                "\\n".join([
+                    "# 1. Preprocess dataset",
+                    f'python core.py preprocess --model_name "{m_cmd_name}" --dataset_path "{ds_cmd}" --sample_rate {st.session_state["nr_sr"]} --cpu_cores {st.session_state["nr_cpu_cores"]} --cut_preprocess "{st.session_state["nr_audio_cutting"]}" --chunk_len {st.session_state["nr_chunk_len"]} --overlap_len {st.session_state["nr_overlap_len"]}',
+                    "",
+                    f'# 2. Extract features ({st.session_state["nr_f0"]} + {st.session_state["nr_embedder"]})',
+                    f'python core.py extract --model_name "{m_cmd_name}" --f0_method {st.session_state["nr_f0"]} --sample_rate {st.session_state["nr_sr"]} --embedder_model {st.session_state["nr_embedder"]} --gpu {st.session_state["nr_gpu_num"]} --include_mutes {st.session_state["nr_silent_files"]}',
+                    "",
+                    f'# 3. Train {st.session_state["nr_vocoder"]} RVC model ({prec_val})',
+                    f'python core.py train --model_name "{m_cmd_name}" --vocoder "{st.session_state["nr_vocoder"]}" --save_every_epoch {st.session_state["nr_save_every"]} --total_epoch {st.session_state["nr_total_epoch"]} --batch_size {st.session_state["nr_batch_size"]} --sample_rate {st.session_state["nr_sr"]} --gpu {st.session_state["nr_gpu_num"]}',
+                    "",
+                    f'# 4. Generate {st.session_state["nr_index_algo"]} feature index',
+                    f'python core.py index --model_name "{m_cmd_name}" --index_algorithm {st.session_state["nr_index_algo"]}',
+                ]),
                 language="bash",
             )
 
@@ -653,7 +681,7 @@ python core.py index --model_name "{m_cmd_name}" --index_algorithm {st.session_s
             )
             if sel_export_pth and (Path(now_dir) / sel_export_pth).is_file():
                 p_obj = Path(now_dir) / sel_export_pth
-                st.download_button(f"Download {p_obj.name}", data=p_obj.read_bytes(), file_name=p_obj.name, type="secondary", use_container_width=True, key="nr_dl_pth_btn")
+                st.download_button(f"Download {p_obj.name}", data=_read_file_bytes_cached(str(p_obj), p_obj.stat().st_mtime), file_name=p_obj.name, type="secondary", use_container_width=True, key="nr_dl_pth_btn")
         with ex_r:
             sel_export_idx = st.selectbox(
                 "Select Index File (.index)",
@@ -663,7 +691,7 @@ python core.py index --model_name "{m_cmd_name}" --index_algorithm {st.session_s
             )
             if sel_export_idx and (Path(now_dir) / sel_export_idx).is_file():
                 i_obj = Path(now_dir) / sel_export_idx
-                st.download_button(f"Download {i_obj.name}", data=i_obj.read_bytes(), file_name=i_obj.name, type="secondary", use_container_width=True, key="nr_dl_idx_btn")
+                st.download_button(f"Download {i_obj.name}", data=_read_file_bytes_cached(str(i_obj), i_obj.stat().st_mtime), file_name=i_obj.name, type="secondary", use_container_width=True, key="nr_dl_idx_btn")
 
         if st.button("Refresh trained models and indexes", type="secondary", use_container_width=True, key="nr_btn_refresh_exports"):
             _clear_fs_caches()
@@ -761,83 +789,50 @@ elif active_tab == "Models":
                 g_val = cpre_g_in.strip()
                 d_val = (cpre_d_in.strip() or _infer_matching_d_url(g_val)).strip()
                 if not g_val and not d_val:
-                    st.session_state["nr_pre_log"].append(f"[{ts}] Enter a Hugging Face repo, ZIP, or G .pth URL first.")
+                    st.warning("Enter a Hugging Face repo, ZIP, or G .pth URL first.")
                 else:
-                    if "huggingface.co/" in g_val.lower() and "/resolve/" not in g_val and not urllib.parse.urlsplit(g_val).path.lower().endswith((".pth", ".zip")):
-                        try:
-                            parts = [p for p in urllib.parse.urlsplit(g_val).path.strip("/").split("/") if p]
-                            if len(parts) >= 2:
-                                owner_repo = f"{parts[0]}/{parts[1]}"
-                                api_u = f"https://huggingface.co/api/models/{owner_repo}/tree/main"
-                                with urllib.request.urlopen(api_u, timeout=30) as resp:
-                                    tree = json.loads(resp.read().decode("utf-8"))
-                                discovered_g = ""
-                                discovered_d = ""
-                                for node in tree:
-                                    fp = str(node.get("path", ""))
-                                    if fp.lower().endswith(".pth"):
-                                        fn_p = Path(fp).name
-                                        fu = f"https://huggingface.co/{owner_repo}/resolve/main/{urllib.parse.quote(fp)}?download=true"
-                                        urllib.request.urlretrieve(fu, cdir / fn_p)
-                                        rel_p = f"rvc/models/pretraineds/custom/{fn_p}"
-                                        st.session_state["nr_pre_log"].append(f"[{ts}] Downloaded {fn_p} from HF repo -> {rel_p}")
-                                        if "D" in fn_p.upper() and not discovered_d:
-                                            discovered_d = rel_p
-                                        elif not discovered_g:
-                                            discovered_g = rel_p
-                                if discovered_g:
-                                    st.session_state["nr_custom_g"] = discovered_g
-                                if discovered_d:
-                                    st.session_state["nr_custom_d"] = discovered_d
-                                st.session_state["nr_manifest"].append({"id": f"pre-hf-{int(time.time())}", "name": owner_repo, "category": "pretrained", "url": g_val})
-                        except Exception as exc:
-                            st.session_state["nr_pre_log"].append(f"[{ts}] HF repo scan failed: {exc}")
-                    elif urllib.parse.urlsplit(g_val).path.lower().endswith(".zip"):
-                        try:
-                            z_tmp = cdir / "custom_pretrains.zip"
-                            urllib.request.urlretrieve(g_val, z_tmp)
-                            with zipfile.ZipFile(z_tmp, "r") as zf:
-                                for mem in zf.namelist():
-                                    if not mem.endswith("/") and Path(mem).name.lower().endswith(".pth"):
-                                        out_pth = cdir / Path(mem).name
-                                        out_pth.write_bytes(zf.read(mem))
-                                        rel_p = f"rvc/models/pretraineds/custom/{out_pth.name}"
-                                        st.session_state["nr_pre_log"].append(f"[{ts}] Extracted {out_pth.name} -> {rel_p}")
-                                        if "D" in out_pth.name.upper():
-                                            st.session_state["nr_custom_d"] = rel_p
-                                        else:
-                                            st.session_state["nr_custom_g"] = rel_p
-                            z_tmp.unlink(missing_ok=True)
-                            st.session_state["nr_manifest"].append({"id": f"pre-zip-{int(time.time())}", "name": Path(urllib.parse.urlsplit(g_val).path).name, "category": "pretrained", "url": g_val})
-                        except Exception as exc:
-                            st.session_state["nr_pre_log"].append(f"[{ts}] ZIP extract failed: {exc}")
-                    else:
-                        if g_val.startswith(("http://", "https://")) and urllib.parse.urlsplit(g_val).path.lower().endswith(".pth"):
-                            gn = Path(urllib.parse.urlsplit(g_val).path).name or "Custom_G.pth"
-                            urllib.request.urlretrieve(g_val, cdir / gn)
-                            st.session_state["nr_pre_log"].append(f"[{ts}] Downloaded G weight -> rvc/models/pretraineds/custom/{gn}")
-                            st.session_state["nr_custom_g"] = f"rvc/models/pretraineds/custom/{gn}"
-                            st.session_state["nr_manifest"].append({"id": f"pre-g-{int(time.time())}", "name": gn, "category": "pretrained", "url": g_val})
-                        if d_val.startswith(("http://", "https://")) and urllib.parse.urlsplit(d_val).path.lower().endswith(".pth"):
-                            dn = Path(urllib.parse.urlsplit(d_val).path).name or "Custom_D.pth"
-                            urllib.request.urlretrieve(d_val, cdir / dn)
-                            st.session_state["nr_pre_log"].append(f"[{ts}] Downloaded D weight -> rvc/models/pretraineds/custom/{dn}")
-                            st.session_state["nr_custom_d"] = f"rvc/models/pretraineds/custom/{dn}"
-                            st.session_state["nr_manifest"].append({"id": f"pre-d-{int(time.time())}", "name": dn, "category": "pretrained", "url": d_val})
                     st.session_state["nr_custom_pre"] = True
+                    lbl_pre = g_val.split("/")[-1] or "custom pretrain"
+                    msg_pre = _start_pretrain_download_bg({
+                        "use_custom": True,
+                        "g_val": g_val,
+                        "d_val": d_val,
+                        "cdir": str(cdir),
+                        "label": lbl_pre,
+                    })
+                    st.session_state["nr_pre_log_text"] = msg_pre
+                    st.session_state["nr_pre_log"].append(f"[{ts}] {msg_pre}")
             else:
-                pre_url = f"https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretraineds/{pre_arch}_{pre_sr}.pth"
-                try:
-                    urllib.request.urlretrieve(pre_url, cdir / f"{pre_arch}_{pre_sr}.pth")
-                    st.session_state["nr_pre_log"].append(f"[{ts}] Downloaded {pre_arch} ({pre_sr}) into rvc/models/pretraineds/custom/.")
-                except Exception as exc:
-                    st.session_state["nr_pre_log"].append(f"[{ts}] Queued {pre_arch} ({pre_sr}) ({exc}).")
-                st.session_state["nr_manifest"].append({"id": f"pre-{int(time.time())}", "name": f"{pre_arch} ({pre_sr})", "category": "pretrained", "url": pre_url})
-            _clear_fs_caches()
-            st.rerun()
+                msg_pre = _start_pretrain_download_bg({
+                    "use_custom": False,
+                    "pre_arch": pre_arch,
+                    "pre_sr": pre_sr,
+                    "cdir": str(cdir),
+                    "label": f"{pre_arch} ({pre_sr})",
+                })
+                st.session_state["nr_pre_log_text"] = msg_pre
+                st.session_state["nr_pre_log"].append(f"[{ts}] {msg_pre}")
 
-        if st.session_state["nr_pre_log"]:
-            _output_box("Pretrained Download Log", "\\n".join(st.session_state["nr_pre_log"][-20:]))
+        with _nr_box("nr_pre_live_box"):
+            def _render_pre_live_body() -> None:
+                _, done_pre = _poll_core_tasks()
+                pre_txt = st.session_state.get("nr_pre_log_text") or "\\n".join(st.session_state["nr_pre_log"][-20:])
+                if pre_txt:
+                    _output_box("Pretrained Download Log", pre_txt)
+                if done_pre and _HAS_FRAGMENT:
+                    try:
+                        st.rerun(scope="app")
+                    except TypeError:
+                        st.rerun()
+
+            if _HAS_FRAGMENT:
+                @st.fragment(run_every=1.5 if _is_task_running("pretrained") else None)
+                def _pre_live_frag() -> None:
+                    _render_pre_live_body()
+
+                _pre_live_frag()
+            else:
+                _render_pre_live_body()
 
         if st.session_state["nr_manifest"]:
             st.markdown('<div class="nr-field-title" style="margin-top:12px">Active Boot Manifest</div>', unsafe_allow_html=True)

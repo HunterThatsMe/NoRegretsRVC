@@ -266,7 +266,17 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.doesNotMatch(appFile.content, /kw = \{json\.dumps\(kwargs\)\}/);
   assert.doesNotMatch(appFile.content, /if _has_active_bg_work\(\):\s*time\.sleep\(2\.0\)\s*st\.rerun\(\)/);
   assert.match(appFile.content, /\.args\.json/);
-  assert.match(appFile.content, /contextlib\.ExitStack\(\)/);
+  assert.doesNotMatch(appFile.content, /contextlib\.ExitStack/);
+  assert.doesNotMatch(appFile.content, /_tab_slot\s*=\s*st\.empty/);
+  assert.match(appFile.content, /def _render_active_tab/);
+  assert.match(appFile.content, /def _select_tab/);
+  assert.match(appFile.content, /on_click=_select_tab/);
+  assert.match(appFile.content, /def _filter_status_lines/);
+  assert.match(appFile.content, /def _start_pretrain_download_bg/);
+  assert.match(appFile.content, /Pretrained Download Complete/);
+  assert.match(appFile.content, /def _read_file_bytes_cached/);
+  assert.match(appFile.content, /def _render_samples_queue_frag/);
+  assert.match(appFile.content, /def _render_samples_params_frag/);
   assert.match(appFile.content, /_nr_bg_watcher/);
   assert.match(appFile.content, /_nr_card\("nr_train_step_5"\)/);
   assert.match(appFile.content, /_nr_card\("nr_samples_step_1"\)/);
@@ -274,6 +284,10 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.match(appFile.content, /key="nr_cp_d_up"/);
   assert.match(appFile.content, /overflow-anchor:\s*none/);
   assert.match(nbFile.content, /NameError:/);
+  assert.match(cell2Py, /"--server\.fileWatcherType",\s*"none"/);
+  assert.match(nbFile.content, /STREAMLIT_SERVER_FILE_WATCHER_TYPE/);
+  assert.match(nbFile.content, /local_sources_watcher/);
+  assert.match(nbFile.content, /⏳ Downloading pretrained/);
 
   const zipBytes = buildZipArchive(files.map((f) => ({ path: f.zipPath, content: f.content })));
   assert.equal(zipBytes[0], 0x50);
