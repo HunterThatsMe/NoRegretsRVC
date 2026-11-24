@@ -38,7 +38,7 @@ if active_tab == "Training":
         vi4.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Detected Hardware</div><div class="nr-metric-v">{html.escape(_gpu_info_lines(gpu_ids_val).replace(chr(10), " · "))}</div></div>', unsafe_allow_html=True)
 
     # --- STEP 1: Model Settings ---
-    with st.container(border=True):
+    with _nr_card("nr_train_step_1"):
         _step_head(1, "Model Settings", "Give your voice project a name, select target sample fidelity, and assign your synthesis vocoder.")
         s1_c1, s1_c2 = st.columns(2, gap="medium")
         with s1_c1:
@@ -122,7 +122,7 @@ if active_tab == "Training":
                 )
 
     # --- STEP 2: Prepare Dataset ---
-    with st.container(border=True):
+    with _nr_card("nr_train_step_2"):
         _step_head(2, "Prepare Dataset", "Link your Kaggle dataset folder and split clean vocal segments for training.")
         detected_datasets = _list_datasets()
         if (not st.session_state["nr_dataset_path"].strip() or "your-username" in st.session_state["nr_dataset_path"]) and detected_datasets:
@@ -254,7 +254,7 @@ if active_tab == "Training":
                     key="nr_ln_chk",
                 )
 
-        _output_box("Preprocess output", st.session_state["nr_prep_log"])
+        _prep_out_slot = st.empty()
         if st.button(_tr("Preprocess Dataset"), type="primary", use_container_width=True, key="nr_btn_preprocess"):
             m_clean = st.session_state["nr_model_name"].strip()
             ds_clean = st.session_state["nr_dataset_path"].strip()
@@ -288,10 +288,21 @@ if active_tab == "Training":
                     f"Dataset sliced & ready for {m_clean} ({st.session_state['nr_sr']} Hz).",
                 )
                 st.session_state["nr_prep_log"] = out_txt
-                st.rerun()
+
+        with _prep_out_slot.container():
+            def _render_prep_live() -> None:
+                _, done_p = _poll_core_tasks()
+                _output_box("Preprocess output", st.session_state["nr_prep_log"])
+                if done_p and _HAS_FRAGMENT:
+                    try:
+                        st.rerun(scope="app")
+                    except TypeError:
+                        st.rerun()
+
+            _run_live_section(_is_task_running("preprocess"), _render_prep_live)
 
     # --- STEP 3: Extract Features ---
-    with st.container(border=True):
+    with _nr_card("nr_train_step_3"):
         _step_head(3, "Extract Features", "Compute pitch tracks and speaker embeddings from your sliced vocals.")
         e1_l, e1_r = st.columns(2, gap="medium")
         with e1_l:
@@ -312,7 +323,7 @@ if active_tab == "Training":
             0,
         )
 
-        _output_box("Feature extraction output", st.session_state["nr_ext_log"])
+        _ext_out_slot = st.empty()
         if st.button(_tr("Extract Features"), type="primary", use_container_width=True, key="nr_btn_extract"):
             m_clean = st.session_state["nr_model_name"].strip()
             if not m_clean:
@@ -337,10 +348,21 @@ if active_tab == "Training":
                     f"Pitch ({st.session_state['nr_f0']}) & {st.session_state['nr_embedder']} embeddings ready for {m_clean}.",
                 )
                 st.session_state["nr_ext_log"] = out_txt
-                st.rerun()
+
+        with _ext_out_slot.container():
+            def _render_ext_live() -> None:
+                _, done_e = _poll_core_tasks()
+                _output_box("Feature extraction output", st.session_state["nr_ext_log"])
+                if done_e and _HAS_FRAGMENT:
+                    try:
+                        st.rerun(scope="app")
+                    except TypeError:
+                        st.rerun()
+
+            _run_live_section(_is_task_running("extract"), _render_ext_live)
 
     # --- STEP 4: Train Model ---
-    with st.container(border=True):
+    with _nr_card("nr_train_step_4"):
         _step_head(4, "Train Model", "Dial in batch size, checkpoint frequency, and total training epochs before launching.")
 
         st.session_state["nr_batch_size"] = _synced_slider_num(
@@ -395,6 +417,8 @@ if active_tab == "Training":
                                     st.session_state["nr_custom_d"] = inferred_d
                             st.rerun()
 
+                    cpre_dir = Path(now_dir) / "rvc" / "models" / "pretraineds" / "custom"
+                    cpre_dir.mkdir(parents=True, exist_ok=True)
                     g_list = _list_custom_pretrains("G")
                     d_list = _list_custom_pretrains("D")
                     cp_l, cp_r = st.columns(2, gap="medium")
@@ -409,6 +433,35 @@ if active_tab == "Training":
 
                             st.selectbox("Detected G Pretrain", options=[""] + g_list, format_func=lambda x: "Pick G file..." if x == "" else x, on_change=_on_pick_cp_g, key="nr_cp_g_pick")
                         st.session_state["nr_custom_g"] = st.text_input("G Pretrained Path or URL", value=st.session_state["nr_custom_g"], placeholder="rvc/models/pretraineds/custom/G.pth", key="nr_cp_g_inp")
+                        up_cp_g = st.file_uploader("Upload Custom G Pretrain (.pth or .zip)", type=["pth", "zip"], key="nr_cp_g_up")
+                        if up_cp_g is not None:
+                            g_sig = f"{up_cp_g.name}:{up_cp_g.size}"
+                            if g_sig != st.session_state.get("nr_cp_last_g_sig"):
+                                st.session_state["nr_cp_last_g_sig"] = g_sig
+                                if up_cp_g.name.lower().endswith(".zip"):
+                                    tmp_z = cpre_dir / up_cp_g.name
+                                    tmp_z.write_bytes(up_cp_g.getvalue())
+                                    with zipfile.ZipFile(tmp_z, "r") as zf:
+                                        for mem in zf.namelist():
+                                            if not mem.endswith("/") and Path(mem).name.lower().endswith(".pth"):
+                                                out_p = cpre_dir / Path(mem).name
+                                                out_p.write_bytes(zf.read(mem))
+                                                rel_p = f"rvc/models/pretraineds/custom/{out_p.name}"
+                                                if "D" in out_p.name.upper():
+                                                    st.session_state["nr_custom_d"] = rel_p
+                                                    st.session_state["nr_cp_d_inp"] = rel_p
+                                                else:
+                                                    st.session_state["nr_custom_g"] = rel_p
+                                                    st.session_state["nr_cp_g_inp"] = rel_p
+                                    tmp_z.unlink(missing_ok=True)
+                                else:
+                                    out_g = cpre_dir / Path(up_cp_g.name).name
+                                    out_g.write_bytes(up_cp_g.getvalue())
+                                    rel_g = f"rvc/models/pretraineds/custom/{out_g.name}"
+                                    st.session_state["nr_custom_g"] = rel_g
+                                    st.session_state["nr_cp_g_inp"] = rel_g
+                                _clear_fs_caches()
+                                st.rerun()
                     with cp_r:
                         if d_list:
                             def _on_pick_cp_d() -> None:
@@ -420,47 +473,32 @@ if active_tab == "Training":
 
                             st.selectbox("Detected D Pretrain", options=[""] + d_list, format_func=lambda x: "Pick D file..." if x == "" else x, on_change=_on_pick_cp_d, key="nr_cp_d_pick")
                         st.session_state["nr_custom_d"] = st.text_input("D Pretrained Path or URL (optional auto-pair)", value=st.session_state["nr_custom_d"], placeholder="rvc/models/pretraineds/custom/D.pth", key="nr_cp_d_inp")
+                        up_cp_d = st.file_uploader("Upload Custom D Pretrain (.pth)", type=["pth"], key="nr_cp_d_up")
+                        if up_cp_d is not None:
+                            d_sig = f"{up_cp_d.name}:{up_cp_d.size}"
+                            if d_sig != st.session_state.get("nr_cp_last_d_sig"):
+                                st.session_state["nr_cp_last_d_sig"] = d_sig
+                                out_d = cpre_dir / Path(up_cp_d.name).name
+                                out_d.write_bytes(up_cp_d.getvalue())
+                                rel_d = f"rvc/models/pretraineds/custom/{out_d.name}"
+                                st.session_state["nr_custom_d"] = rel_d
+                                st.session_state["nr_cp_d_inp"] = rel_d
+                                _clear_fs_caches()
+                                st.rerun()
 
             idx_opts = ["Auto", "Faiss", "KMeans"]
             st.session_state["nr_index_algo"] = st.selectbox("Index Algorithm", options=idx_opts, index=idx_opts.index(st.session_state["nr_index_algo"]) if st.session_state["nr_index_algo"] in idx_opts else 0, key="nr_idx_algo_sel")
 
-        with st.container(border=True):
+        with _nr_card("nr_train_terms_box"):
             terms_ok = st.checkbox(
                 "I agree to the terms of use — Confirm that your training audio follows the usage guidelines for NoRegretsRVC.",
                 value=True,
                 key="nr_train_terms",
             )
 
-        # Live status & progress (auto-updated while training runs)
         m_clean_cur = st.session_state["nr_model_name"].strip()
         is_running_now = _is_training_process_alive(m_clean_cur) or bool(st.session_state["nr_is_training"])
-        live_raw = _read_train_log(m_clean_cur)
-        if live_raw:
-            st.session_state["nr_trn_log"] = "\\n".join(live_raw.splitlines()[-80:])
-        parsed_live = _parse_training_log(live_raw) if live_raw else None
-
-        if parsed_live and parsed_live.get("live"):
-            lp = parsed_live["live"]
-            tot_ep_cur = max(1, int(st.session_state["nr_total_epoch"]))
-            cur_ep = min(tot_ep_cur, int(lp["epoch"]))
-            batch_tot = max(1, int(lp["batch_total"]))
-            batch_dn = min(batch_tot, int(lp["batch_done"]))
-            pct = int(lp["percent"])
-            it_s = float(lp["it_per_sec"])
-            ep_eta = max(0.0, (batch_tot - batch_dn) / max(0.1, it_s))
-            st.markdown(
-                f'<div class="nr-prog-wrap">'
-                f'<div style="display:flex;justify-content:space-between;font-family:JetBrains Mono,monospace;font-size:12px">'
-                f'<span style="color:#FDF7F7;font-weight:600">Epoch {cur_ep}/{tot_ep_cur} · Step {lp["step"]}</span>'
-                f'<span style="color:#E51923;font-weight:600">{"Running" if is_running_now else "Latest"}</span></div>'
-                f'<div class="nr-prog-track"><div class="nr-prog-fill" style="width:{pct}%"></div></div>'
-                f'<div style="display:flex;justify-content:space-between;font-family:JetBrains Mono,monospace;font-size:11px;color:#DFBFC3">'
-                f'<span>Batch {batch_dn}/{batch_tot} ({pct}%) · {it_s:.2f} it/s</span>'
-                f'<span style="color:#AD8288">Epoch ETA ~{ep_eta:.1f}s</span></div></div>',
-                unsafe_allow_html=True,
-            )
-
-        _output_box("Training output", st.session_state["nr_trn_log"])
+        _trn_live_slot = st.empty()
 
         b_start, b_idx = st.columns(2, gap="small")
         with b_start:
@@ -527,25 +565,60 @@ if active_tab == "Training":
                         f"FAISS feature index ready for {m_clean_cur}.",
                     )
                     st.session_state["nr_trn_log"] = out_txt
-                    st.rerun()
 
-        if is_running_now and parsed_live and parsed_live.get("live"):
-            lp = parsed_live["live"]
-            it_s = max(0.15, float(lp["it_per_sec"]))
-            ep_sec = parsed_live["avg_speed_sec"] if parsed_live["avg_speed_sec"] > 0 else (int(lp["batch_total"]) / it_s)
-            rem_sec = int(max(0, (int(lp["batch_total"]) - int(lp["batch_done"])) / it_s + max(0, int(st.session_state["nr_total_epoch"]) - int(lp["epoch"])) * ep_sec))
-            mins, secs = divmod(rem_sec, 60)
-            hrs, mins = divmod(mins, 60)
-            rem_lbl = f"~{hrs} hr {mins} min" if hrs > 0 else f"~{mins} min {secs}s"
-            fin_ts = time.localtime(time.time() + rem_sec)
-            fin_time = time.strftime("%I:%M %p", fin_ts).lstrip("0")
-            fin_day = time.strftime("%a, %b %d", fin_ts)
-            with st.container(border=True):
-                st.markdown(f'<div style="font-size:12px;font-weight:600;color:#FDF7F7;margin-bottom:8px">⏱ Estimated Finish · Updating live</div>', unsafe_allow_html=True)
-                e_c1, e_c2, e_c3 = st.columns(3, gap="small")
-                e_c1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">REMAINING TIME</div><div class="nr-metric-v">Finishes in {rem_lbl}</div></div>', unsafe_allow_html=True)
-                e_c2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">YOUR LOCAL TIME</div><div class="nr-metric-v">{fin_time}</div></div>', unsafe_allow_html=True)
-                e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v">{fin_day}</div></div>', unsafe_allow_html=True)
+        with _trn_live_slot.container():
+            def _render_trn_live() -> None:
+                _, done_t = _poll_core_tasks()
+                m_now = st.session_state["nr_model_name"].strip()
+                run_now = _is_training_process_alive(m_now) or bool(st.session_state["nr_is_training"])
+                live_raw = _read_train_log(m_now)
+                if live_raw:
+                    st.session_state["nr_trn_log"] = "\\n".join(live_raw.splitlines()[-80:])
+                parsed_live = _parse_training_log(live_raw) if live_raw else None
+                if parsed_live and parsed_live.get("live"):
+                    lp = parsed_live["live"]
+                    tot_ep_cur = max(1, int(st.session_state["nr_total_epoch"]))
+                    cur_ep = min(tot_ep_cur, int(lp["epoch"]))
+                    batch_tot = max(1, int(lp["batch_total"]))
+                    batch_dn = min(batch_tot, int(lp["batch_done"]))
+                    pct = int(lp["percent"])
+                    it_s = float(lp["it_per_sec"])
+                    ep_eta = max(0.0, (batch_tot - batch_dn) / max(0.1, it_s))
+                    st.markdown(
+                        f'<div class="nr-prog-wrap">'
+                        f'<div style="display:flex;justify-content:space-between;font-family:JetBrains Mono,monospace;font-size:12px">'
+                        f'<span style="color:#FDF7F7;font-weight:600">Epoch {cur_ep}/{tot_ep_cur} · Step {lp["step"]}</span>'
+                        f'<span style="color:#E51923;font-weight:600">{"Running" if run_now else "Latest"}</span></div>'
+                        f'<div class="nr-prog-track"><div class="nr-prog-fill" style="width:{pct}%"></div></div>'
+                        f'<div style="display:flex;justify-content:space-between;font-family:JetBrains Mono,monospace;font-size:11px;color:#DFBFC3">'
+                        f'<span>Batch {batch_dn}/{batch_tot} ({pct}%) · {it_s:.2f} it/s</span>'
+                        f'<span style="color:#AD8288">Epoch ETA ~{ep_eta:.1f}s</span></div></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if run_now:
+                        it_s_c = max(0.15, float(lp["it_per_sec"]))
+                        ep_sec = parsed_live["avg_speed_sec"] if parsed_live["avg_speed_sec"] > 0 else (batch_tot / it_s_c)
+                        rem_sec = int(max(0, (batch_tot - batch_dn) / it_s_c + max(0, tot_ep_cur - int(lp["epoch"])) * ep_sec))
+                        mins, secs = divmod(rem_sec, 60)
+                        hrs, mins = divmod(mins, 60)
+                        rem_lbl = f"~{hrs} hr {mins} min" if hrs > 0 else f"~{mins} min {secs}s"
+                        fin_ts = time.localtime(time.time() + rem_sec)
+                        fin_time = time.strftime("%I:%M %p", fin_ts).lstrip("0")
+                        fin_day = time.strftime("%a, %b %d", fin_ts)
+                        with _nr_card("nr_train_eta_box"):
+                            st.markdown('<div style="font-size:12px;font-weight:600;color:#FDF7F7;margin-bottom:8px">⏱ Estimated Finish · Updating live</div>', unsafe_allow_html=True)
+                            e_c1, e_c2, e_c3 = st.columns(3, gap="small")
+                            e_c1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">REMAINING TIME</div><div class="nr-metric-v">Finishes in {rem_lbl}</div></div>', unsafe_allow_html=True)
+                            e_c2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">YOUR LOCAL TIME</div><div class="nr-metric-v">{fin_time}</div></div>', unsafe_allow_html=True)
+                            e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v">{fin_day}</div></div>', unsafe_allow_html=True)
+                _output_box("Training output", st.session_state["nr_trn_log"])
+                if done_t and _HAS_FRAGMENT:
+                    try:
+                        st.rerun(scope="app")
+                    except TypeError:
+                        st.rerun()
+
+            _run_live_section(is_running_now or _is_task_running("index"), _render_trn_live)
 
         with st.expander("View Generated Kaggle core.py Pipeline Commands", expanded=False):
             m_cmd_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", m_clean_cur or "MyVoice")
@@ -566,7 +639,7 @@ python core.py index --model_name "{m_cmd_name}" --index_algorithm {st.session_s
             )
 
     # --- STEP 5: Export Model ---
-    with st.container(border=True):
+    with _nr_card("nr_train_step_5"):
         _step_head(5, "Export Model", "Locate and download trained .pth checkpoints and .index retrieval files.")
         pths = _list_pth_files()
         idxs = _list_index_files()
@@ -603,7 +676,7 @@ elif active_tab == "Models":
     _page_header("Models", "Fetch remote voice archives, drop local weights, and manage pretrained bases for Kaggle runs.")
 
     # --- STEP 1: Download Model ---
-    with st.container(border=True):
+    with _nr_card("nr_models_step_1"):
         _step_head(1, "Download Model", "Add a remote archive or checkpoint URL to sync into your Samples and TTS library.")
         st.markdown('<div class="nr-field-title">Model Link</div><div class="nr-field-help">Direct URL from Hugging Face, Pixeldrain, or Google Drive.</div>', unsafe_allow_html=True)
         model_link = st.text_input("Model Link", value="", placeholder="https://huggingface.co/.../resolve/main/model.zip", label_visibility="collapsed", key="nr_model_link_inp")
@@ -627,7 +700,7 @@ elif active_tab == "Models":
                 st.rerun()
 
     # --- STEP 2: Drop Files ---
-    with st.container(border=True):
+    with _nr_card("nr_models_step_2"):
         _step_head(2, "Drop Files", "Load local .pth weights, .index files, and .zip archives directly from your computer.")
         dropped = st.file_uploader(
             "Select Model Files (.pth / .index / .zip)",
@@ -659,7 +732,7 @@ elif active_tab == "Models":
             st.rerun()
 
     # --- STEP 3: Download Pretrained Models ---
-    with st.container(border=True):
+    with _nr_card("nr_models_step_3"):
         _step_head(3, "Download Pretrained Models", "Queue base pretrained architectures or custom Hugging Face weights for Kaggle setup.")
         st.markdown('<div class="nr-info-box"><strong>Training recommendation.</strong> For most models, start with Auto pretrained weights and the default ContentVec embedder. Third-party pretrained weights, especially older pairs, and optional embedders can reduce final voice quality if they are a poor match for your settings or dataset.</div>', unsafe_allow_html=True)
 
@@ -760,6 +833,7 @@ elif active_tab == "Models":
                 except Exception as exc:
                     st.session_state["nr_pre_log"].append(f"[{ts}] Queued {pre_arch} ({pre_sr}) ({exc}).")
                 st.session_state["nr_manifest"].append({"id": f"pre-{int(time.time())}", "name": f"{pre_arch} ({pre_sr})", "category": "pretrained", "url": pre_url})
+            _clear_fs_caches()
             st.rerun()
 
         if st.session_state["nr_pre_log"]:

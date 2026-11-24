@@ -49,6 +49,7 @@ export function buildStreamlitHeaderAndTabsPart1(
   return `"""${BRAND_NAME} Streamlit WebUI — exact parity with ${BRAND_NAME} Studio."""
 from __future__ import annotations
 
+import contextlib
 import hmac
 import html
 import inspect
@@ -107,6 +108,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
   background-attachment: fixed !important;
   color: var(--nr-text) !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  overflow-anchor: none !important;
 }
 
 [data-testid="stHeader"],
@@ -170,7 +172,10 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   border-radius: 12px !important;
   padding: 1.25rem !important;
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.34) !important;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease !important;
+  transition: border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+  border-color: rgba(229, 25, 35, 0.42) !important;
 }
 div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlockBorderWrapper"] {
   background-color: var(--nr-bg) !important;
@@ -178,6 +183,16 @@ div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlock
   border-radius: 10px !important;
   padding: 0.9rem 1.05rem !important;
   box-shadow: none !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+  border-color: rgba(229, 25, 35, 0.36) !important;
+}
+@keyframes nrPanelIn {
+  from { opacity: 0.72; transform: translate3d(0, 5px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+.st-key-nr_panel_root {
+  animation: nrPanelIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Inputs & Selects */
@@ -190,6 +205,7 @@ div[data-baseweb="select"] > div {
   border-radius: 8px !important;
   color: var(--nr-text) !important;
   font-size: 14px !important;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease !important;
 }
 [data-testid="stWidgetLabel"] label,
 [data-testid="stWidgetLabel"] p {
@@ -202,16 +218,20 @@ div[data-baseweb="select"] > div {
 [data-testid="stNumberInput"] input:focus,
 div[data-baseweb="select"] > div:focus-within {
   border-color: var(--nr-accent) !important;
-  box-shadow: 0 0 0 1px var(--nr-accent) !important;
+  box-shadow: 0 0 0 1px var(--nr-accent), 0 0 14px rgba(229, 25, 35, 0.16) !important;
 }
 [data-testid="stNumberInput"] button {
   background-color: var(--nr-elevated) !important;
   border-color: var(--nr-border) !important;
   color: var(--nr-text) !important;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.12s ease !important;
 }
 [data-testid="stNumberInput"] button:hover {
   border-color: var(--nr-accent) !important;
   color: #FFFFFF !important;
+}
+[data-testid="stNumberInput"] button:active {
+  transform: scale(0.94);
 }
 
 /* Buttons */
@@ -219,19 +239,24 @@ div[data-baseweb="select"] > div:focus-within {
   border-radius: 8px !important;
   font-weight: 600 !important;
   font-size: 13.5px !important;
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease !important;
+  transition: border-color 0.16s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.16s cubic-bezier(0.22, 1, 0.36, 1), color 0.16s ease, transform 0.12s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.16s ease !important;
   min-height: 39px !important;
+}
+.stButton > button:active, .stDownloadButton > button:active {
+  transform: scale(0.986) !important;
 }
 .stButton > button[kind="primary"],
 .stDownloadButton > button[kind="primary"] {
   background-color: var(--nr-accent) !important;
   border: 1px solid var(--nr-accent) !important;
   color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(229, 25, 35, 0.24) !important;
 }
 .stButton > button[kind="primary"]:hover,
 .stDownloadButton > button[kind="primary"]:hover {
   background-color: var(--nr-accent-hover) !important;
   border-color: var(--nr-accent-hover) !important;
+  box-shadow: 0 6px 20px rgba(229, 25, 35, 0.36) !important;
 }
 .stButton > button[kind="secondary"],
 .stDownloadButton > button[kind="secondary"] {
@@ -242,6 +267,7 @@ div[data-baseweb="select"] > div:focus-within {
 .stButton > button[kind="secondary"]:hover,
 .stDownloadButton > button[kind="secondary"]:hover {
   border-color: var(--accent-red, var(--nr-accent)) !important;
+  background-color: #280E12 !important;
   color: #FFFFFF !important;
 }
 
@@ -256,10 +282,11 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   color: var(--nr-text-soft) !important;
   min-height: 34px !important;
   padding: 0.35rem 0.65rem !important;
+  box-shadow: none !important;
 }
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > button[kind="secondary"]:hover {
   background-color: var(--nr-elevated) !important;
-  border-color: transparent !important;
+  border-color: rgba(229, 25, 35, 0.28) !important;
   color: #FFFFFF !important;
 }
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > button[kind="primary"] {
@@ -272,11 +299,16 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   background-color: var(--nr-bg) !important;
   border: 1px solid var(--nr-border) !important;
   border-radius: 8px !important;
+  transition: border-color 0.16s ease, background-color 0.16s ease !important;
+}
+[data-testid="stExpander"]:hover {
+  border-color: rgba(229, 25, 35, 0.5) !important;
 }
 [data-testid="stExpander"] summary {
   color: var(--nr-text-soft) !important;
   font-size: 13.5px !important;
   font-weight: 600 !important;
+  transition: color 0.15s ease !important;
 }
 [data-testid="stExpander"] summary:hover {
   color: #FFFFFF !important;
@@ -1034,6 +1066,7 @@ def _start_core_task_bg(
     done_note: str,
 ) -> str:
     meta_p, log_p = _task_paths(task_kind)
+    args_p = meta_p.with_suffix(".args.json")
     if meta_p.is_file():
         try:
             prev = json.loads(meta_p.read_text(encoding="utf-8"))
@@ -1043,15 +1076,18 @@ def _start_core_task_bg(
         except Exception:
             pass
 
+    args_p.write_text(json.dumps(kwargs, ensure_ascii=False), encoding="utf-8")
+
     child_code = (
-        "import sys, os, json, inspect, traceback; from pathlib import Path; "
-        "sys.path.insert(0, os.getcwd()); "
-        f"meta_p = Path({json.dumps(str(meta_p))}); "
-        f"task_kind = {json.dumps(task_kind)}; "
-        f"model_safe = {json.dumps(_safe_model_slug(model_name))}; "
-        f"kw = {json.dumps(kwargs)}; "
-        "status = 'done';\\n"
+        "import sys, os, json, inspect, traceback; from pathlib import Path\\n"
+        "sys.path.insert(0, os.getcwd())\\n"
+        f"meta_p = Path({json.dumps(str(meta_p))})\\n"
+        f"args_p = Path({json.dumps(str(args_p))})\\n"
+        f"task_kind = {json.dumps(task_kind)}\\n"
+        f"model_safe = {json.dumps(_safe_model_slug(model_name))}\\n"
+        "status = 'done'\\n"
         "try:\\n"
+        "    kw = json.loads(args_p.read_text(encoding='utf-8'))\\n"
         "    import core\\n"
         f"    fn = getattr(core, {json.dumps(fn_name)})\\n"
         "    sig = inspect.signature(fn)\\n"
@@ -1077,6 +1113,8 @@ def _start_core_task_bg(
         "except Exception:\\n"
         "    status = 'error'\\n"
         "    traceback.print_exc()\\n"
+        "    sys.stdout.flush()\\n"
+        "    sys.stderr.flush()\\n"
         "finally:\\n"
         "    try:\\n"
         "        meta = json.loads(meta_p.read_text(encoding='utf-8')) if meta_p.is_file() else {}\\n"
@@ -1088,19 +1126,23 @@ def _start_core_task_bg(
     )
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    with open(log_p, "w", encoding="utf-8") as lf:
-        lf.write(f"⏳ Starting {task_kind} for {model_name or 'model'}...\\n")
-        proc = subprocess.Popen(
-            [sys.executable, "-u", "-c", child_code],
-            cwd=now_dir,
-            stdout=lf,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-            start_new_session=True,
-        )
+    lf = open(log_p, "w", encoding="utf-8", buffering=1)
+    start_banner = f"⏳ Starting {task_kind} for {model_name or 'model'}...\\n"
+    lf.write(start_banner)
+    lf.flush()
+    print(start_banner, end="", flush=True)
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", child_code],
+        cwd=now_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        env=env,
+        start_new_session=True,
+    )
     meta_p.write_text(
         json.dumps({
             "task_kind": task_kind,
@@ -1116,10 +1158,39 @@ def _start_core_task_bg(
         }),
         encoding="utf-8",
     )
-    return f"⏳ {task_kind.capitalize()} running in background (PID {proc.pid})..."
+
+    def _pump_task() -> None:
+        try:
+            if proc.stdout is not None:
+                for ln in proc.stdout:
+                    lf.write(ln)
+                    lf.flush()
+                    print(ln, end="", flush=True)
+        finally:
+            rc = proc.wait()
+            if rc != 0:
+                err_ln = f"\\n✖ {task_kind.capitalize()} failed (exit code {rc}).\\n"
+                lf.write(err_ln)
+                lf.flush()
+                print(err_ln, end="", flush=True)
+            lf.close()
+            try:
+                meta = json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.is_file() else {}
+                if meta.get("status") == "running":
+                    meta["status"] = "done" if rc == 0 else "error"
+                    meta["exit_code"] = rc
+                    meta["finished"] = time.time()
+                    meta_p.write_text(json.dumps(meta), encoding="utf-8")
+            except Exception:
+                pass
+
+    threading.Thread(target=_pump_task, daemon=True).start()
+    return start_banner.strip()
 
 
-def _poll_core_tasks() -> None:
+def _poll_core_tasks() -> tuple[bool, bool]:
+    changed = False
+    completed = False
     for task_kind in ("preprocess", "extract", "index"):
         meta_p, log_p = _task_paths(task_kind)
         if not meta_p.is_file():
@@ -1129,18 +1200,23 @@ def _poll_core_tasks() -> None:
         except Exception:
             continue
         lkey = str(meta.get("log_state_key", ""))
+        txt = ""
         if log_p.is_file() and lkey:
             try:
                 txt = log_p.read_text(encoding="utf-8", errors="replace").strip()
                 if txt:
-                    st.session_state[lkey] = "\\n".join(txt.splitlines()[-80:])
+                    tail_txt = "\\n".join(txt.splitlines()[-80:])
+                    if st.session_state.get(lkey) != tail_txt:
+                        st.session_state[lkey] = tail_txt
+                        changed = True
             except Exception:
                 pass
         if meta.get("status") == "running" and meta.get("pid"):
             try:
                 os.kill(int(meta["pid"]), 0)
             except Exception:
-                meta["status"] = "done"
+                has_err = ("Traceback (" in txt) or (f"✖ {task_kind.capitalize()} failed" in txt) or ("NameError:" in txt)
+                meta["status"] = "error" if has_err else "done"
                 try:
                     meta_p.write_text(json.dumps(meta), encoding="utf-8")
                 except Exception:
@@ -1152,11 +1228,13 @@ def _poll_core_tasks() -> None:
             except Exception:
                 pass
             _clear_fs_caches()
+            completed = True
+            changed = True
             title = str(meta.get("toast_title", f"{task_kind.capitalize()} Complete"))
             msg = str(meta.get("done_note", f"{task_kind.capitalize()} finished."))
             if meta.get("status") == "error":
-                title = f"{task_kind.capitalize()} Finished With Error"
-                msg = f"Check output log for {meta.get('model_name') or 'task'} details."
+                title = f"{task_kind.capitalize()} Failed"
+                msg = f"Error during {task_kind} — check {task_kind} output box for details."
             _push_toast(title, msg)
 
     if ACTIVE_TRAIN_META.is_file():
@@ -1164,31 +1242,56 @@ def _poll_core_tasks() -> None:
             tmeta = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8"))
             tmodel = str(tmeta.get("model_name", ""))
             alive = _is_training_process_alive(tmodel)
+            tlp = Path(str(tmeta.get("log_path", "")))
+            if tlp.is_file():
+                ttail = "\\n".join(tlp.read_text(encoding="utf-8", errors="replace").splitlines()[-80:])
+                if ttail and st.session_state.get("nr_trn_log") != ttail:
+                    st.session_state["nr_trn_log"] = ttail
+                    changed = True
             if tmeta.get("status") == "running" and not alive:
                 st.session_state["nr_is_training"] = False
-                tmeta["status"] = "done"
+                train_err = False
+                if tlp.is_file():
+                    try:
+                        t_txt = tlp.read_text(encoding="utf-8", errors="replace")
+                        train_err = ("Traceback (" in t_txt) or ("✖ Training exited with error code" in t_txt) or ("NameError:" in t_txt)
+                    except Exception:
+                        pass
+                tmeta["status"] = "error" if train_err else "done"
                 if not tmeta.get("notified"):
                     tmeta["notified"] = True
                     ACTIVE_TRAIN_META.write_text(json.dumps(tmeta), encoding="utf-8")
                     _clear_fs_caches()
-                    _push_toast("Training Complete", f"Training finished for {tmodel or 'your model'} — open Diagnostics to inspect best epoch.")
+                    completed = True
+                    changed = True
+                    if train_err:
+                        _push_toast("Training Failed", f"Error during training for {tmodel or 'your model'} — check Training output box.")
+                    else:
+                        _push_toast("Training Complete", f"Training finished for {tmodel or 'your model'} — open Diagnostics to inspect best epoch.")
         except Exception:
             pass
+    return changed, completed
+
+
+def _is_task_running(task_kind: str) -> bool:
+    meta_p, _ = _task_paths(task_kind)
+    if meta_p.is_file():
+        try:
+            meta = json.loads(meta_p.read_text(encoding="utf-8"))
+            if meta.get("status") == "running" and meta.get("pid"):
+                os.kill(int(meta["pid"]), 0)
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def _has_active_bg_work() -> bool:
     if st.session_state.get("nr_is_training") and _is_training_process_alive(st.session_state.get("nr_model_name", "")):
         return True
     for task_kind in ("preprocess", "extract", "index"):
-        meta_p, _ = _task_paths(task_kind)
-        if meta_p.is_file():
-            try:
-                meta = json.loads(meta_p.read_text(encoding="utf-8"))
-                if meta.get("status") == "running" and meta.get("pid"):
-                    os.kill(int(meta["pid"]), 0)
-                    return True
-            except Exception:
-                pass
+        if _is_task_running(task_kind):
+            return True
     return False
 
 
@@ -1222,6 +1325,7 @@ def _read_train_log(model_name: str, max_chars: int = 32000) -> str:
 def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
     log_p = _train_log_path(model_name)
     pid_p = log_p.parent / "nr_train.pid"
+    args_p = log_p.parent / "nr_train.args.json"
     if pid_p.is_file():
         try:
             old_pid = int(pid_p.read_text().strip())
@@ -1230,17 +1334,25 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
         except Exception:
             pid_p.unlink(missing_ok=True)
 
+    args_p.write_text(json.dumps(kwargs, ensure_ascii=False), encoding="utf-8")
+
     cmd_script = (
-        "import sys, os, inspect; sys.path.insert(0, os.getcwd()); import core; "
-        f"kw = {json.dumps(kwargs)}; "
-        "fn = core.run_train_script; "
-        "sig = inspect.signature(fn); "
-        "kw = kw if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()) else {k: v for k, v in kw.items() if k in sig.parameters}; "
-        "fn(**kw)"
+        "import sys, os, json, inspect; from pathlib import Path\\n"
+        "sys.path.insert(0, os.getcwd())\\n"
+        f"kw = json.loads(Path({json.dumps(str(args_p))}).read_text(encoding='utf-8'))\\n"
+        "import core\\n"
+        "fn = core.run_train_script\\n"
+        "sig = inspect.signature(fn)\\n"
+        "kw = kw if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()) else {k: v for k, v in kw.items() if k in sig.parameters}\\n"
+        "fn(**kw)\\n"
     )
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     lf = open(log_p, "w", encoding="utf-8", buffering=1)
+    start_banner = f"⏳ Starting training for {model_name or 'model'}...\\n"
+    lf.write(start_banner)
+    lf.flush()
+    print(start_banner, end="", flush=True)
     proc = subprocess.Popen(
         [sys.executable, "-u", "-c", cmd_script],
         cwd=now_dir,
@@ -1274,12 +1386,14 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
             rc = proc.wait()
             if rc == 0:
                 lf.write("\\n✔ Training complete!\\n")
-                lf.flush()
+            else:
+                lf.write(f"\\n✖ Training exited with error code {rc}.\\n")
+            lf.flush()
             lf.close()
 
     threading.Thread(target=_pump, daemon=True).start()
     st.session_state["nr_is_training"] = True
-    return f"Training '{model_name}' started (PID {proc.pid}) -> streaming live to Training & Diagnostics."
+    return f"⏳ Training '{model_name}' started (PID {proc.pid}) -> streaming live to Training & Diagnostics."
 
 
 def _stop_training(model_name: str) -> str:
@@ -1872,6 +1986,25 @@ def _ensure_state() -> None:
 _ensure_state()
 _poll_core_tasks()
 
+_CONTAINER_HAS_KEY = "key" in inspect.signature(st.container).parameters
+_HAS_FRAGMENT = hasattr(st, "fragment")
+
+
+def _nr_card(card_key: str) -> Any:
+    return st.container(border=True, key=card_key) if _CONTAINER_HAS_KEY else st.container(border=True)
+
+
+def _nr_box(box_key: str) -> Any:
+    return st.container(key=box_key) if _CONTAINER_HAS_KEY else st.container()
+
+
+def _run_live_section(active: bool, fn: Any) -> None:
+    if _HAS_FRAGMENT and active:
+        st.fragment(run_every=2.0)(fn)()
+    else:
+        fn()
+
+
 # ==============================================================================
 # AUTH GATE (WHEN LAUNCHED VIA KAGGLE NOTEBOOK WITH RANDOM PASSWORD)
 # ==============================================================================
@@ -1880,7 +2013,7 @@ _auth_pass = os.environ.get("APPLIO_AUTH_PASSWORD", "").strip()
 if _auth_pass and not st.session_state.get("nr_authed", False):
     _, col_mid, _ = st.columns([1, 1.35, 1])
     with col_mid:
-        with st.container(border=True):
+        with _nr_card("nr_auth_card"):
             st.markdown(
                 '<div class="nr-topbar" style="margin-bottom:14px">'
                 '<div class="nr-brand-left">'
@@ -1901,7 +2034,22 @@ if _auth_pass and not st.session_state.get("nr_authed", False):
                     st.error("Invalid WebUI username or password.")
     st.stop()
 
-_render_toasts()
+_active_bg_now = _has_active_bg_work()
+_has_toasts_now = bool(st.session_state.get("nr_toasts"))
+if _HAS_FRAGMENT and (_active_bg_now or _has_toasts_now):
+    @st.fragment(run_every=2.0)
+    def _nr_bg_watcher() -> None:
+        _, done_f = _poll_core_tasks()
+        _render_toasts()
+        if done_f:
+            try:
+                st.rerun(scope="app")
+            except TypeError:
+                st.rerun()
+
+    _nr_bg_watcher()
+else:
+    _render_toasts()
 
 # ==============================================================================
 # TOP BAR & 8-TAB NAVIGATION (EXACT PREVIEW MATCH)
@@ -1931,7 +2079,7 @@ if st.session_state["nr_active_tab"] not in NAV_TABS:
 if _resolve_lang() == "ar_SA":
     st.markdown("<style>[data-testid='stMain'] { direction: rtl; text-align: right; }</style>", unsafe_allow_html=True)
 
-with st.container(border=True):
+with _nr_card("nr_nav_card"):
     st.markdown('<span class="nr-nav-marker" style="display:none"></span>', unsafe_allow_html=True)
     nav_weights = [max(7, len(lbl) + 3) for lbl in NAV_TABS]
     nav_cols = st.columns(nav_weights, gap="small")
@@ -1949,6 +2097,12 @@ with st.container(border=True):
                     st.rerun()
 
 active_tab = st.session_state["nr_active_tab"]
+_tab_slug = re.sub(r"[^a-z0-9]+", "_", active_tab.lower()).strip("_") or "tab"
+_tab_slot = st.empty()
+_tab_stack = contextlib.ExitStack()
+_tab_stack.enter_context(_tab_slot.container())
+_tab_stack.enter_context(_nr_box("nr_panel_root"))
+_tab_stack.enter_context(_nr_box(f"nr_panel_{_tab_slug}"))
 `;
 }
 

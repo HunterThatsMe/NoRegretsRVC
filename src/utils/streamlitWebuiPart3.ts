@@ -20,7 +20,7 @@ elif active_tab == "Samples":
     audio_inputs = _list_audio_inputs()
 
     # --- STEP 1: Voice Model ---
-    with st.container(border=True):
+    with _nr_card("nr_samples_step_1"):
         _step_head(1, "Voice Model", "Pick the default .pth voice checkpoint and optional FAISS .index file for new clips.")
         m_l, m_r = st.columns(2, gap="medium")
         with m_l:
@@ -71,7 +71,7 @@ elif active_tab == "Samples":
                 st.rerun()
 
     # --- STEP 2: Audio Source & Multi-Sample Queue ---
-    with st.container(border=True):
+    with _nr_card("nr_samples_step_2"):
         s2_l, s2_r = st.columns([3.5, 1.5], gap="small")
         with s2_l:
             _step_head(2, "Audio Source", "Drop or select one or multiple recordings, customize Pitch & Index per sample, or point to a Kaggle folder.")
@@ -266,7 +266,7 @@ elif active_tab == "Samples":
             )
 
     # --- STEP 3: Conversion Parameters ---
-    with st.container(border=True):
+    with _nr_card("nr_samples_step_3"):
         _step_head(3, "Conversion Parameters", "Set default Pitch, Index Rate, and export options for incoming clips or batch folders.")
         st.session_state.setdefault("nr_def_pitch", 0)
         st.session_state["nr_def_pitch"] = _synced_slider_num(
@@ -514,7 +514,7 @@ elif active_tab == "Free Samples":
                         pass
             st.rerun()
 
-    with st.container(border=True):
+    with _nr_card("nr_free_filter_bar"):
         fb_l, fb_1, fb_2, fb_3 = st.columns([4, 1, 1, 1], gap="small")
         fb_l.markdown('<div style="font-size:13.5px;color:#DFBFC3;padding-top:6px">Clean, dry mono WAVs (32 kHz) with zero background music or reverb — ideal for RVC conversion tests.</div>', unsafe_allow_html=True)
         for col_f, g_lbl, g_val in ((fb_1, "All (6)", "All"), (fb_2, "Male (3)", "Male"), (fb_3, "Female (3)", "Female")):
@@ -528,8 +528,8 @@ elif active_tab == "Free Samples":
     if st.session_state["nr_free_gender"] in ("All", "Female"):
         groups.append(("Female Speaking Samples (3)", "Dry mono 32 kHz WAV recordings across calm support, clear reading, and assistant speech.", [x for x in FREE_SAMPLES_CATALOG if x["gender"] == "female"]))
 
-    for g_title, g_sub, items in groups:
-        with st.container(border=True):
+    for g_idx, (g_title, g_sub, items) in enumerate(groups):
+        with _nr_card(f"nr_free_group_{g_idx}"):
             st.markdown(f'<div class="nr-step-title">{html.escape(g_title)}</div><div class="nr-step-desc" style="margin-bottom:12px">{html.escape(g_sub)}</div>', unsafe_allow_html=True)
             cols = st.columns(3, gap="medium")
             for idx_g, sample in enumerate(items):
@@ -611,7 +611,7 @@ elif active_tab == "Diagnostics":
         model_name=m_diag_raw,
     )
 
-    with st.container(border=True):
+    with _nr_card("nr_diag_main"):
         st.markdown(
             f'<div class="nr-step-head"><span class="nr-step-num" style="background:#200B0E;border:1px solid rgba(229,25,35,0.5);color:#E51923">⌖</span>'
             f'<div><div class="nr-step-title">Best Epoch Analyzer <span class="nr-mono-badge" style="margin-left:6px">Save Every {sev_d} Epochs</span></div>'
@@ -767,7 +767,7 @@ elif active_tab == "Voice Blender":
     _page_header("Voice Blender", "Merge two compatible RVC checkpoints into a single hybrid voice weights file.")
     pths_b = _list_pth_files()
 
-    with st.container(border=True):
+    with _nr_card("nr_vb_step_1"):
         _step_head(1, "Source Models", "Load two .pth checkpoints via file drop or direct filesystem paths.")
         vb_l, vb_r = st.columns(2, gap="medium")
         with vb_l:
@@ -811,7 +811,7 @@ elif active_tab == "Voice Blender":
             st.markdown('<div class="nr-field-title">Path to second model</div><div class="nr-field-help">Or type a relative logs/ path directly.</div>', unsafe_allow_html=True)
             st.session_state["nr_vb_path_b"] = st.text_input("Path to second model", value=st.session_state.get("nr_vb_path_b", ""), placeholder="Enter path to model", label_visibility="collapsed", key="nr_vb_in_b")
 
-    with st.container(border=True):
+    with _nr_card("nr_vb_step_2"):
         _step_head(2, "Blend Settings", "Define the merged checkpoint filename and weight mixing balance.")
         bs_l, bs_r = st.columns(2, gap="medium")
         with bs_l:
@@ -830,7 +830,7 @@ elif active_tab == "Voice Blender":
             blend_ratio = st.slider("Blend Ratio", 0.0, 1.0, float(st.session_state.get("nr_vb_ratio", 0.5)), step=0.05, label_visibility="collapsed", key="nr_vb_ratio_sl")
             st.session_state["nr_vb_ratio"] = blend_ratio
 
-    with st.container(border=True):
+    with _nr_card("nr_vb_step_3"):
         _step_head(3, "Blend & Export", "Execute the blend and download the packaged recipe or shell command.")
         if st.button(_tr("Fusion"), type="primary", use_container_width=True, key="nr_btn_fusion"):
             pa = st.session_state.get("nr_vb_path_a", "").strip()
@@ -879,7 +879,7 @@ elif active_tab == "TTS":
     idxs_t = _list_index_files()
     voices_t = _load_tts_voices()
 
-    with st.container(border=True):
+    with _nr_card("nr_tts_step_1"):
         _step_head(1, "Voice & Script", "Choose an Edge-TTS narrator, pair your trained RVC voice model, and write the spoken script.")
         tc1, tc2 = st.columns(2, gap="medium")
         with tc1:
@@ -973,7 +973,7 @@ elif active_tab == "Settings":
     cfg_cur = _load_config()
 
     if st.session_state["nr_settings_subtab"] == "General":
-        with st.container(border=True):
+        with _nr_card("nr_set_gen_1"):
             _step_head(1, "List Filtering", "Display a search bar to quickly filter long checkpoint and index dropdowns.")
             with st.container(border=True):
                 lf_l, lf_r = st.columns([5.2, 0.8], gap="small")
@@ -989,7 +989,7 @@ elif active_tab == "Settings":
                     _save_config(cfg_cur)
                     st.rerun()
 
-        with st.container(border=True):
+        with _nr_card("nr_set_gen_2"):
             _step_head(2, "Pitch Correction", "Prevent high-note octave flips during RMVPE F0 pitch extraction.")
             with st.expander("RMVPE high-register correction", expanded=False):
                 rmv_on = st.checkbox("Enable RMVPE high-register correction", value=bool(st.session_state["nr_rmvpe_corr"]), key="nr_set_rmv_on")
@@ -1003,7 +1003,7 @@ elif active_tab == "Settings":
                     cfg_cur["rmvpe_high_register"] = {"enabled": bool(rmv_on), "mode": rmv_mode, "ceiling_hz": int(rmv_ceil)}
                     _save_config(cfg_cur)
 
-        with st.container(border=True):
+        with _nr_card("nr_set_gen_3"):
             _step_head(3, "Discord Integration", "Broadcast your active studio session to Discord Rich Presence.")
             with st.container(border=True):
                 dc_l, dc_r = st.columns([5.2, 0.8], gap="small")
@@ -1019,7 +1019,7 @@ elif active_tab == "Settings":
                     cfg_cur["nr_discord_initialized"] = True
                     _save_config(cfg_cur)
 
-        with st.container(border=True):
+        with _nr_card("nr_set_gen_4"):
             _step_head(4, "Language", "Switches the studio interface instantaneously and sets your exported WebUI locale.")
             lang_codes = [c for c, _ in SUPPORTED_LANGUAGES]
             cur_code = st.session_state.get("nr_lang", "System Auto")
@@ -1040,7 +1040,7 @@ elif active_tab == "Settings":
                 key="nr_set_lang_sel",
             )
 
-        with st.container(border=True):
+        with _nr_card("nr_set_gen_5"):
             _step_head(5, "Updates & System", "Check the newest NoRegretsRVC version or trigger a Kaggle WebUI restart.")
             st.markdown(
                 f'<div class="nr-field-title">Version Checker</div>'
@@ -1063,7 +1063,7 @@ elif active_tab == "Settings":
                 st.session_state["nr_ver_status"] = "Restarting WebUI session state cleanly..."
                 st.rerun()
     else:
-        with st.container(border=True):
+        with _nr_card("nr_set_trn_1"):
             _step_head(1, "Model Author", "Credit written into exported model metadata headers.")
             st.markdown('<div class="nr-field-title">Model Author Name</div><div class="nr-field-help">Creator handle embedded in published checkpoints.</div>', unsafe_allow_html=True)
             st.session_state["nr_author"] = st.text_input("Model Author Name", value=st.session_state["nr_author"], label_visibility="collapsed", key="nr_set_author_inp")
@@ -1076,7 +1076,7 @@ elif active_tab == "Settings":
                 st.session_state["nr_author_out"] = f'Model author set to "{cleaned_a}".'
                 st.rerun()
 
-        with st.container(border=True):
+        with _nr_card("nr_set_trn_2"):
             _step_head(2, "Training Precision", "Control floating-point accuracy across training and voice conversion.")
             st.markdown('<div class="nr-field-title">Precision</div><div class="nr-field-help">FP32 prioritizes maximum stability on T4 GPUs; FP16 lowers VRAM usage.</div>', unsafe_allow_html=True)
             prec_opts = ["fp32", "fp16"]
@@ -1091,7 +1091,7 @@ elif active_tab == "Settings":
                 st.session_state["nr_precision_out"] = f"Training & inference precision updated to {chosen_p.upper()}."
                 st.rerun()
 
-        with st.container(border=True):
+        with _nr_card("nr_set_trn_3"):
             _step_head(3, "Kaggle Tunnel & Runtime Hardening", "Active Streamlit WebUI runtime, precision, and CUDA session details.")
             rt1, rt2 = st.columns(2, gap="small")
             rt1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Working Directory</div><div class="nr-metric-v">{html.escape(now_dir)}</div></div>', unsafe_allow_html=True)
@@ -1100,9 +1100,6 @@ elif active_tab == "Settings":
             rt3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">GPU Allocation</div><div class="nr-metric-v">{html.escape(_gpu_info_lines(st.session_state["nr_gpu_num"]).replace(chr(10), " · "))}</div></div>', unsafe_allow_html=True)
             rt4.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Python Environment</div><div class="nr-metric-v">{html.escape(sys.executable)}</div></div>', unsafe_allow_html=True)
 
-# Auto-refresh live metrics & background task status smoothly across all tabs
-if _has_active_bg_work():
-    time.sleep(2.0)
-    st.rerun()
+_tab_stack.close()
 `;
 }

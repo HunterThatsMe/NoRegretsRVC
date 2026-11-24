@@ -98,9 +98,9 @@ export const TopBar: React.FC<TopBarProps> = React.memo(
                 onFocus={() => onPrefetchSection?.(item.id)}
                 onClick={() => onSelectSection(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all duration-150 whitespace-nowrap shrink-0 active:scale-[0.98] ${
                   isActive
-                    ? 'text-white'
+                    ? 'text-white shadow-[0_4px_14px_rgba(229,25,35,0.28)]'
                     : 'text-[#DFBFC3]/85 hover:text-[#FDF7F7] hover:bg-[#200B0E]'
                 }`}
                 style={isActive ? { backgroundColor: ACCENT_HEX } : undefined}

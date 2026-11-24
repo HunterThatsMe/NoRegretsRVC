@@ -263,6 +263,17 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.match(appFile.content, /Automatically off by default to keep model and index selectors clean/);
   assert.match(appFile.content, /FP32 prioritizes maximum stability on T4 GPUs/);
   assert.match(appFile.content, /Verifies your installed NoRegretsRVC build/);
+  assert.doesNotMatch(appFile.content, /kw = \{json\.dumps\(kwargs\)\}/);
+  assert.doesNotMatch(appFile.content, /if _has_active_bg_work\(\):\s*time\.sleep\(2\.0\)\s*st\.rerun\(\)/);
+  assert.match(appFile.content, /\.args\.json/);
+  assert.match(appFile.content, /contextlib\.ExitStack\(\)/);
+  assert.match(appFile.content, /_nr_bg_watcher/);
+  assert.match(appFile.content, /_nr_card\("nr_train_step_5"\)/);
+  assert.match(appFile.content, /_nr_card\("nr_samples_step_1"\)/);
+  assert.match(appFile.content, /key="nr_cp_g_up"/);
+  assert.match(appFile.content, /key="nr_cp_d_up"/);
+  assert.match(appFile.content, /overflow-anchor:\s*none/);
+  assert.match(nbFile.content, /NameError:/);
 
   const zipBytes = buildZipArchive(files.map((f) => ({ path: f.zipPath, content: f.content })));
   assert.equal(zipBytes[0], 0x50);
