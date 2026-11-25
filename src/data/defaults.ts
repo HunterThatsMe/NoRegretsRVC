@@ -9,6 +9,11 @@ export const ACCENT_HEX = '#E51923';
 export const APP_VERSION = '0.0.0';
 export const REPO_URL = 'https://github.com/HunterThatsMe/NoRegretsRVC';
 export const REPO_README_URL = 'https://github.com/HunterThatsMe/NoRegretsRVC#readme';
+export const LEGACY_CORE_PRETRAIN_NAME = 'Legacy Core 1.5 V2';
+export const LEGACY_CORE_PRETRAIN_G =
+  'https://huggingface.co/notiscBalbalEko/PretrainReupload/resolve/main/G_LegacyCore1.5v2.pth?download=true';
+export const LEGACY_CORE_PRETRAIN_D =
+  'https://huggingface.co/notiscBalbalEko/PretrainReupload/resolve/main/D_LegacyCore1.5v2.pth?download=true';
 
 export const SUPPORTED_LANGUAGES: { code: string; label: string }[] = [
   { code: 'System Auto', label: 'System Auto' },
@@ -88,6 +93,7 @@ export const DEFAULT_PROJECTS: VoiceModelProject[] = [
     embedder: 'contentvec',
     silentTrainingFiles: 0,
     batchSize: 2,
+    batchParity1Gpu: true,
     saveEveryEpoch: 5,
     totalEpoch: 200,
     fp16: false,
@@ -235,3 +241,17 @@ StudioDemo | epoch=7 | step=728 | time=19:09:05 | training_speed=0:00:49 | lowes
 StudioDemo | epoch=13 | step=1352 | time=19:14:00 | training_speed=0:00:49 | lowest_value=16.913 (epoch 13 and step 1331)
 StudioDemo | epoch=44 | step=4576 | time=19:39:40 | training_speed=0:00:49 | lowest_value=15.394 (epoch 44 and step 4506)
 StudioDemo | epoch=51 | step=5304 | time=19:45:28 | training_speed=0:00:50 | lowest_value=14.616 (epoch 51 and step 5287)`;
+
+export const SAMPLE_OVERTRAIN_LOG = `Starting preprocess with 4 processes...
+Preprocess completed in 4.12 seconds on 00:08:20 seconds of audio.
+Model CrispVocal preprocessed successfully.
+Starting pitch extraction on cuda:0, cuda:1 using rmvpe...
+Pitch extraction completed in 18.40 seconds (135/135 files successful).
+Using HiFi-GAN vocoder
+Using AdamW optimizer
+CrispVocal | epoch=20 | step=340 | training_speed=0:00:22 | lowest_value=21.400 (epoch 20 and step 340) | mel=21.40 kl=1.42 fm=6.10 d_total=2.12 g_total=28.40 grad_norm=42.5
+CrispVocal | epoch=60 | step=1020 | training_speed=0:00:21 | lowest_value=16.200 (epoch 60 and step 1020) | mel=16.20 kl=1.08 fm=4.55 d_total=1.96 g_total=23.10 grad_norm=38.2
+CrispVocal | epoch=120 | step=2040 | training_speed=0:00:21 | lowest_value=13.450 (epoch 120 and step 2040) | mel=13.45 kl=0.88 fm=3.65 d_total=1.89 g_total=19.80 grad_norm=34.1
+CrispVocal | epoch=160 | step=2720 | training_speed=0:00:21 | lowest_value=12.680 (epoch 160 and step 2720) | mel=12.68 kl=0.82 fm=3.32 d_total=1.85 g_total=18.90 grad_norm=35.8
+CrispVocal | epoch=200 | step=3400 | training_speed=0:00:21 | lowest_value=13.120 (epoch 160 and step 2720) | mel=13.12 kl=0.89 fm=3.58 d_total=1.62 g_total=21.40 grad_norm=58.4
+CrispVocal | epoch=240 | step=4080 | training_speed=0:00:21 | lowest_value=13.840 (epoch 160 and step 2720) | mel=13.84 kl=1.04 fm=4.15 d_total=1.34 g_total=24.90 grad_norm=96.2`;

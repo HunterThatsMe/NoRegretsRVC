@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { ACCENT_HEX } from '../data/defaults';
+import { FREE_SAMPLES, FreeSampleItem } from '../data/freeSamples';
 import {
   ConvertAudioState,
   EmbedderModel,
@@ -190,8 +191,21 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
       audioObjectUrl: first.sourceUrl,
       conversionOutput:
         addedClips.length === 1
-          ? `Added "${first.fileName}" to sample queue. Adjust its Pitch & Index or click Convert.`
-          : `Added ${addedClips.length} audio clips to sample queue. Customize each clip individually below.`,
+          ? `Added "${first.fileName}" to sample queue. Adjust Pitch & Similarity in Step 3 or click Convert.`
+          : `Added ${addedClips.length} audio clips to sample queue. Step 3 controls all clips unless overridden individually.`,
+    });
+  };
+
+  const handleAddFreeSample = (sample: FreeSampleItem) => {
+    const newClip = buildQueueItem(sample.fileName, sample.url);
+    const nextCount = sampleQueue.length + 1;
+    setSampleQueue((prev) => [...prev, newClip]);
+    onUpdateConvertAudio({
+      ...convertAudio,
+      sourceMode: 'single',
+      audioFileName: nextCount === 1 ? sample.fileName : `${nextCount} audio clips loaded`,
+      audioObjectUrl: sample.url,
+      conversionOutput: `Added "${sample.title}" (${sample.fileName}) to queue following Step 3 Pitch (${convertAudio.pitch >= 0 ? `+${convertAudio.pitch}` : convertAudio.pitch}) & Voice Similarity (${convertAudio.indexRate.toFixed(2)}).`,
     });
   };
 
@@ -607,6 +621,13 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
     a.remove();
   };
 
+  const pitchDisplay = convertAudio.pitch > 0 ? `+${convertAudio.pitch}` : `${convertAudio.pitch}`;
+  const step1Ready = Boolean(convertAudio.voiceModel.trim());
+  const step2Ready =
+    convertAudio.sourceMode === 'batch'
+      ? Boolean(convertAudio.batchFolderPath.trim())
+      : sampleQueue.length > 0;
+
   return (
     <div className="space-y-6">
       <div className="px-1">
@@ -616,6 +637,70 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
         <p className="text-sm text-[#DFBFC3] mt-1">
           {t('samples.subtitle')}
         </p>
+      </div>
+
+      {/* 4-Step Workflow Readiness Strip */}
+      <div
+        data-testid="samples-readiness-strip"
+        className="grid grid-cols-2 lg:grid-cols-4 gap-2.5"
+      >
+        <div
+          className={`rounded-lg border px-3.5 py-2.5 ${
+            step1Ready ? 'border-[#10B981]/50 bg-[#081A14]' : 'border-[#47161D] bg-[#160709]'
+          }`}
+        >
+          <p className="text-[11px] font-mono uppercase tracking-wider text-[#C89EA4]">
+            1. Voice Model
+          </p>
+          <p className="text-xs font-semibold text-[#FDF7F7] truncate mt-0.5">
+            {step1Ready ? convertAudio.voiceModel.split('/').pop() : 'Select .pth in Step 1'}
+          </p>
+        </div>
+
+        <div
+          className={`rounded-lg border px-3.5 py-2.5 ${
+            step2Ready ? 'border-[#10B981]/50 bg-[#081A14]' : 'border-[#47161D] bg-[#160709]'
+          }`}
+        >
+          <p className="text-[11px] font-mono uppercase tracking-wider text-[#C89EA4]">
+            2. Audio Source
+          </p>
+          <p className="text-xs font-semibold text-[#FDF7F7] truncate mt-0.5">
+            {convertAudio.sourceMode === 'batch'
+              ? 'Batch folder ready'
+              : sampleQueue.length > 0
+                ? `${sampleQueue.length} clip${sampleQueue.length === 1 ? '' : 's'} queued`
+                : 'Upload or quick-pick clip'}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[#47161D] bg-[#160709] px-3.5 py-2.5">
+          <p className="text-[11px] font-mono uppercase tracking-wider text-[#C89EA4]">
+            3. Pitch &amp; Similarity
+          </p>
+          <p className="text-xs font-mono font-semibold text-[#FDF7F7] tabular-nums truncate mt-0.5">
+            Pitch {pitchDisplay} · Index {convertAudio.indexRate.toFixed(2)}
+          </p>
+        </div>
+
+        <div
+          className={`rounded-lg border px-3.5 py-2.5 ${
+            convertAudio.hasConvertedSample
+              ? 'border-[#10B981]/50 bg-[#081A14]'
+              : 'border-[#47161D] bg-[#160709]'
+          }`}
+        >
+          <p className="text-[11px] font-mono uppercase tracking-wider text-[#C89EA4]">
+            4. Convert &amp; Output
+          </p>
+          <p className="text-xs font-semibold text-[#FDF7F7] truncate mt-0.5">
+            {convertAudio.hasConvertedSample
+              ? `${convertAudio.savedSamples.length} rendered`
+              : step1Ready && step2Ready
+                ? 'Ready to convert'
+                : 'Complete Steps 1–2'}
+          </p>
+        </div>
       </div>
 
       {/* STEP 1: Voice Model */}
@@ -792,6 +877,30 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
               </div>
             </div>
 
+            {/* Inline Quick-Pick Free Test Voices */}
+            <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-3 flex flex-wrap items-center justify-between gap-2.5">
+              <div>
+                <p className="text-xs font-semibold text-[#FDF7F7]">
+                  Quick Test Voice (Free Samples)
+                </p>
+                <p className="text-[11.5px] text-[#AD8288]">
+                  1-click add a dry mono talking sample without uploading your own file.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {FREE_SAMPLES.map((fs) => (
+                  <button
+                    key={fs.id}
+                    type="button"
+                    onClick={() => handleAddFreeSample(fs)}
+                    className="rounded-md border border-[#47161D] bg-[#160709] px-2.5 py-1 text-[11.5px] font-medium text-[#DFBFC3] hover:text-white hover:border-[#E51923] whitespace-nowrap"
+                  >
+                    + {fs.title.replace(' Speaking ', ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {sampleQueue.length > 0 && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -848,9 +957,19 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                             <p className="font-mono text-xs font-semibold text-[#FDF7F7] truncate">
                               {clip.fileName}
                             </p>
-                            <p className="text-[13px] text-[#C89EA4] truncate tabular-nums">
-                              Pitch {pitchText} {clip.customPitch ? '(custom)' : '(from Step 3)'} · Index {clip.indexRate.toFixed(2)} · {clip.outputFormat.toUpperCase()}
-                              {clip.status === 'ready' ? ' · Converted' : ''}
+                            <p className="text-[13px] text-[#C89EA4] truncate tabular-nums flex flex-wrap items-center gap-1.5">
+                              <span>Pitch {pitchText}</span>
+                              <span
+                                className={`inline-block rounded px-1.5 py-0.5 font-mono text-[10.5px] font-semibold ${
+                                  clip.customPitch
+                                    ? 'border border-[#F59E0B]/50 bg-[#1B1207] text-[#F59E0B]'
+                                    : 'border border-[#10B981]/50 bg-[#081A14] text-[#10B981]'
+                                }`}
+                              >
+                                {clip.customPitch ? 'Custom Override' : 'Following Step 3'}
+                              </span>
+                              <span>· Index {clip.indexRate.toFixed(2)} · {clip.outputFormat.toUpperCase()}</span>
+                              {clip.status === 'ready' ? '· Converted' : ''}
                             </p>
                           </div>
                         </div>
@@ -1220,55 +1339,125 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
               Pitch &amp; Settings
             </h3>
             <p className="text-[13.5px] text-[#C89EA4] mt-0.5">
-              Adjust Pitch and voice quality here. Changes update queued clips and batch mode automatically.
+              Master Voice Settings — controls Pitch and Voice Similarity for all clips automatically unless overridden per clip in Step 2.
             </p>
           </div>
         </div>
 
-        {/* Single Primary Pitch Slider */}
-        <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-            <div>
-              <label
-                htmlFor="convert-pitch-slider"
-                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
-              >
-                Pitch
-              </label>
-              <p className="text-[13px] text-[#C89EA4] mt-0.5">
-                Shift pitch in semitones (-32 to +32). Use +12 for male to female, -12 for female to male, or 0 to match original pitch.
-              </p>
+        {/* Single Primary Master Controls: Pitch + Voice Similarity */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <label
+                  htmlFor="convert-pitch-slider"
+                  className="block text-[13.5px] font-semibold text-[#FDF7F7]"
+                >
+                  Master Pitch
+                </label>
+                <p className="text-[12.5px] text-[#C89EA4] mt-0.5">
+                  Shift semitones (-32 to +32). Updates Step 2 clips automatically.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="rounded-md border border-[#47161D] bg-[#160709] px-2.5 py-1 font-mono text-xs text-[#FDF7F7] tabular-nums">
+                  {convertAudio.pitch > 0 ? `+${convertAudio.pitch}` : convertAudio.pitch}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updateDefaultsAndSync({ pitch: 0 })}
+                  aria-label="Reset pitch to 0"
+                  className="rounded-md border border-[#47161D] bg-[#200B0E] p-1.5 text-[#DFBFC3] hover:text-white"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="rounded-md border border-[#47161D] bg-[#160709] px-2.5 py-1 font-mono text-xs text-[#FDF7F7] tabular-nums">
-                {convertAudio.pitch > 0 ? `+${convertAudio.pitch}` : convertAudio.pitch}
-              </span>
-              <button
-                type="button"
-                onClick={() => updateDefaultsAndSync({ pitch: 0 })}
-                aria-label="Reset pitch to 0"
-                className="rounded-md border border-[#47161D] bg-[#200B0E] p-1.5 text-[#DFBFC3] hover:text-white"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
+            <input
+              id="convert-pitch-slider"
+              type="range"
+              min={-32}
+              max={32}
+              step={1}
+              value={convertAudio.pitch}
+              onChange={(e) =>
+                updateDefaultsAndSync({ pitch: Number(e.target.value) })
+              }
+              className="w-full scarlet-slider"
+            />
+            <div className="flex justify-between text-xs font-mono text-[#C89EA4] tabular-nums">
+              <span>-32</span>
+              <span>0</span>
+              <span>+32</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {[
+                { label: '-12 F → M', val: -12 },
+                { label: '-5 Lower', val: -5 },
+                { label: '0 Same', val: 0 },
+                { label: '+5 Higher', val: 5 },
+                { label: '+12 M → F', val: 12 },
+              ].map((preset) => (
+                <button
+                  key={preset.val}
+                  type="button"
+                  onClick={() => updateDefaultsAndSync({ pitch: preset.val })}
+                  className={`rounded-md border px-2 py-1 text-[11px] font-mono transition-colors whitespace-nowrap ${
+                    convertAudio.pitch === preset.val
+                      ? 'border-[#E51923] bg-[#E51923] text-white font-semibold'
+                      : 'border-[#47161D] bg-[#160709] text-[#DFBFC3] hover:text-white hover:border-[#E51923]/60'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
             </div>
           </div>
-          <input
-            id="convert-pitch-slider"
-            type="range"
-            min={-32}
-            max={32}
-            step={1}
-            value={convertAudio.pitch}
-            onChange={(e) =>
-              updateDefaultsAndSync({ pitch: Number(e.target.value) })
-            }
-            className="w-full scarlet-slider"
-          />
-          <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
-            <span>-32</span>
-            <span>0</span>
-            <span>+32</span>
+
+          <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <label
+                  htmlFor="conv-index-rate"
+                  className="block text-[13.5px] font-semibold text-[#FDF7F7]"
+                >
+                  Voice Similarity (Index Rate)
+                </label>
+                <p className="text-[12.5px] text-[#C89EA4] mt-0.5">
+                  Controls how strongly accent &amp; timbre match your .index (0.75 recommended).
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="rounded-md border border-[#47161D] bg-[#160709] px-2.5 py-1 font-mono text-xs text-[#FDF7F7] tabular-nums">
+                  {convertAudio.indexRate.toFixed(2)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updateDefaultsAndSync({ indexRate: 0.75 })}
+                  aria-label="Reset search feature ratio to 0.75"
+                  className="rounded-md border border-[#47161D] bg-[#200B0E] p-1.5 text-[#DFBFC3] hover:text-white"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+            <input
+              id="conv-index-rate"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={convertAudio.indexRate}
+              onChange={(e) =>
+                updateDefaultsAndSync({ indexRate: Number(e.target.value) })
+              }
+              className="w-full scarlet-slider"
+            />
+            <div className="flex justify-between text-xs font-mono text-[#C89EA4] tabular-nums">
+              <span>0 (Smoother)</span>
+              <span>0.75 (Default)</span>
+              <span>1 (Strong Accent)</span>
+            </div>
           </div>
         </div>
 
@@ -1317,10 +1506,10 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
                   aria-expanded={subOpen.voiceMatching}
                   className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-[#FDF7F7]"
                 >
-                  <span>Voice Matching</span>
+                  <span>Voice Matching (Envelope &amp; Consonant Protect)</span>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[11px] font-normal text-[#AD8288] tabular-nums">
-                      {convertAudio.indexRate.toFixed(2)} · {convertAudio.volumeEnvelope} · {convertAudio.protect}
+                      env {convertAudio.volumeEnvelope} · protect {convertAudio.protect}
                     </span>
                     {subOpen.voiceMatching ? (
                       <ChevronDown className="h-3.5 w-3.5 text-[#AD8288]" />
@@ -1332,46 +1521,6 @@ export const ConvertAudioView: React.FC<ConvertAudioViewProps> = React.memo(({
 
                 {subOpen.voiceMatching && (
                   <div className="border-t border-[#47161D] p-3.5 space-y-4">
-                    {/* Search Feature Ratio */}
-                    <div>
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                        <label htmlFor="conv-index-rate" className="text-[13.5px] font-semibold text-[#FDF7F7]">
-                          Search Feature Ratio
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                          <span className="rounded border border-[#47161D] bg-[#100506] px-2 py-0.5 font-mono text-xs text-[#FDF7F7] tabular-nums">
-                            {convertAudio.indexRate}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => updateDefaultsAndSync({ indexRate: 0.75 })}
-                            aria-label="Reset search feature ratio to 0.75"
-                            className="rounded border border-[#47161D] bg-[#200B0E] p-1 text-[#DFBFC3] hover:text-white"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-[13px] text-[#C89EA4] mb-2">
-                        Influence exerted by the index file; higher values give stronger accent/timbre transfer, while lower values help mitigate audio artifacts.
-                      </p>
-                      <input
-                        id="conv-index-rate"
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={convertAudio.indexRate}
-                        onChange={(e) =>
-                          updateDefaultsAndSync({ indexRate: Number(e.target.value) })
-                        }
-                        className="w-full scarlet-slider"
-                      />
-                      <div className="flex justify-between text-xs font-mono text-[#C89EA4] mt-1 tabular-nums">
-                        <span>0</span>
-                        <span>1</span>
-                      </div>
-                    </div>
 
                     {/* Volume Envelope */}
                     <div>

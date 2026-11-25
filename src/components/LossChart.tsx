@@ -63,6 +63,8 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
         x: toX(p.epoch),
         y: PAD_T + (1 - (p.lowestLoss - minLoss) / span) * PLOT_H,
         epoch: p.epoch,
+        loss: p.lowestLoss,
+        klLoss: p.klLoss ?? null,
       }));
 
       return {
@@ -82,6 +84,10 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
       return null;
     }
 
+    const underWidth = Math.max(0, model.underEndX - PAD_L);
+    const overWidth =
+      model.overStartX !== null ? Math.max(0, W - PAD_R - model.overStartX) : 0;
+
     return (
       <div className="rounded-lg border border-[#47161D] bg-[#160709] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
@@ -90,12 +96,16 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
           </p>
           <div className="flex flex-wrap items-center gap-3.5 text-xs font-mono text-[#C89EA4]">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#E51923]" />
+              <span className="h-2.5 w-2.5 rounded-sm bg-[#F59E0B]/70" />
+              <span>Undertrained</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-[#E51923]" />
               <span>Best Epoch (e{model.bestEpoch})</span>
             </span>
             {model.overStartX !== null && (
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#6D202B]" />
+                <span className="h-2.5 w-2.5 rounded-sm bg-[#991B1B]" />
                 <span>Overtrain Risk</span>
               </span>
             )}
@@ -108,15 +118,29 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
           role="img"
           aria-label="Observed model mel loss curve and recommended best checkpoint"
         >
-          {model.underEndX > PAD_L && (
-            <rect
-              x={PAD_L}
-              y={PAD_T}
-              width={Math.max(0, model.underEndX - PAD_L)}
-              height={PLOT_H}
-              fill="#47161D"
-              fillOpacity="0.22"
-            />
+          {underWidth > 0 && (
+            <>
+              <rect
+                x={PAD_L}
+                y={PAD_T}
+                width={underWidth}
+                height={PLOT_H}
+                fill="#F59E0B"
+                fillOpacity="0.08"
+              />
+              {underWidth >= 90 && (
+                <text
+                  x={PAD_L + 8}
+                  y={PAD_T + 14}
+                  fill="#F59E0B"
+                  fillOpacity="0.85"
+                  fontSize="10"
+                  fontFamily="JetBrains Mono, monospace"
+                >
+                  Undertrained
+                </text>
+              )}
+            </>
           )}
 
           <rect
@@ -129,14 +153,29 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
           />
 
           {model.overStartX !== null && (
-            <rect
-              x={model.overStartX}
-              y={PAD_T}
-              width={Math.max(0, W - PAD_R - model.overStartX)}
-              height={PLOT_H}
-              fill="#991B1B"
-              fillOpacity="0.18"
-            />
+            <>
+              <rect
+                x={model.overStartX}
+                y={PAD_T}
+                width={overWidth}
+                height={PLOT_H}
+                fill="#991B1B"
+                fillOpacity="0.22"
+              />
+              {overWidth >= 85 && (
+                <text
+                  x={W - PAD_R - 8}
+                  y={PAD_T + 14}
+                  textAnchor="end"
+                  fill="#FF5A62"
+                  fillOpacity="0.9"
+                  fontSize="10"
+                  fontFamily="JetBrains Mono, monospace"
+                >
+                  Overtrain Risk
+                </text>
+              )}
+            </>
           )}
 
           {[0.25, 0.5, 0.75].map((ratio) => {
@@ -183,17 +222,28 @@ export const LossChart: React.FC<LossChartProps> = React.memo(
             points={model.polyline}
           />
 
-          {model.coords.map((c, idx) => (
-            <circle
-              key={`${c.epoch}-${idx}`}
-              cx={c.x}
-              cy={c.y}
-              r="3"
-              fill="#FDF7F7"
-              stroke={ACCENT_HEX}
-              strokeWidth="2"
-            />
-          ))}
+          {model.coords.map((c, idx) => {
+            const tip = `Epoch ${c.epoch} · Mel ${c.loss.toFixed(3)}${
+              c.klLoss !== null ? ` · KL ${c.klLoss.toFixed(3)}` : ''
+            }`;
+            return (
+              <g key={`${c.epoch}-${idx}`}>
+                <circle
+                  cx={c.x}
+                  cy={c.y}
+                  r="3.2"
+                  fill="#FDF7F7"
+                  stroke={ACCENT_HEX}
+                  strokeWidth="2"
+                >
+                  <title>{tip}</title>
+                </circle>
+                <circle cx={c.x} cy={c.y} r="9" fill="transparent">
+                  <title>{tip}</title>
+                </circle>
+              </g>
+            );
+          })}
           {model.labelCoords.map((c, idx) => (
             <text
               key={`lbl-${c.epoch}-${idx}`}

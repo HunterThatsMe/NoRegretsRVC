@@ -337,10 +337,11 @@ export default function App() {
       autotune: conv.autotune,
       proposedPitch: conv.proposedPitch,
       outputFormat: conv.outputFormat,
-      convertedUrl: '',
-      convertedName: '',
-      status: 'queued',
-    }));
+          convertedUrl: '',
+          convertedName: '',
+          status: 'queued',
+        };
+      });
     const nextQueueLen = sampleQueueRef.current.length + added.length;
     setSampleQueue((prev) => [...prev, ...added]);
     setState((prev) => ({
@@ -355,7 +356,6 @@ export default function App() {
         audioObjectUrl: added[0].sourceUrl,
       },
     }));
-    };
   }, []);
 
   const queuedFileNames = useMemo(
@@ -417,6 +417,13 @@ export default function App() {
             {state.activeSection === 'training' && (
               <TrainWorkspaceView
                 activeProject={activeProject}
+                turboTraining={state.forkConfig.turboTraining ?? true}
+                onToggleTurboTraining={(turboTraining) =>
+                  setState((prev) => ({
+                    ...prev,
+                    forkConfig: { ...prev.forkConfig, turboTraining },
+                  }))
+                }
                 onUpdateProject={handleUpdateProject}
                 onNotify={handleNotify}
               />

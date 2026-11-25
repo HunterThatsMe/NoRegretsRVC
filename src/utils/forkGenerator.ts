@@ -147,7 +147,8 @@ def _patch_dataloader() -> None:
     if getattr(orig_init, "_noregrets_patched", False):
         return
 
-    cpu_cap = max(2, min(4, os.cpu_count() or 2))
+    world_size = max(1, int(os.environ.get("WORLD_SIZE", "1")))
+    cpu_cap = max(1, min(4, (os.cpu_count() or 4) // world_size))
 
     def fast_init(self: Any, *args: Any, **kwargs: Any) -> Any:
         num_workers = kwargs.get("num_workers", 0)
@@ -158,7 +159,7 @@ def _patch_dataloader() -> None:
                 kwargs["num_workers"] = cpu_cap
             kwargs.setdefault("pin_memory", True)
             kwargs.setdefault("persistent_workers", True)
-            kwargs.setdefault("prefetch_factor", 4)
+            kwargs.setdefault("prefetch_factor", 2)
         try:
             return orig_init(self, *args, **kwargs)
         except (TypeError, ValueError):
@@ -176,17 +177,19 @@ def _patch_optimizer() -> None:
 
     orig_adamw_init = torch.optim.AdamW.__init__
     if not getattr(orig_adamw_init, "_noregrets_patched", False):
-        supports_fused = "fused" in inspect.signature(orig_adamw_init).parameters
+        supports_foreach = "foreach" in inspect.signature(orig_adamw_init).parameters
+        world_size = max(1, int(os.environ.get("WORLD_SIZE", "1")))
+        try:
+            ddp_lr_scale = max(1.0, min(1.5, float(os.environ.get("NR_DDP_LR_SCALE", "1.0"))))
+        except Exception:
+            ddp_lr_scale = 1.0
 
         def fast_adamw_init(self: Any, params: Any, *args: Any, **kwargs: Any) -> Any:
             _apply_cuda_tuning()
-            if supports_fused and torch.cuda.is_available() and "fused" not in kwargs:
-                if not isinstance(params, (list, tuple)):
-                    params = list(params)
-                try:
-                    return orig_adamw_init(self, params, *args, fused=True, **kwargs)
-                except Exception:
-                    pass
+            if world_size >= 2 and ddp_lr_scale > 1.001 and "lr" in kwargs and isinstance(kwargs["lr"], (int, float)):
+                kwargs["lr"] = float(kwargs["lr"]) * ddp_lr_scale
+            if supports_foreach and torch.cuda.is_available() and "foreach" not in kwargs and not kwargs.get("fused", False):
+                kwargs["foreach"] = True
             return orig_adamw_init(self, params, *args, **kwargs)
 
         fast_adamw_init._noregrets_patched = True  # type: ignore[attr-defined]
@@ -202,24 +205,35 @@ def _patch_optimizer() -> None:
 
 
 def _patch_ddp() -> None:
+    import torch.distributed as dist
     import torch.nn.parallel
 
     ddp_cls = torch.nn.parallel.DistributedDataParallel
     orig_ddp_init = ddp_cls.__init__
-    if getattr(orig_ddp_init, "_noregrets_patched", False):
-        return
+    if not getattr(orig_ddp_init, "_noregrets_patched", False):
+        def fast_ddp_init(self: Any, *args: Any, **kwargs: Any) -> Any:
+            _apply_cuda_tuning()
+            kwargs.setdefault("gradient_as_bucket_view", True)
+            try:
+                return orig_ddp_init(self, *args, **kwargs)
+            except TypeError:
+                kwargs.pop("gradient_as_bucket_view", None)
+                return orig_ddp_init(self, *args, **kwargs)
 
-    def fast_ddp_init(self: Any, *args: Any, **kwargs: Any) -> Any:
-        _apply_cuda_tuning()
-        kwargs.setdefault("gradient_as_bucket_view", True)
-        try:
-            return orig_ddp_init(self, *args, **kwargs)
-        except TypeError:
-            kwargs.pop("gradient_as_bucket_view", None)
-            return orig_ddp_init(self, *args, **kwargs)
+        fast_ddp_init._noregrets_patched = True  # type: ignore[attr-defined]
+        ddp_cls.__init__ = fast_ddp_init  # type: ignore[method-assign]
 
-    fast_ddp_init._noregrets_patched = True  # type: ignore[attr-defined]
-    ddp_cls.__init__ = fast_ddp_init  # type: ignore[method-assign]
+    orig_destroy = getattr(dist, "destroy_process_group", None)
+    if orig_destroy is not None and not getattr(orig_destroy, "_noregrets_patched", False):
+        def safe_destroy_process_group(*args: Any, **kwargs: Any) -> Any:
+            try:
+                flush_saves()
+            except Exception:
+                pass
+            return orig_destroy(*args, **kwargs)
+
+        safe_destroy_process_group._noregrets_patched = True  # type: ignore[attr-defined]
+        dist.destroy_process_group = safe_destroy_process_group  # type: ignore[assignment]
 
 
 def _patch_tensorboard_images() -> None:
@@ -346,6 +360,24 @@ def _write_atomic(target: Path, payload: bytes) -> None:
         raise
 
 
+def flush_saves() -> None:
+    with _SAVE_LOCK:
+        pending = list(_PENDING_SAVES.items())
+    for key, fut in pending:
+        try:
+            fut.result()
+        except Exception:
+            pass
+        with _SAVE_LOCK:
+            _PENDING_SAVES.pop(key, None)
+
+
+def _shutdown_save_pool() -> None:
+    flush_saves()
+    if _SAVE_POOL is not None:
+        _SAVE_POOL.shutdown(wait=True)
+
+
 def _patch_async_save() -> None:
     global _SAVE_POOL
     import torch
@@ -356,7 +388,7 @@ def _patch_async_save() -> None:
         return
 
     _SAVE_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="nr-ckpt")
-    atexit.register(lambda: _SAVE_POOL.shutdown(wait=True) if _SAVE_POOL else None)
+    atexit.register(_shutdown_save_pool)
 
     def fast_save(obj: Any, f: Any, *args: Any, **kwargs: Any) -> Any:
         if (
@@ -368,12 +400,21 @@ def _patch_async_save() -> None:
             raw = os.fspath(f)
             norm = raw.replace("\\\\", "/")
             if norm.endswith(".pth") and ("/logs/" in norm or norm.startswith("logs/")):
+                target = Path(raw).resolve()
+                fname = target.name
                 buf = io.BytesIO()
                 orig_save(obj, buf)
-                target = Path(raw).resolve()
-                fut = _SAVE_POOL.submit(_write_atomic, target, buf.getvalue())
-                with _SAVE_LOCK:
-                    _PENDING_SAVES[str(target)] = fut
+                payload = buf.getvalue()
+                # Only queue intermediate G_/D_ resume states asynchronously.
+                # Final/interval exported inference weights (e.g. Model_200e_4000s.pth)
+                # are written synchronously & atomically so process exit never drops them.
+                if fname.startswith(("G_", "D_")):
+                    fut = _SAVE_POOL.submit(_write_atomic, target, payload)
+                    with _SAVE_LOCK:
+                        _PENDING_SAVES[str(target)] = fut
+                else:
+                    flush_saves()
+                    _write_atomic(target, payload)
                 return None
         return orig_save(obj, f, *args, **kwargs)
 
@@ -393,7 +434,7 @@ def _patch_async_save() -> None:
 
 def apply() -> None:
     global _APPLIED
-    if _APPLIED:
+    if _APPLIED or os.environ.get("NR_TURBO_ENABLED", "1") == "0":
         return
     _APPLIED = True
     for step in (
@@ -494,10 +535,13 @@ export function generateKaggleNotebookJson(
     `        except Exception:`,
     `            pass`,
     ``,
-    `# Write ${BRAND_NAME} Streamlit WebUI and locked crimson theme`,
-    `(repo_dir / ".streamlit").mkdir(parents=True, exist_ok=True)`,
+    `# Write ${BRAND_NAME} Streamlit WebUI, headless credentials, and locked crimson theme`,
+    `for _st_dir in (repo_dir / ".streamlit", Path.home() / ".streamlit"):`,
+    `    _st_dir.mkdir(parents=True, exist_ok=True)`,
+    `    (_st_dir / "credentials.toml").write_text('[general]\\nemail = ""\\n', encoding="utf-8")`,
     `(repo_dir / ".streamlit" / "config.toml").write_bytes(base64.b64decode("${themeB64}"))`,
     `(repo_dir / "streamlit_app.py").write_bytes(base64.b64decode("${appB64}"))`,
+    `(repo_dir / "logs").mkdir(parents=True, exist_ok=True)`,
     ...(turboEnabled
       ? [
           `(repo_dir / "noregrets_turbo.py").write_bytes(base64.b64decode("${turboB64}"))`,
@@ -515,6 +559,48 @@ export function generateKaggleNotebookJson(
           `        train_py.write_text("".join(_lines), encoding="utf-8")`,
         ]
       : []),
+    ``,
+    `# Seamless auto-update: fetch latest published WebUI files (or extract from NoRegretsRVC_Kaggle.ipynb) on GitHub main (keeps embedded build as fallback)`,
+    `import json as _upd_json, re as _upd_re`,
+    `_gh_updated_any = False`,
+    `for _gh_rel, _dst_file, _valid_marker in (`,
+    `    ("streamlit_app.py", repo_dir / "streamlit_app.py", "CRIMSON_CSS"),`,
+    `    ("noregrets_turbo.py", repo_dir / "noregrets_turbo.py", "def apply("),`,
+    `    (".streamlit/config.toml", repo_dir / ".streamlit" / "config.toml", "primaryColor"),`,
+    `):`,
+    `    try:`,
+    `        _req_u = urllib.request.Request(f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{_gh_rel}", headers={"User-Agent": "NoRegretsRVC"})`,
+    `        with urllib.request.urlopen(_req_u, timeout=8) as _resp_u:`,
+    `            _raw_u = _resp_u.read()`,
+    `        if len(_raw_u) > 64 and _valid_marker in _raw_u.decode("utf-8", errors="replace"):`,
+    `            if _dst_file.name != "noregrets_turbo.py" or ${turboEnabled ? 'True' : 'False'}:`,
+    `                _dst_file.write_bytes(_raw_u)`,
+    `                _gh_updated_any = True`,
+    `    except Exception:`,
+    `        pass`,
+    `if not _gh_updated_any:`,
+    `    for _nb_rel in ("NoRegretsRVC_Kaggle.ipynb", "assets/NoRegretsRVC_Kaggle.ipynb"):`,
+    `        try:`,
+    `            _req_nb = urllib.request.Request(f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{_nb_rel}", headers={"User-Agent": "NoRegretsRVC"})`,
+    `            with urllib.request.urlopen(_req_nb, timeout=10) as _resp_nb:`,
+    `                _nb_obj = _upd_json.loads(_resp_nb.read().decode("utf-8", errors="replace"))`,
+    `            _cell_src = "\\n".join("".join(c.get("source", [])) if isinstance(c.get("source"), list) else str(c.get("source", "")) for c in _nb_obj.get("cells", []) if c.get("cell_type") == "code")`,
+    `            for _pat_rel, _dst_file, _valid_marker in (`,
+    `                (r'\\(repo_dir / "streamlit_app\\.py"\\)\\.write_bytes\\(base64\\.b64decode\\("([A-Za-z0-9+/=]+)"\\)\\)', repo_dir / "streamlit_app.py", "CRIMSON_CSS"),`,
+    `                (r'\\(repo_dir / "noregrets_turbo\\.py"\\)\\.write_bytes\\(base64\\.b64decode\\("([A-Za-z0-9+/=]+)"\\)\\)', repo_dir / "noregrets_turbo.py", "def apply("),`,
+    `                (r'\\(repo_dir / "\\.streamlit" / "config\\.toml"\\)\\.write_bytes\\(base64\\.b64decode\\("([A-Za-z0-9+/=]+)"\\)\\)', repo_dir / ".streamlit" / "config.toml", "primaryColor"),`,
+    `            ):`,
+    `                _bm = _upd_re.search(_pat_rel, _cell_src)`,
+    `                if _bm:`,
+    `                    _dec = base64.b64decode(_bm.group(1))`,
+    `                    if len(_dec) > 64 and _valid_marker in _dec.decode("utf-8", errors="replace"):`,
+    `                        if _dst_file.name != "noregrets_turbo.py" or ${turboEnabled ? 'True' : 'False'}:`,
+    `                            _dst_file.write_bytes(_dec)`,
+    `                            _gh_updated_any = True`,
+    `            if _gh_updated_any:`,
+    `                break`,
+    `        except Exception:`,
+    `            pass`,
     ``,
     `# Best-effort prefetch of the 6 Free Samples WAVs from ${REPO_URL}`,
     `fs_dir = repo_dir / "assets" / "free_samples"`,
@@ -643,9 +729,11 @@ export function generateKaggleNotebookJson(
   const pyExecutableExpr = config.useUvVenv ? '"/kaggle/.venv/bin/python"' : 'sys.executable';
 
   const startLines: string[] = [
+    `import json`,
     `import os`,
     `import re`,
     `import secrets`,
+    `import shutil`,
     `import subprocess`,
     `import sys`,
     `import time`,
@@ -659,6 +747,11 @@ export function generateKaggleNotebookJson(
     `repo_dir = Path("/kaggle/working/program_ml")`,
     `cloudflared_path = repo_dir.parent / "cloudflared"`,
     `py_exec = ${pyExecutableExpr}`,
+    `if not os.path.exists(py_exec):`,
+    `    py_exec = sys.executable`,
+    `for _st_dir in (repo_dir / ".streamlit", Path.home() / ".streamlit"):`,
+    `    _st_dir.mkdir(parents=True, exist_ok=True)`,
+    `    (_st_dir / "credentials.toml").write_text('[general]\\nemail = ""\\n', encoding="utf-8")`,
     ``,
     `app_user = "noregrets"`,
     `app_pass = ${config.randomAuthEnabled ? 'secrets.token_urlsafe(24)' : '""'}`,
@@ -671,21 +764,28 @@ export function generateKaggleNotebookJson(
     ``,
     `def start_tunnel(cmd, name, pattern):`,
     `    out_path = repo_dir / f"{name}.log"`,
-    `    f = open(out_path, "w", encoding="utf-8")`,
-    `    proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, text=True)`,
-    `    tunnel_procs.append(proc)`,
-    `    tunnel_logs.append(f)`,
-    `    deadline = time.time() + 60`,
-    `    while time.time() < deadline:`,
-    `        txt = out_path.read_text(encoding="utf-8", errors="replace") if out_path.exists() else ""`,
-    `        m = re.search(pattern, txt)`,
-    `        if m:`,
-    `            return m.group(0)`,
-    `        time.sleep(1)`,
+    `    for _attempt in range(2):`,
+    `        f = open(out_path, "w", encoding="utf-8")`,
+    `        proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, text=True)`,
+    `        tunnel_procs.append(proc)`,
+    `        tunnel_logs.append(f)`,
+    `        deadline = time.time() + 90`,
+    `        while time.time() < deadline:`,
+    `            txt = out_path.read_text(encoding="utf-8", errors="replace") if out_path.exists() else ""`,
+    `            m = re.search(pattern, txt)`,
+    `            if m:`,
+    `                return m.group(0)`,
+    `            if proc.poll() is not None:`,
+    `                break`,
+    `            time.sleep(1)`,
+    `        if proc.poll() is None:`,
+    `            proc.terminate()`,
+    `        time.sleep(1.5)`,
     `    raise RuntimeError(f"Tunnel {name} failed to emit URL")`,
     ``,
     `os.chdir(repo_dir)`,
-    `subprocess.run(["fuser", "-k", "6969/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)`,
+    `if shutil.which("fuser"):`,
+    `    subprocess.run(["fuser", "-k", "6969/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)`,
     ``,
     `if Tunnel == "Horizon":`,
     `    if not horizon_id.strip():`,
@@ -693,25 +793,62 @@ export function generateKaggleNotebookJson(
     `    subprocess.run(["npm", "install", "-g", "@hrzn/cli"], check=True)`,
     `    subprocess.run(["hrzn", "login", horizon_id], check=True)`,
     ``,
-    `# --- ${BRAND_NAME} Kaggle Live Monitor (spaced rows + mid-epoch + Speed|Step|Epoch table) ---`,
+    `# --- ${BRAND_NAME} Kaggle Live Monitor (Red title, 🟥 progress bar, (saved) markers, session separators) ---`,
     `BOLD = "\\033[1m"`,
+    `RED_BOLD = "\\033[1;31m"`,
+    `GREEN_BOLD = "\\033[1;32m"`,
     `RESET = "\\033[0m"`,
     `ANSI_RE = re.compile(r"\\x1B\\[[0-?]*[ -/]*[@-~]")`,
     `EPOCH_RE = re.compile(r"epoch=(\\d+)\\s*\\|\\s*step=(\\d+).*?training_speed=(\\d+:\\d{2}:\\d{2})(?:.*?lowest_value=([0-9.]+))?")`,
     `TQDM_RE = re.compile(r"(\\d+)%\\|[^|]*\\|\\s*(\\d+)/(\\d+)\\s*\\[([^,\\]]+),\\s*([0-9.]+\\s*(?:it/s|s/it))")`,
     `LOCAL_URL_RE = re.compile(r"(?:Running on local URL|Local URL|Network URL):\\s*(https?://\\S+)")`,
     `NOISE_RE = re.compile(r"(FutureWarning|UserWarning|DeprecationWarning|RuntimeWarning|pkg_resources|warnings\\.warn|oneDNN|tensorflow/core|computation_placer|numa_node|Successfully opened dynamic library|weights_only|HTTP Request:|Checking out|libpng warning|ALSA|jack server|You can now view your Streamlit|local_sources_watcher|No module named 'torchvision'|get_module_paths)", re.IGNORECASE)`,
-    `MILESTONE_RE = re.compile(r"(Starting (?:preprocess|extract|index|training)|⏳ Starting|⏳ Downloading pretrained|✔ .* complete!|✔ Pretrained|Downloaded .* from HF|Downloaded [GD] weight|Extracted .*|✖ .* failed|Preprocess completed|preprocessed successfully|Starting pitch extraction|Pitch extraction completed|Starting embedding extraction|Embedding extraction completed|Saved index file|Saving checkpoint|Saving model|Training finished|Training completed|Index file.*generated|Using .* vocoder|Using .* for training)", re.IGNORECASE)`,
+    `MILESTONE_RE = re.compile(r"(Starting (?:preprocess|extract|index|training)|⏳ Starting|⏳ Downloading pretrained|✔ .* complete!|✔ Pretrained|Downloaded .* from HF|Downloaded [GD] weight|Extracted .*|✖ .* failed|Preprocess completed|preprocessed successfully|Starting pitch extraction|Pitch extraction completed|Starting embedding extraction|Embedding extraction completed|Saved index file|Saving checkpoint|Saving model|Saving weights|Index file.*generated|Using .* vocoder|Using .* for training)", re.IGNORECASE)`,
     `ERROR_START_RE = re.compile(r"(Traceback \\(most recent call last\\)|NameError:|TypeError:|KeyError:|AttributeError:|SyntaxError:|RuntimeError:|ValueError:|FileNotFoundError:|OSError:|ModuleNotFoundError:|ImportError:|CUDA out of memory|OutOfMemoryError|Exception:|✖ .* failed|\\bERROR:)")`,
+    `SAVE_LOG_RE = re.compile(r"(Saving checkpoint|Saving model|Saving weights|Saved checkpoint|Saved model)", re.IGNORECASE)`,
     ``,
     `session_links = []`,
     `milestones = deque(maxlen=6)`,
     `errors = deque(maxlen=25)`,
-    `epoch_rows = deque(maxlen=15)`,
+    `train_sessions = []`,
+    `active_training = False`,
+    `save_pending = False`,
     `seen_epochs = set()`,
     `live_mid_epoch = ""`,
     `last_tq_render = 0.0`,
     `tb_lines_seen = 0`,
+    `last_completed_epoch = 0`,
+    `active_meta_path = repo_dir / "logs" / ".nr_active_train.json"`,
+    ``,
+    `def read_train_targets():`,
+    `    tot_ep = ${project.totalEpoch}`,
+    `    save_ev = ${project.saveEveryEpoch}`,
+    `    if active_meta_path.is_file():`,
+    `        try:`,
+    `            md = json.loads(active_meta_path.read_text(encoding="utf-8"))`,
+    `            tot_ep = int(md.get("total_epoch") or tot_ep)`,
+    `            save_ev = int(md.get("save_every_epoch") or save_ev)`,
+    `            m_slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(md.get("model_name") or "").strip())`,
+    `            if m_slug:`,
+    `                args_f = repo_dir / "logs" / m_slug / "nr_train.args.json"`,
+    `                if args_f.is_file():`,
+    `                    ad = json.loads(args_f.read_text(encoding="utf-8"))`,
+    `                    tot_ep = int(ad.get("total_epoch") or tot_ep)`,
+    `                    save_ev = int(ad.get("save_every_epoch") or save_ev)`,
+    `        except Exception:`,
+    `            pass`,
+    `    return max(1, tot_ep), max(1, save_ev)`,
+    ``,
+    `def ensure_open_session(resumed=False):`,
+    `    global seen_epochs`,
+    `    if not train_sessions or train_sessions[-1]["footer"] != "":`,
+    `        was_stopped = bool(train_sessions and train_sessions[-1]["footer"] == "Training Stopped")`,
+    `        train_sessions.append({`,
+    `            "header_note": "Training Resumed" if (resumed or was_stopped) else "",`,
+    `            "rows": deque(maxlen=15),`,
+    `            "footer": "",`,
+    `        })`,
+    `        seen_epochs = set()`,
     ``,
     `def upsert_link(label, value):`,
     `    for idx, (k, _) in enumerate(session_links):`,
@@ -721,11 +858,17 @@ export function generateKaggleNotebookJson(
     `    session_links.append((label, value))`,
     ``,
     `def render_monitor(status="Running"):`,
-    `    w_speed = max(9, max((len(r[0]) for r in epoch_rows), default=0))`,
-    `    w_step = max(8, max((len(r[1]) for r in epoch_rows), default=0))`,
-    `    w_epoch = max(6, max((len(r[2]) for r in epoch_rows), default=0))`,
+    `    all_rows = [r for s in train_sessions for r in s["rows"]]`,
+    `    w_speed = max(9, max((len(r[0]) for r in all_rows), default=0))`,
+    `    w_step = max(8, max((len(r[1]) for r in all_rows), default=0))`,
+    `    w_epoch = max(14, max((len(r[2]) for r in all_rows), default=0))`,
+    `    tot_ep, _ = read_train_targets()`,
+    `    cur_ep_n = min(tot_ep, last_completed_epoch)`,
+    `    pct_ep = (cur_ep_n / max(1, tot_ep)) * 100.0`,
+    `    filled_b = max(0, min(16, int(round((cur_ep_n / max(1, tot_ep)) * 16))))`,
+    `    prog_bar = ("🟥" * filled_b) + ("⬛" * (16 - filled_b))`,
     `    lines = [`,
-    `        f"{BOLD}${BRAND_NAME} Live Monitor (Beta 0.0.0){RESET}  [{status}]",`,
+    `        f"{RED_BOLD}${BRAND_NAME} Live Monitor (Beta 0.0.0){RESET}  [{status}]",`,
     `        "=" * 64,`,
     `        "",`,
     `    ]`,
@@ -742,14 +885,31 @@ export function generateKaggleNotebookJson(
     `        for m in milestones:`,
     `            lines.append(f"[Stage] {m}")`,
     `        lines.append("")`,
-    `    if live_mid_epoch:`,
-    `        lines.append(f"{BOLD}Live Epoch:{RESET} {live_mid_epoch}")`,
+    `    if active_training or train_sessions:`,
+    `        lines.append(f"{BOLD}Progress         :{RESET} {prog_bar}  {cur_ep_n}/{tot_ep} ({pct_ep:.1f}%)")`,
     `        lines.append("")`,
-    `    if epoch_rows:`,
-    `        lines.append(f"{'Speed':<{w_speed}} | {'Step':<{w_step}} | {BOLD}{'Epoch':<{w_epoch}}{RESET} | Lowest Loss")`,
-    `        lines.append(f"{'-' * w_speed}-+-{'-' * w_step}-+-{'-' * w_epoch}-+------------")`,
-    `        for spd, stp, ep, low in epoch_rows:`,
-    `            lines.append(f"{spd:<{w_speed}} | {stp:<{w_step}} | {BOLD}{ep:<{w_epoch}}{RESET} | {low}")`,
+    `        live_txt = live_mid_epoch if live_mid_epoch else ("Idle — waiting for next epoch batches..." if active_training else "Session idle.")`,
+    `        lines.append(f"{BOLD}Live Epoch:{RESET} {live_txt}")`,
+    `        lines.append("")`,
+    `    if train_sessions:`,
+    `        for sess in train_sessions[-3:]:`,
+    `            if sess["header_note"]:`,
+    `                lines.append(f"{BOLD}{sess['header_note']}{RESET}")`,
+    `                lines.append("")`,
+    `                lines.append("")`,
+    `            lines.append(f"{'Speed':<{w_speed}} | {'Step':<{w_step}} | {BOLD}{'Epoch':<{w_epoch}}{RESET} | Lowest Loss")`,
+    `            lines.append(f"{'-' * w_speed}-+-{'-' * w_step}-+-{'-' * w_epoch}-+------------")`,
+    `            if sess["rows"]:`,
+    `                for spd, stp, ep, low in sess["rows"]:`,
+    `                    lines.append(f"{spd:<{w_speed}} | {stp:<{w_step}} | {BOLD}{ep:<{w_epoch}}{RESET} | {low}")`,
+    `            else:`,
+    `                lines.append("Waiting for first completed epoch...")`,
+    `            if sess["footer"]:`,
+    `                lines.append("")`,
+    `                lines.append("")`,
+    `                f_col = RED_BOLD if sess["footer"] == "Training Stopped" else GREEN_BOLD`,
+    `                lines.append(f"{f_col}{sess['footer']}{RESET}")`,
+    `                lines.append("")`,
     `    elif not errors:`,
     `        lines.append("Waiting for training epochs...")`,
     `    if errors:`,
@@ -773,6 +933,7 @@ export function generateKaggleNotebookJson(
     `        "TOKENIZERS_PARALLELISM": "false",`,
     `        "STREAMLIT_SERVER_FILE_WATCHER_TYPE": "none",`,
     `        "STREAMLIT_SERVER_RUN_ON_SAVE": "false",`,
+    `        "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false",`,
     `    })`,
     ``,
     `    if Tunnel == "Gradio + Cloudflare":`,
@@ -793,57 +954,104 @@ export function generateKaggleNotebookJson(
     `        "--server.enableCORS", "false",`,
     `        "--server.enableXsrfProtection", "false",`,
     `    ]`,
-    `    render_monitor("Starting ${BRAND_NAME} WebUI")`,
-    `    app_proc = subprocess.Popen(app_cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)`,
-    `    assert app_proc.stdout is not None`,
-    `    for raw_line in app_proc.stdout:`,
-    `        line = ANSI_RE.sub("", raw_line).replace("\\r", "").strip()`,
-    `        if not line:`,
-    `            continue`,
-    `        loc_m = LOCAL_URL_RE.search(line)`,
-    `        if loc_m:`,
-    `            upsert_link("Local UI URL", loc_m.group(1))`,
-    `            render_monitor("Ready")`,
-    `            continue`,
-    `        ep_m = EPOCH_RE.search(line)`,
-    `        if ep_m:`,
-    `            ep_num, stp_num, spd_str = ep_m.group(1), ep_m.group(2), ep_m.group(3)`,
-    `            low_str = ep_m.group(4) or "-"`,
-    `            key = (ep_num, stp_num)`,
-    `            if key not in seen_epochs:`,
-    `                seen_epochs.add(key)`,
-    `                epoch_rows.append((spd_str, stp_num, ep_num, low_str))`,
+    `    restart_flag_p = repo_dir / "logs" / ".nr_restart_webui"`,
+    `    while True:`,
+    `        render_monitor("Starting ${BRAND_NAME} WebUI")`,
+    `        app_proc = subprocess.Popen(app_cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)`,
+    `        assert app_proc.stdout is not None`,
+    `        for raw_line in app_proc.stdout:`,
+    `            line = ANSI_RE.sub("", raw_line).replace("\\r", "").strip()`,
+    `            if not line:`,
+    `                continue`,
+    `            loc_m = LOCAL_URL_RE.search(line)`,
+    `            if loc_m:`,
+    `                upsert_link("Local UI URL", loc_m.group(1))`,
+    `                render_monitor("Ready")`,
+    `                continue`,
+    `            if "⏳ Starting training" in line:`,
+    `                ensure_open_session()`,
+    `                active_training = True`,
+    `                save_pending = False`,
     `                live_mid_epoch = ""`,
+    `                if not milestones or milestones[-1] != line:`,
+    `                    milestones.append(line)`,
     `                render_monitor("Training")`,
+    `                continue`,
+    `            if "Stop signal sent" in line or "✖ Training exited with error code" in line:`,
+    `                if train_sessions and train_sessions[-1]["footer"] == "":`,
+    `                    train_sessions[-1]["footer"] = "Training Stopped"`,
+    `                active_training = False`,
+    `                live_mid_epoch = ""`,
+    `                render_monitor("Stopped")`,
+    `                continue`,
+    `            if "✔ Training complete!" in line or "Training finished" in line or "Training completed" in line:`,
+    `                if train_sessions and train_sessions[-1]["footer"] == "":`,
+    `                    train_sessions[-1]["footer"] = "Training Complete"`,
+    `                active_training = False`,
+    `                live_mid_epoch = ""`,
+    `                if not milestones or milestones[-1] != line:`,
+    `                    milestones.append(line)`,
+    `                render_monitor("Complete")`,
+    `                continue`,
+    `            if SAVE_LOG_RE.search(line):`,
+    `                save_pending = True`,
+    `                if not milestones or milestones[-1] != line:`,
+    `                    milestones.append(line)`,
+    `                    render_monitor("Training" if active_training else "Running")`,
+    `                continue`,
+    `            ep_m = EPOCH_RE.search(line)`,
+    `            if ep_m:`,
+    `                ensure_open_session()`,
+    `                active_training = True`,
+    `                ep_num, stp_num, spd_str = ep_m.group(1), ep_m.group(2), ep_m.group(3)`,
+    `                low_str = ep_m.group(4) or "-"`,
+    `                ep_int = int(ep_num)`,
+    `                last_completed_epoch = max(last_completed_epoch, ep_int)`,
+    `                tot_ep_cur, save_ev_cur = read_train_targets()`,
+    `                is_saved = save_pending or (ep_int % save_ev_cur == 0) or (ep_int == tot_ep_cur)`,
+    `                save_pending = False`,
+    `                ep_lbl = f"{ep_num} (saved)" if is_saved else ep_num`,
+    `                key = (ep_num, stp_num)`,
+    `                if key not in seen_epochs:`,
+    `                    seen_epochs.add(key)`,
+    `                    train_sessions[-1]["rows"].append((spd_str, stp_num, ep_lbl, low_str))`,
+    `                    live_mid_epoch = ""`,
+    `                    render_monitor("Training")`,
+    `                continue`,
+    `            tq_m = TQDM_RE.search(line)`,
+    `            if tq_m:`,
+    `                now_ts = time.time()`,
+    `                if now_ts - last_tq_render >= 5.0 or tq_m.group(1) == "100":`,
+    `                    last_tq_render = now_ts`,
+    `                    live_mid_epoch = f"{tq_m.group(1)}% ({tq_m.group(2)}/{tq_m.group(3)}) · {tq_m.group(4)} · {tq_m.group(5)}"`,
+    `                    render_monitor("Training" if active_training else "Running")`,
+    `                continue`,
+    `            if NOISE_RE.search(line) or "%|" in line or "it/s]" in line or "s/it]" in line:`,
+    `                continue`,
+    `            if tb_lines_seen > 0:`,
+    `                if not errors or errors[-1] != line:`,
+    `                    errors.append(line)`,
+    `                tb_lines_seen = 0 if re.match(r"^[A-Za-z_]*(Error|Exception):", line) else (tb_lines_seen - 1)`,
+    `                render_monitor("Error")`,
+    `                continue`,
+    `            if ERROR_START_RE.search(line):`,
+    `                if not errors or errors[-1] != line:`,
+    `                    errors.append(line)`,
+    `                if "Traceback" in line:`,
+    `                    tb_lines_seen = 25`,
+    `                render_monitor("Error")`,
+    `                continue`,
+    `            if MILESTONE_RE.search(line):`,
+    `                if not milestones or milestones[-1] != line:`,
+    `                    milestones.append(line)`,
+    `                    render_monitor("Running")`,
+    `        app_proc.wait()`,
+    `        if restart_flag_p.is_file():`,
+    `            restart_flag_p.unlink(missing_ok=True)`,
+    `            if shutil.which("fuser"):`,
+    `                subprocess.run(["fuser", "-k", "6969/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)`,
     `            continue`,
-    `        tq_m = TQDM_RE.search(line)`,
-    `        if tq_m:`,
-    `            now_ts = time.time()`,
-    `            if now_ts - last_tq_render >= 5.0 or tq_m.group(1) == "100":`,
-    `                last_tq_render = now_ts`,
-    `                live_mid_epoch = f"{tq_m.group(1)}% ({tq_m.group(2)}/{tq_m.group(3)}) · {tq_m.group(4)} · {tq_m.group(5)}"`,
-    `                render_monitor("Training")`,
-    `            continue`,
-    `        if NOISE_RE.search(line) or "%|" in line or "it/s]" in line or "s/it]" in line:`,
-    `            continue`,
-    `        if tb_lines_seen > 0:`,
-    `            if not errors or errors[-1] != line:`,
-    `                errors.append(line)`,
-    `            tb_lines_seen = 0 if re.match(r"^[A-Za-z_]*(Error|Exception):", line) else (tb_lines_seen - 1)`,
-    `            render_monitor("Error")`,
-    `            continue`,
-    `        if ERROR_START_RE.search(line):`,
-    `            if not errors or errors[-1] != line:`,
-    `                errors.append(line)`,
-    `            if "Traceback" in line:`,
-    `                tb_lines_seen = 25`,
-    `            render_monitor("Error")`,
-    `            continue`,
-    `        if MILESTONE_RE.search(line):`,
-    `            if not milestones or milestones[-1] != line:`,
-    `                milestones.append(line)`,
-    `                render_monitor("Running")`,
-    `    app_proc.wait()`,
+    `        break`,
     `finally:`,
     `    for p in reversed(tunnel_procs):`,
     `        if p.poll() is None: p.terminate()`,
@@ -851,7 +1059,8 @@ export function generateKaggleNotebookJson(
     `        app_proc.terminate()`,
     `    for f in tunnel_logs:`,
     `        f.close()`,
-    `    subprocess.run(["fuser", "-k", "6969/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)`,
+    `    if shutil.which("fuser"):`,
+    `        subprocess.run(["fuser", "-k", "6969/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)`,
   ];
 
   const notebook = {

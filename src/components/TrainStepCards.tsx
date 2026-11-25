@@ -23,6 +23,7 @@ import {
   inferMatchingDUrl,
   isHuggingFaceRepoUrl,
   isPretrainedZipUrl,
+  resolvePerGpuBatchSize,
 } from '../utils/rvcTuning';
 import { CustomPretrainedPair } from './CustomPretrainedPair';
 import { NumberStepperInput } from './NumberStepperInput';
@@ -761,8 +762,12 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
 
 interface Step4Props {
   batchSize: number;
+  gpuCount?: 1 | 2;
+  batchParity1Gpu?: boolean;
   saveEveryEpoch: number;
   totalEpoch: number;
+  turboTraining?: boolean;
+  onToggleTurboTraining?: (enabled: boolean) => void;
   saveOnlyLatest: boolean;
   saveEveryWeights: boolean;
   pretrained: boolean;
@@ -850,8 +855,12 @@ const STEP4_TOGGLES: {
 export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
   const {
     batchSize,
+    gpuCount = 2,
+    batchParity1Gpu = true,
     saveEveryEpoch,
     totalEpoch,
+    turboTraining = true,
+    onToggleTurboTraining,
     customPretrained,
     customPretrainedG,
     customPretrainedD,
@@ -876,6 +885,10 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
   const { t } = useI18n();
   const [step4AdvOpen, setStep4AdvOpen] = useState(false);
   const [pretrainRefreshMsg, setPretrainRefreshMsg] = useState('');
+  const batchAlloc = useMemo(
+    () => resolvePerGpuBatchSize(batchSize, gpuCount, batchParity1Gpu),
+    [batchSize, gpuCount, batchParity1Gpu]
+  );
   const safeBatchTotal = Math.max(1, batchTotal);
   const batchPct = Math.min(100, Math.round((batchDone / safeBatchTotal) * 100));
   const etaSec = Math.max(0, (safeBatchTotal - batchDone) / Math.max(0.1, itPerSec));
@@ -929,14 +942,28 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
         <div className="rounded-lg border border-[#47161D] bg-[#100506] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
             <div>
-              <label
-                htmlFor="train-batch-size"
-                className="block text-[13.5px] font-semibold text-[#FDF7F7]"
-              >
-                Batch Size
-              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor="train-batch-size"
+                  className="block text-[13.5px] font-semibold text-[#FDF7F7]"
+                >
+                  Batch Size
+                </label>
+                <span
+                  data-testid="effective-batch-badge"
+                  className="rounded-md border border-[#E51923]/55 bg-[#200B0E] px-2 py-0.5 text-[11px] font-mono font-semibold text-[#FDF7F7] tabular-nums"
+                >
+                  {batchAlloc.isParitySplit
+                    ? `Split ${batchAlloc.perGpuBatchSize}/GPU × ${gpuCount} T4s = ${batchAlloc.totalEffectiveBatchSize} Total (1-GPU Parity)`
+                    : gpuCount > 1
+                      ? `Batch ${batchSize} · Dual T4 Effective: ${batchSize * gpuCount}`
+                      : `Effective Batch: ${batchSize}`}
+                </span>
+              </div>
               <p className="text-[13px] text-[#C89EA4] mt-0.5">
-                Per-GPU slice batch size. Default is 2 because dual Kaggle T4 GPUs double it to an effective batch of 4 (4 runs at 8, etc.).
+                {batchAlloc.isParitySplit
+                  ? `Splitting evenly (${batchAlloc.perGpuBatchSize} per GPU × ${gpuCount}) so total effective batch stays ${batchAlloc.totalEffectiveBatchSize}, matching 1-GPU Original Applio optimizer steps/epoch.`
+                  : "Per-GPU slice batch size. Keep 1-GPU Parity checked for ≥4 batches so dual T4s don't cut steps/epoch in half."}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -975,6 +1002,22 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             <span>1</span>
             <span>64</span>
           </div>
+          {gpuCount > 1 && (
+            <label className="mt-3 flex items-start gap-2.5 rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={batchParity1Gpu}
+                onChange={(e) =>
+                  onPatchProject({ batchParity1Gpu: e.target.checked })
+                }
+                className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
+              />
+              <span className="text-xs text-[#DFBFC3] leading-snug">
+                <strong className="text-[#FDF7F7]">1-GPU Applio Batch Parity (&lt;300 Epoch Fix)</strong>{' '}
+                — Automatically splits batch sizes ≥ 4 across both T4s (e.g. 8 → 4/GPU × 2) so 150–250 epoch runs receive the full Original Applio step count.
+              </span>
+            </label>
+          )}
         </div>
 
         {/* Save Every Epoch (default 5) */}
@@ -1123,6 +1166,22 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
                   </div>
                 </label>
               ))}
+              <label className="flex items-start gap-2.5 rounded-lg border border-[#E51923]/55 bg-[#160709] p-3 cursor-pointer md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={turboTraining}
+                  onChange={(e) => onToggleTurboTraining?.(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
+                />
+                <div>
+                  <span className="block text-[13.5px] font-semibold text-[#FDF7F7]">
+                    Lossless Turbo Training
+                  </span>
+                  <span className="block text-[13px] text-[#C89EA4] mt-0.5 leading-snug">
+                    Always on by default. Enables cuDNN autotune, IEEE-exact foreach AdamW steps, pinned memory caching, and atomic background saving without degrading model precision.
+                  </span>
+                </div>
+              </label>
             </div>
 
             {customPretrained && (

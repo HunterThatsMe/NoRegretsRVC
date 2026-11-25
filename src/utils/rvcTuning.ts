@@ -169,6 +169,34 @@ export function estimateTrainingCompletion(
   };
 }
 
+export interface PerGpuBatchResolution {
+  requestedBatchSize: number;
+  perGpuBatchSize: number;
+  totalEffectiveBatchSize: number;
+  gpuCount: number;
+  isParitySplit: boolean;
+}
+
+export function resolvePerGpuBatchSize(
+  requestedBatchSize: number,
+  gpuCount: number,
+  batchParity1Gpu = true
+): PerGpuBatchResolution {
+  const safeRequested = Math.max(1, Math.round(requestedBatchSize || 1));
+  const safeGpus = Math.max(1, Math.round(gpuCount || 1));
+  const isParitySplit = Boolean(batchParity1Gpu) && safeGpus >= 2 && safeRequested >= 4;
+  const perGpuBatchSize = isParitySplit
+    ? Math.max(2, Math.floor(safeRequested / safeGpus))
+    : safeRequested;
+  return {
+    requestedBatchSize: safeRequested,
+    perGpuBatchSize,
+    totalEffectiveBatchSize: perGpuBatchSize * safeGpus,
+    gpuCount: safeGpus,
+    isParitySplit,
+  };
+}
+
 export function estimateT4VramUsage(project: VoiceModelProject): T4VramEstimate {
   const srFactor =
     project.samplingRate === '48000'
@@ -185,11 +213,16 @@ export function estimateT4VramUsage(project: VoiceModelProject): T4VramEstimate 
   const melFactor = project.melLoss === 'Multi-Scale' ? 1.14 : 1.0;
   const fp16Factor = project.fp16 ? 1.0 : 1.55;
   const checkpointFactor = project.checkpointing ? 0.78 : 1.0;
+  const batchAlloc = resolvePerGpuBatchSize(
+    project.batchSize,
+    project.gpuCount,
+    project.batchParity1Gpu ?? true
+  );
 
   const baseModelGb = 2.6 * srFactor * vocoderFactor;
   const perBatchGb = 0.72 * srFactor * vocoderFactor * melFactor * fp16Factor * checkpointFactor;
   const estimatedVramGb = Number(
-    (baseModelGb + project.batchSize * perBatchGb).toFixed(2)
+    (baseModelGb + batchAlloc.perGpuBatchSize * perBatchGb).toFixed(2)
   );
 
   const safeBudget = 13.2 - baseModelGb;
@@ -380,6 +413,11 @@ export function buildTrainPipelineCommands(project: VoiceModelProject): string {
   const safeName = sanitizeModelName(project.name);
   const dsPath = project.datasetPath.trim() || `/kaggle/input/datasets/your-username/${safeName}`;
   const gpus = project.gpuNumber.trim() || (project.gpuCount === 2 ? '0-1' : '0');
+  const batchAlloc = resolvePerGpuBatchSize(
+    project.batchSize,
+    project.gpuCount,
+    project.batchParity1Gpu ?? true
+  );
   const silenceFlags = project.truncateSilenceEnabled
     ? ` --truncate_silence True --silence_duration_ms ${project.silenceDurationMs}`
     : '';
@@ -428,7 +466,7 @@ export function buildTrainPipelineCommands(project: VoiceModelProject): string {
     `# 3. Train ${project.vocoder} RVC model (${project.fp16 ? 'fp16' : 'fp32'})`,
     `python core.py train \\`,
     `  --model_name "${safeName}" --optimizer ${project.optimizer} --vocoder "${project.vocoder}" \\`,
-    `  --save_every_epoch ${project.saveEveryEpoch} --total_epoch ${project.totalEpoch} --batch_size ${project.batchSize} \\`,
+    `  --save_every_epoch ${project.saveEveryEpoch} --total_epoch ${project.totalEpoch} --batch_size ${batchAlloc.perGpuBatchSize} \\`,
     `  --sample_rate ${project.samplingRate} --gpu ${gpus} --fp16 ${project.fp16 ? 'True' : 'False'} \\`,
     `  --save_only_latest ${project.saveOnlyLatest ? 'True' : 'False'} --save_every_weights ${project.saveEveryWeights ? 'True' : 'False'} \\`,
     `  --pretrained ${project.pretrained ? 'True' : 'False'} --checkpointing ${project.checkpointing ? 'True' : 'False'} \\`,

@@ -12,6 +12,7 @@ import {
 import { ACCENT_HEX, APP_VERSION, BRAND_NAME } from '../data/defaults';
 import { StudioSection, VoiceModelProject } from '../types/studio';
 import { TranslationKey, useI18n } from '../utils/i18n';
+import { resolvePerGpuBatchSize } from '../utils/rvcTuning';
 
 interface TopBarProps {
   activeSection: StudioSection;
@@ -71,14 +72,23 @@ export const TopBar: React.FC<TopBarProps> = React.memo(
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2 text-right">
-              <p className="text-xs font-semibold text-[#FDF7F7]">
-                {activeProject.name.trim() || t('topbar.untitled')} ({activeProject.samplingRate})
-              </p>
-              <p className="text-[11px] font-mono text-[#AD8288] tabular-nums mt-0.5">
-                {activeProject.vocoder} · Batch {activeProject.batchSize} ({activeProject.batchSize * activeProject.gpuCount} eff.) · {activeProject.totalEpoch} ep
-              </p>
-            </div>
+            {(() => {
+              const batchAlloc = resolvePerGpuBatchSize(
+                activeProject.batchSize,
+                activeProject.gpuCount,
+                activeProject.batchParity1Gpu ?? true
+              );
+              return (
+                <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2 text-right">
+                  <p className="text-xs font-semibold text-[#FDF7F7]">
+                    {activeProject.name.trim() || t('topbar.untitled')} ({activeProject.samplingRate})
+                  </p>
+                  <p className="text-[11px] font-mono text-[#AD8288] tabular-nums mt-0.5">
+                    {activeProject.vocoder} · Batch {batchAlloc.perGpuBatchSize}/GPU ({batchAlloc.totalEffectiveBatchSize} eff.) · {activeProject.totalEpoch} ep
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

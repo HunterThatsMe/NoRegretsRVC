@@ -43,6 +43,7 @@ export interface VoiceModelProject {
   embedder: EmbedderModel;
   silentTrainingFiles: number;
   batchSize: number;
+  batchParity1Gpu?: boolean;
   saveEveryEpoch: number;
   totalEpoch: number;
   fp16: boolean;
@@ -212,6 +213,12 @@ export interface TrainingEpochPoint {
   step: number;
   speedSec: number;
   lowestLoss: number | null;
+  melLoss?: number | null;
+  klLoss?: number | null;
+  fmLoss?: number | null;
+  discLoss?: number | null;
+  genLoss?: number | null;
+  gradNorm?: number | null;
 }
 
 export interface LiveEpochProgress {
@@ -235,6 +242,11 @@ export interface TrainingAnalysis {
   lowestLoss: number | null;
   lowestLossEpoch: number | null;
   lowestLossStep: number | null;
+  avgKlLoss?: number | null;
+  avgFmLoss?: number | null;
+  avgDiscLoss?: number | null;
+  avgGenLoss?: number | null;
+  latestGradNorm?: number | null;
   gpuDevices: string[];
   vocoderDetected: string;
   optimizerDetected: string;
@@ -268,6 +280,24 @@ export interface TrainingCompletionEstimate {
   disclaimer: string;
 }
 
+export interface MetricBreakdownItem {
+  label: string;
+  value: string;
+  status: 'optimal' | 'watch' | 'high';
+  detail: string;
+}
+
+export interface RankedCheckpointItem {
+  epoch: number;
+  step: number;
+  checkpointName: string;
+  score: number;
+  melLoss: number | null;
+  driftPercent: number;
+  tag: string;
+  status: 'optimal' | 'watch' | 'high';
+}
+
 export interface TrainingZoneInsight {
   confidence: 'untrained' | 'observed' | 'estimate';
   saveEveryEpoch: number;
@@ -276,6 +306,18 @@ export interface TrainingZoneInsight {
   datasetSummary?: string;
   bestLoss?: number | null;
   candidateEpochs?: number[];
+  datasetMatchPercent?: number | null;
+  stabilityScore?: number | null;
+  convergenceLabel?: string;
+  trainingVerdict?: 'untrained' | 'undertrained' | 'approaching' | 'sweet_spot' | 'overtrain_watch' | 'overtrained';
+  verdictTitle?: string;
+  verdictGuidance?: string;
+  undertrainingRiskPercent?: number | null;
+  overtrainingRiskPercent?: number | null;
+  effectiveStepsCompleted?: number | null;
+  stepsPerClip?: number | null;
+  rankedCheckpoints?: RankedCheckpointItem[];
+  metricBreakdown?: MetricBreakdownItem[];
   undertrainingLabel: string;
   undertrainingEndEpoch: number | null;
   sweetSpotLabel: string;

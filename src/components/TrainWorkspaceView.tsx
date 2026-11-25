@@ -10,6 +10,7 @@ import {
   estimateKaggleSurvival,
   estimateT4VramUsage,
   estimateTrainingCompletion,
+  resolvePerGpuBatchSize,
   sanitizeModelName,
 } from '../utils/rvcTuning';
 import { useI18n } from '../utils/i18n';
@@ -22,12 +23,16 @@ import {
 
 interface TrainWorkspaceViewProps {
   activeProject: VoiceModelProject;
+  turboTraining?: boolean;
+  onToggleTurboTraining?: (enabled: boolean) => void;
   onUpdateProject: (updated: VoiceModelProject) => void;
   onNotify?: (title: string, message: string, tone?: 'success' | 'error') => void;
 }
 
 export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(({
   activeProject,
+  turboTraining = true,
+  onToggleTurboTraining,
   onUpdateProject,
   onNotify,
 }) => {
@@ -51,6 +56,16 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
   const safeName = useMemo(
     () => sanitizeModelName(activeProject.name),
     [activeProject.name]
+  );
+
+  const batchAlloc = useMemo(
+    () =>
+      resolvePerGpuBatchSize(
+        activeProject.batchSize,
+        activeProject.gpuCount,
+        activeProject.batchParity1Gpu ?? true
+      ),
+    [activeProject.batchSize, activeProject.gpuCount, activeProject.batchParity1Gpu]
   );
 
   // Lazy Model & VRAM Info calculation: skip work when panel is closed
@@ -125,7 +140,11 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
       const proj = activeProjectRef.current;
       const name = safeNameRef.current;
       const prev = trainingRunRef.current;
-      const effBatch = Math.max(1, proj.batchSize * proj.gpuCount);
+      const effBatch = resolvePerGpuBatchSize(
+        proj.batchSize,
+        proj.gpuCount,
+        proj.batchParity1Gpu ?? true
+      ).totalEffectiveBatchSize;
       const batchTotal = Math.max(24, Math.min(120, Math.round(240 / effBatch)));
       const batchStep = Math.max(4, Math.round(batchTotal / 6));
       const baseItPerSec =
@@ -267,7 +286,11 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
         trainingOutput: `Training stopped at epoch ${currentEpochRef.current}/${proj.totalEpoch}. Latest weights kept in logs/${name}/.`,
       });
     } else {
-      const effBatch = Math.max(1, proj.batchSize * proj.gpuCount);
+      const effBatch = resolvePerGpuBatchSize(
+        proj.batchSize,
+        proj.gpuCount,
+        proj.batchParity1Gpu ?? true
+      ).totalEffectiveBatchSize;
       const batchTotal = Math.max(24, Math.min(120, Math.round(240 / effBatch)));
       const baseItPerSec = proj.vocoder === 'RefineGAN' ? 1.85 : proj.vocoder === 'MRF HiFi-GAN' ? 2.25 : 2.65;
       setTrainingRun({
@@ -363,7 +386,7 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
               <div className="flex-1 min-w-[200px]">
                 <div className="flex items-center justify-between gap-3 text-[11px] mb-1.5">
                   <span className="text-[#AD8288] whitespace-nowrap">
-                    T4 VRAM ({activeProject.gpuCount === 2 ? 'Dual 16GB' : 'Single 16GB'}) · {activeProject.batchSize}×{activeProject.gpuCount} = {activeProject.batchSize * activeProject.gpuCount} eff. batch
+                    T4 VRAM ({activeProject.gpuCount === 2 ? 'Dual 16GB' : 'Single 16GB'}) · {batchAlloc.perGpuBatchSize}×{batchAlloc.gpuCount} = {batchAlloc.totalEffectiveBatchSize} eff. batch{batchAlloc.isParitySplit ? ' (1-GPU Parity)' : ''}
                   </span>
                   <span
                     className={`font-mono font-semibold tabular-nums whitespace-nowrap ${
@@ -442,8 +465,12 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
       {/* STEP 4: Train Model */}
       <Step4TrainModelCard
         batchSize={activeProject.batchSize}
+        gpuCount={activeProject.gpuCount}
+        batchParity1Gpu={activeProject.batchParity1Gpu ?? true}
         saveEveryEpoch={activeProject.saveEveryEpoch}
         totalEpoch={activeProject.totalEpoch}
+        turboTraining={turboTraining}
+        onToggleTurboTraining={onToggleTurboTraining}
         saveOnlyLatest={activeProject.saveOnlyLatest}
         saveEveryWeights={activeProject.saveEveryWeights}
         pretrained={activeProject.pretrained}

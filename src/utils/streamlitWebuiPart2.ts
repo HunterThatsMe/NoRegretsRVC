@@ -287,6 +287,7 @@ if active_tab == "Training":
                     f"Dataset sliced & ready for {m_clean} ({st.session_state['nr_sr']} Hz).",
                 )
                 st.session_state["nr_prep_log"] = out_txt
+                st.rerun()
 
         with _nr_box("nr_prep_out_box"):
             def _render_prep_live_body() -> None:
@@ -353,6 +354,7 @@ if active_tab == "Training":
                     f"Pitch ({st.session_state['nr_f0']}) & {st.session_state['nr_embedder']} embeddings ready for {m_clean}.",
                 )
                 st.session_state["nr_ext_log"] = out_txt
+                st.rerun()
 
         with _nr_box("nr_ext_out_box"):
             def _render_ext_live_body() -> None:
@@ -379,11 +381,30 @@ if active_tab == "Training":
 
         st.session_state["nr_batch_size"] = _synced_slider_num(
             "Batch Size",
-            "Per-GPU slice batch size. Default is 2 because dual Kaggle T4 GPUs double it to an effective batch of 4 (4 runs at 8, etc.).",
+            "Target batch size. When 1-GPU Parity is checked, ≥4 batches split evenly across dual T4s so 150–250 epoch runs match 1-GPU Original Applio steps.",
             "nr_batch_size",
             1,
             64,
             2,
+        )
+        bs_now = int(st.session_state["nr_batch_size"])
+        parity_now = bool(st.session_state.get("nr_batch_parity", True))
+        if gpu_cnt_cur >= 2:
+            st.session_state["nr_batch_parity"] = st.checkbox(
+                "1-GPU Applio Batch Parity (<300 Epoch Fix) — Split batch ≥ 4 across both T4s so under-300 epoch runs get full Original Applio steps/epoch",
+                value=parity_now,
+                key="nr_t_batch_parity",
+            )
+            parity_now = bool(st.session_state["nr_batch_parity"])
+        is_parity_split = parity_now and gpu_cnt_cur >= 2 and bs_now >= 4
+        per_gpu_bs = max(2, bs_now // gpu_cnt_cur) if is_parity_split else bs_now
+        eff_now = per_gpu_bs * gpu_cnt_cur
+        eff_note = f"Split {per_gpu_bs}/GPU × {gpu_cnt_cur} T4s = {eff_now} Total (1-GPU Parity)" if is_parity_split else (f"Dual T4 Effective: {eff_now}" if gpu_cnt_cur >= 2 else f"Effective: {eff_now}")
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;background:#100506;border:1px solid #47161D;border-radius:8px;padding:7px 12px;margin:2px 0 10px 0;font-family:JetBrains Mono,monospace;font-size:12px">'
+            f'<span style="color:#DFBFC3">Active Batch Allocation ({gpu_cnt_cur} GPU{"s" if gpu_cnt_cur != 1 else ""})</span>'
+            f'<span style="color:#FDF7F7;font-weight:700">Batch {bs_now} · <span style="color:#E51923">{eff_note}</span></span></div>',
+            unsafe_allow_html=True,
         )
         st.session_state["nr_save_every"] = _synced_slider_num(
             "Save Every Epoch",
@@ -403,6 +424,11 @@ if active_tab == "Training":
         )
 
         with st.expander("Advanced Settings", expanded=False):
+            st.session_state["nr_turbo_training"] = st.checkbox(
+                "Lossless Turbo Training — Always ON by default (adaptive RAM cache, IEEE-exact foreach AdamW, cuDNN benchmark, DDP bucket view)",
+                value=bool(st.session_state.get("nr_turbo_training", True)),
+                key="nr_t_turbo",
+            )
             toggles_l, toggles_r = st.columns(2, gap="medium")
             with toggles_l:
                 st.session_state["nr_save_only_latest"] = st.checkbox("Save Only Latest — Overwrites previous G/D resume states to prevent Kaggle disk overflow", value=bool(st.session_state["nr_save_only_latest"]), key="nr_t_latest")
@@ -538,6 +564,11 @@ if active_tab == "Training":
                                     old_f.unlink(missing_ok=True)
                                 for old_f in mdir.glob("D_*.pth"):
                                     old_f.unlink(missing_ok=True)
+                        bs_cfg = int(st.session_state["nr_batch_size"])
+                        parity_cfg = bool(st.session_state.get("nr_batch_parity", True))
+                        is_split_cfg = parity_cfg and gpu_cnt_cur >= 2 and bs_cfg >= 4
+                        per_gpu_cfg = max(2, bs_cfg // gpu_cnt_cur) if is_split_cfg else bs_cfg
+                        lr_scale_cfg = "1.0" if parity_cfg else ("1.35" if (gpu_cnt_cur >= 2 and bs_cfg >= 4) else "1.0")
                         msg = _start_training_bg(
                             m_clean_cur,
                             {
@@ -547,7 +578,7 @@ if active_tab == "Training":
                                 "save_every_weights": bool(st.session_state["nr_save_every_weights"]),
                                 "total_epoch": int(st.session_state["nr_total_epoch"]),
                                 "sample_rate": int(st.session_state["nr_sr"]),
-                                "batch_size": int(st.session_state["nr_batch_size"]),
+                                "batch_size": per_gpu_cfg,
                                 "gpu": str(st.session_state["nr_gpu_num"]).strip() or "0",
                                 "overtraining_detector": False,
                                 "overtraining_threshold": 50,
@@ -559,9 +590,11 @@ if active_tab == "Training":
                                 "cache_data_in_gpu": bool(st.session_state["nr_cache_gpu"]),
                                 "vocoder": st.session_state["nr_vocoder"],
                                 "checkpointing": bool(st.session_state["nr_checkpointing"]),
+                                "nr_ddp_lr_scale": lr_scale_cfg,
                             },
                         )
                         st.session_state["nr_trn_log"] = msg
+                        st.rerun()
         with b_idx:
             if st.button(_tr("Generate Index"), type="secondary", use_container_width=True, key="nr_btn_gen_index"):
                 if not m_clean_cur:
@@ -580,6 +613,7 @@ if active_tab == "Training":
                         f"FAISS feature index ready for {m_clean_cur}.",
                     )
                     st.session_state["nr_trn_log"] = out_txt
+                    st.rerun()
 
         with _nr_box("nr_trn_live_box"):
             def _render_trn_live_body() -> None:
@@ -617,20 +651,53 @@ if active_tab == "Training":
                     )
                     if run_now:
                         it_s_c = max(0.15, float(lp["it_per_sec"]))
-                        ep_sec = parsed_live["avg_speed_sec"] if parsed_live["avg_speed_sec"] > 0 else (batch_tot / it_s_c)
-                        rem_sec = int(max(0, (batch_tot - batch_dn) / it_s_c + max(0, tot_ep_cur - int(lp["epoch"])) * ep_sec))
+                        spds_all = [float(p["speed_sec"]) for p in (parsed_live.get("points") or []) if p.get("speed_sec") is not None]
+                        if spds_all:
+                            tail_spds = spds_all[-8:]
+                            ema_spd = tail_spds[0]
+                            for _s_val in tail_spds[1:]:
+                                ema_spd = 0.68 * ema_spd + 0.32 * _s_val
+                            ep_sec = ema_spd
+                            acc_pct = min(98, 46 + int(len(spds_all) * 4.5))
+                        else:
+                            ep_sec = max(1.0, batch_tot / it_s_c)
+                            acc_pct = min(65, 28 + int((batch_dn / max(1, batch_tot)) * 32))
+                        rem_cur_ep = max(0.0, min(ep_sec, (batch_tot - batch_dn) / it_s_c))
+                        rem_sec = int(max(0, rem_cur_ep + max(0, tot_ep_cur - int(lp["epoch"])) * ep_sec))
                         mins, secs = divmod(rem_sec, 60)
                         hrs, mins = divmod(mins, 60)
                         rem_lbl = f"~{hrs} hr {mins} min" if hrs > 0 else f"~{mins} min {secs}s"
+                        fin_epoch_ms = int((time.time() + rem_sec) * 1000)
                         fin_ts = time.localtime(time.time() + rem_sec)
                         fin_time = time.strftime("%I:%M %p", fin_ts).lstrip("0")
                         fin_day = time.strftime("%a, %b %d", fin_ts)
                         with _nr_card("nr_train_eta_box"):
-                            st.markdown('<div style="font-size:12px;font-weight:600;color:#FDF7F7;margin-bottom:8px">⏱ Estimated Finish · Updating live</div>', unsafe_allow_html=True)
+                            st.markdown(
+                                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+                                f'<span style="font-size:12px;font-weight:600;color:#FDF7F7">⏱ Estimated Finish · Updating live</span>'
+                                f'<span class="nr-mono-badge" style="color:#FDF7F7;border-color:#E51923">ETA Accuracy: {acc_pct}%</span></div>',
+                                unsafe_allow_html=True,
+                            )
                             e_c1, e_c2, e_c3 = st.columns(3, gap="small")
                             e_c1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">REMAINING TIME</div><div class="nr-metric-v">Finishes in {rem_lbl}</div></div>', unsafe_allow_html=True)
-                            e_c2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">YOUR LOCAL TIME</div><div class="nr-metric-v">{fin_time}</div></div>', unsafe_allow_html=True)
-                            e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v">{fin_day}</div></div>', unsafe_allow_html=True)
+                            e_c2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">YOUR LOCAL TIME</div><div class="nr-metric-v"><span id="nr-fin-local-time" data-nr-fin-ms="{fin_epoch_ms}">{fin_time}</span></div></div>', unsafe_allow_html=True)
+                            e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v"><span id="nr-fin-local-day" data-nr-fin-ms="{fin_epoch_ms}">{fin_day}</span></div></div>', unsafe_allow_html=True)
+                            if _st_components is not None:
+                                _st_components.html(
+                                    f"""<script>
+                                    (function() {{
+                                      try {{
+                                        var doc = window.parent.document;
+                                        var d = new Date({fin_epoch_ms});
+                                        var tEl = doc.getElementById("nr-fin-local-time");
+                                        var dEl = doc.getElementById("nr-fin-local-day");
+                                        if (tEl) tEl.textContent = d.toLocaleTimeString([], {{ hour: "numeric", minute: "2-digit" }});
+                                        if (dEl) dEl.textContent = d.toLocaleDateString([], {{ weekday: "short", month: "short", day: "numeric" }});
+                                      }} catch (e) {{}}
+                                    }})();
+                                    </script>""",
+                                    height=0,
+                                )
                 _output_box("Training output", _filter_status_lines(st.session_state["nr_trn_log"], st.session_state["nr_trn_log"]))
                 if done_t and _HAS_FRAGMENT:
                     try:
@@ -659,7 +726,7 @@ if active_tab == "Training":
                     f'python core.py extract --model_name "{m_cmd_name}" --f0_method {st.session_state["nr_f0"]} --sample_rate {st.session_state["nr_sr"]} --embedder_model {st.session_state["nr_embedder"]} --gpu {st.session_state["nr_gpu_num"]} --include_mutes {st.session_state["nr_silent_files"]}',
                     "",
                     f'# 3. Train {st.session_state["nr_vocoder"]} RVC model ({prec_val})',
-                    f'python core.py train --model_name "{m_cmd_name}" --vocoder "{st.session_state["nr_vocoder"]}" --save_every_epoch {st.session_state["nr_save_every"]} --total_epoch {st.session_state["nr_total_epoch"]} --batch_size {st.session_state["nr_batch_size"]} --sample_rate {st.session_state["nr_sr"]} --gpu {st.session_state["nr_gpu_num"]}',
+                    f'python core.py train --model_name "{m_cmd_name}" --vocoder "{st.session_state["nr_vocoder"]}" --save_every_epoch {st.session_state["nr_save_every"]} --total_epoch {st.session_state["nr_total_epoch"]} --batch_size {per_gpu_bs} --sample_rate {st.session_state["nr_sr"]} --gpu {st.session_state["nr_gpu_num"]}',
                     "",
                     f'# 4. Generate {st.session_state["nr_index_algo"]} feature index',
                     f'python core.py index --model_name "{m_cmd_name}" --index_algorithm {st.session_state["nr_index_algo"]}',
@@ -767,9 +834,18 @@ elif active_tab == "Models":
 
         p_l, p_r = st.columns(2, gap="medium")
         with p_l:
-            pre_arch = st.selectbox("Pretrained", ["Titan", "Snowie", "KLM", "Ov2Super", "Rin_E3"], index=0, key="nr_pre_arch_sel")
+            pre_arch = st.selectbox("Pretrained", ["Legacy Core 1.5 V2", "Titan", "Snowie", "KLM", "Ov2Super", "Rin_E3"], index=0, key="nr_pre_arch_sel")
         with p_r:
-            pre_sr = st.selectbox("Sampling Rate", ["32k", "40k", "48k"], index=0, key="nr_pre_sr_sel")
+            sr_opts_pre = ["32k"] if pre_arch == "Legacy Core 1.5 V2" else ["32k", "40k", "48k"]
+            pre_sr = st.selectbox("Sampling Rate", sr_opts_pre, index=0, key="nr_pre_sr_sel")
+
+        if pre_arch == "Legacy Core 1.5 V2":
+            st.markdown(
+                '<div style="font-family:JetBrains Mono,monospace;font-size:11.5px;color:#DFBFC3;background:#100506;border:1px solid #47161D;border-radius:8px;padding:8px 12px;margin:4px 0 10px 0">'
+                '<span style="color:#E51923;font-weight:700">Default 1-Click Pretrain:</span> Legacy Core 1.5 V2 (32k G + D) — auto-links directly to Training Custom Pretrains upon download.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
         use_custom_pre_m = st.checkbox("Custom Pretrains", value=bool(st.session_state["nr_custom_pre"]), key="nr_models_cpre_chk")
         cpre_g_in = ""
@@ -781,7 +857,7 @@ elif active_tab == "Models":
             with cg_r:
                 cpre_d_in = st.text_input("Matching D .pth link (optional)", value=st.session_state["nr_custom_d"], placeholder="Leave empty for automatic discovery", key="nr_models_cpre_d")
 
-        btn_pre_lbl = "Download pretrained pair" if use_custom_pre_m else "Download"
+        btn_pre_lbl = "Download pretrained pair" if use_custom_pre_m else ("Download Legacy Core 1.5 V2 (G + D)" if pre_arch == "Legacy Core 1.5 V2" else "Download")
         if st.button(btn_pre_lbl, type="primary", use_container_width=True, key="nr_btn_dl_pretrained"):
             cdir = Path(now_dir) / "rvc" / "models" / "pretraineds" / "custom"
             cdir.mkdir(parents=True, exist_ok=True)
@@ -803,6 +879,7 @@ elif active_tab == "Models":
                     })
                     st.session_state["nr_pre_log_text"] = msg_pre
                     st.session_state["nr_pre_log"].append(f"[{ts}] {msg_pre}")
+                    st.rerun()
             else:
                 msg_pre = _start_pretrain_download_bg({
                     "use_custom": False,
@@ -813,6 +890,7 @@ elif active_tab == "Models":
                 })
                 st.session_state["nr_pre_log_text"] = msg_pre
                 st.session_state["nr_pre_log"].append(f"[{ts}] {msg_pre}")
+                st.rerun()
 
         with _nr_box("nr_pre_live_box"):
             def _render_pre_live_body() -> None:

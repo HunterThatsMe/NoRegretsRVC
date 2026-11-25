@@ -9,14 +9,19 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
-import { REPO_README_URL, SAMPLE_TRAINING_LOG } from '../data/defaults';
+import { AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import {
+  REPO_README_URL,
+  SAMPLE_OVERTRAIN_LOG,
+  SAMPLE_TRAINING_LOG,
+} from '../data/defaults';
 import {
   ModelSoundFeedback,
   TrainingAnalysis,
   VoiceModelProject,
 } from '../types/studio';
 import { analyzeTrainingZones, parseTrainingNotebookOrLog } from '../utils/logParser';
-import { sanitizeModelName } from '../utils/rvcTuning';
+import { resolvePerGpuBatchSize, sanitizeModelName } from '../utils/rvcTuning';
 import { useI18n } from '../utils/i18n';
 import { LossChart } from './LossChart';
 
@@ -74,7 +79,12 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
     reader.readAsText(file);
   };
 
-  const effectiveBatch = activeProject.batchSize * activeProject.gpuCount;
+  const batchAlloc = resolvePerGpuBatchSize(
+    activeProject.batchSize,
+    activeProject.gpuCount,
+    activeProject.batchParity1Gpu ?? true
+  );
+  const effectiveBatch = batchAlloc.totalEffectiveBatchSize;
   const activeModelTitle = activeProject.name.trim() || 'Untitled Model';
   const safeModelSlug = sanitizeModelName(activeProject.name);
   const isTrained = Boolean(lastAnalysis && zoneInsight.confidence !== 'untrained');
@@ -89,7 +99,7 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
             {t('diagnostics.title')}
           </h2>
           <p className="text-[15px] text-[#DFBFC3] mt-1">
-            Analyzes real training mel loss, dataset size, and checkpoint sound feedback to identify the Best Epoch for your model.
+            Evaluates mel reconstruction, KL divergence, feature matching, G/D balance, and dataset fit against your logged runs.
           </p>
         </div>
 
@@ -200,6 +210,95 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Training Verdict Hero Banner + Dual Under/Over Risk Meters */}
+            <div
+              data-testid="diagnostics-verdict-banner"
+              className={`rounded-xl border p-4 space-y-3.5 ${
+                zoneInsight.trainingVerdict === 'overtrained'
+                  ? 'border-[#E51923] bg-[#24090D]'
+                  : zoneInsight.trainingVerdict === 'undertrained'
+                    ? 'border-[#F59E0B]/70 bg-[#1B1207]'
+                    : 'border-[#10B981]/60 bg-[#081A14]'
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+                      zoneInsight.trainingVerdict === 'overtrained'
+                        ? 'border-[#E51923]/60 bg-[#160709] text-[#FF5A62]'
+                        : zoneInsight.trainingVerdict === 'undertrained'
+                          ? 'border-[#F59E0B]/60 bg-[#160709] text-[#F59E0B]'
+                          : 'border-[#10B981]/60 bg-[#160709] text-[#10B981]'
+                    }`}
+                  >
+                    {zoneInsight.trainingVerdict === 'overtrained' ? (
+                      <AlertTriangle className="h-4 w-4" />
+                    ) : zoneInsight.trainingVerdict === 'undertrained' ? (
+                      <Clock className="h-4 w-4" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
+                  </span>
+                  <div>
+                    <p className="font-display text-[16px] font-bold text-[#FDF7F7]">
+                      {zoneInsight.verdictTitle}
+                    </p>
+                    <p className="text-[13px] text-[#DFBFC3] mt-0.5 leading-relaxed">
+                      {zoneInsight.verdictGuidance}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 font-mono text-xs shrink-0">
+                  {zoneInsight.stepsPerClip !== null && (
+                    <span className="rounded-md border border-[#47161D] bg-[#100506] px-2.5 py-1 text-[#FDF7F7] tabular-nums">
+                      {zoneInsight.stepsPerClip} steps/clip
+                    </span>
+                  )}
+                  <span className="rounded-md border border-[#47161D] bg-[#100506] px-2.5 py-1 text-[#DFBFC3] tabular-nums">
+                    {zoneInsight.effectiveStepsCompleted} eff. steps
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-lg border border-[#47161D] bg-[#100506] p-3">
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="font-semibold text-[#F59E0B]">Undertrained Risk</span>
+                    <span className="font-mono font-bold text-[#FDF7F7] tabular-nums">
+                      {zoneInsight.undertrainingRiskPercent}%
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-sm bg-[#160709] overflow-hidden border border-[#47161D]">
+                    <div
+                      className="h-full bg-[#F59E0B] transition-all duration-200"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, zoneInsight.undertrainingRiskPercent ?? 0))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-[#47161D] bg-[#100506] p-3">
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="font-semibold text-[#FF5A62]">Overtrained Risk</span>
+                    <span className="font-mono font-bold text-[#FDF7F7] tabular-nums">
+                      {zoneInsight.overtrainingRiskPercent ?? 0}%
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-sm bg-[#160709] overflow-hidden border border-[#47161D]">
+                    <div
+                      className="h-full bg-[#E51923] transition-all duration-200"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, zoneInsight.overtrainingRiskPercent ?? 0))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Sound Feedback Selector (available once real model checkpoints exist) */}
             <div className="space-y-2">
               <p className="text-[13.5px] font-semibold text-[#FDF7F7]">
@@ -277,14 +376,20 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
                 </div>
 
                 <div className="rounded-lg border border-[#47161D] bg-[#100506] p-3.5">
-                  <p className="text-xs font-semibold text-[#E51923]">
-                    Lowest Mel Loss &amp; Dataset Fit
+                  <p className="text-xs font-semibold text-[#10B981]">
+                    Dataset Match &amp; Lowest Mel
                   </p>
                   <p className="text-[14px] font-mono font-bold text-[#FDF7F7] tabular-nums mt-1">
-                    {zoneInsight.bestLoss != null ? `${zoneInsight.bestLoss.toFixed(3)} loss` : 'Observed'}
+                    {zoneInsight.datasetMatchPercent != null
+                      ? `${zoneInsight.datasetMatchPercent}% dataset match`
+                      : zoneInsight.bestLoss != null
+                        ? `${zoneInsight.bestLoss.toFixed(3)} loss`
+                        : 'Observed'}
                   </p>
                   <p className="text-[13px] text-[#C89EA4] mt-1">
-                    {zoneInsight.datasetSummary || 'Measured from observed training epochs.'}
+                    {zoneInsight.bestLoss != null
+                      ? `Min mel ${zoneInsight.bestLoss.toFixed(3)} · ${zoneInsight.datasetSummary || 'Measured from epochs'}`
+                      : zoneInsight.datasetSummary || 'Measured from observed training epochs.'}
                   </p>
                 </div>
 
@@ -300,6 +405,124 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
                   </p>
                 </div>
               </div>
+
+              {zoneInsight.metricBreakdown && zoneInsight.metricBreakdown.length > 0 && (
+                <div className="pt-2 border-t border-[#47161D]/70 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#DFBFC3]">
+                      Multi-Metric &amp; Dataset Fit Breakdown
+                    </p>
+                    <div className="flex items-center gap-2 text-xs font-mono">
+                      {zoneInsight.stabilityScore != null && (
+                        <span className="rounded border border-[#47161D] bg-[#100506] px-2 py-0.5 text-[#DFBFC3] tabular-nums">
+                          Stability {zoneInsight.stabilityScore}%
+                        </span>
+                      )}
+                      {zoneInsight.convergenceLabel && (
+                        <span className="rounded border border-[#E51923]/45 bg-[#100506] px-2 py-0.5 text-[#FF5A62]">
+                          {zoneInsight.convergenceLabel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {zoneInsight.metricBreakdown.map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium text-[#C89EA4]">
+                            {item.label}
+                          </span>
+                          <span
+                            className={`text-xs font-mono font-semibold tabular-nums ${
+                              item.status === 'optimal'
+                                ? 'text-[#10B981]'
+                                : item.status === 'watch'
+                                  ? 'text-[#F59E0B]'
+                                  : 'text-[#FF5A62]'
+                            }`}
+                          >
+                            {item.value}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#AD8288] mt-1">{item.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(zoneInsight.rankedCheckpoints?.length ?? 0) > 0 && (
+                <div className="pt-2 border-t border-[#47161D]/70 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#DFBFC3]">
+                      Top Recommended Checkpoints to Export &amp; Audition
+                    </p>
+                    <span className="text-xs font-mono text-[#AD8288]">
+                      Ranked by Mel convergence + tail stability
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-[#47161D] bg-[#100506]">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-[#47161D] text-[#AD8288] font-mono">
+                        <tr>
+                          <th className="py-2 px-3">Rank</th>
+                          <th className="py-2 px-3">Epoch</th>
+                          <th className="py-2 px-3">Checkpoint File</th>
+                          <th className="py-2 px-3">Mel Loss</th>
+                          <th className="py-2 px-3">Tail Drift</th>
+                          <th className="py-2 px-3">Score</th>
+                          <th className="py-2 px-3">Verdict</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#47161D]/60">
+                        {(zoneInsight.rankedCheckpoints ?? []).map((rk, rIdx) => {
+                          const isTopPick = rk.tag === 'Best Recommended';
+                          return (
+                            <tr key={rk.checkpointName} className={isTopPick ? 'bg-[#200B0E]/70' : ''}>
+                              <td className="py-2 px-3 font-mono font-semibold text-[#FDF7F7] tabular-nums">
+                                #{rIdx + 1}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-[#FDF7F7] tabular-nums">
+                                e{rk.epoch}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-[#DFBFC3]">
+                                {rk.checkpointName}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-[#FDF7F7] tabular-nums">
+                                {rk.melLoss !== null ? rk.melLoss.toFixed(3) : '—'}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-[#C89EA4] tabular-nums">
+                                +{rk.driftPercent.toFixed(1)}%
+                              </td>
+                              <td className="py-2 px-3 font-mono font-semibold text-[#FDF7F7] tabular-nums">
+                                {rk.score}/100
+                              </td>
+                              <td className="py-2 px-3">
+                                <span
+                                  className={`inline-block rounded px-2 py-0.5 font-mono text-[11px] font-semibold ${
+                                    isTopPick
+                                      ? 'bg-[#E51923] text-white'
+                                      : rk.status === 'optimal'
+                                        ? 'border border-[#10B981]/50 bg-[#081A14] text-[#10B981]'
+                                        : rk.status === 'watch'
+                                          ? 'border border-[#F59E0B]/50 bg-[#1B1207] text-[#F59E0B]'
+                                          : 'border border-[#E51923]/60 bg-[#24080D] text-[#FF5A62]'
+                                  }`}
+                                >
+                                  {rk.tag}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             {lastAnalysis?.liveProgress && (
@@ -392,6 +615,17 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   <span>Load Sample Run</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogInput(SAMPLE_OVERTRAIN_LOG);
+                    runParse(SAMPLE_OVERTRAIN_LOG);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#E51923]/50 bg-[#200B0E] px-3.5 py-2 text-xs font-medium text-[#FDF7F7] hover:border-[#E51923] whitespace-nowrap"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 text-[#E51923]" />
+                  <span>Load Overtrained Run</span>
                 </button>
               </div>
 

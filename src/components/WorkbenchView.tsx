@@ -8,7 +8,13 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { ACCENT_HEX, REPO_README_URL } from '../data/defaults';
+import {
+  ACCENT_HEX,
+  LEGACY_CORE_PRETRAIN_D,
+  LEGACY_CORE_PRETRAIN_G,
+  LEGACY_CORE_PRETRAIN_NAME,
+  REPO_README_URL,
+} from '../data/defaults';
 import {
   BlenderRecipe,
   DownloadModelItem,
@@ -87,7 +93,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
   const [modelDownloadOutput, setModelDownloadOutput] = useState(
     'The output information will be displayed here.'
   );
-  const [pretrainedModel, setPretrainedModel] = useState('Titan');
+  const [pretrainedModel, setPretrainedModel] = useState(LEGACY_CORE_PRETRAIN_NAME);
   const [pretrainedSr, setPretrainedSr] = useState<'32k' | '40k' | '48k'>('32k');
   const [customPretrained, setCustomPretrained] = useState(
     Boolean(activeProject?.customPretrained)
@@ -336,6 +342,34 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
       setPretrainedLog((prev) => [...prev, ...logLines]);
       setModelDownloadOutput(
         `Custom Pretrains active (${newItems.length > 0 ? newItems.map((i) => i.name).join(' + ') : 'local pair'}) -> Training Step 4.`
+      );
+      return;
+    }
+
+    if (pretrainedModel === LEGACY_CORE_PRETRAIN_NAME) {
+      const now = Date.now();
+      onUpdateManifest([
+        ...downloadManifest,
+        {
+          id: `pre-legacy-g-${now}`,
+          name: 'G_LegacyCore1.5v2.pth (32k)',
+          url: LEGACY_CORE_PRETRAIN_G,
+          category: 'pretrained',
+        },
+        {
+          id: `pre-legacy-d-${now}`,
+          name: 'D_LegacyCore1.5v2.pth (32k)',
+          url: LEGACY_CORE_PRETRAIN_D,
+          category: 'pretrained',
+        },
+      ]);
+      onApplyCustomPretrained?.(LEGACY_CORE_PRETRAIN_G, LEGACY_CORE_PRETRAIN_D);
+      setPretrainedLog((prev) => [
+        ...prev,
+        `[${timeTag}] Downloaded/queued Legacy Core 1.5 V2 (32k G + D) -> rvc/models/pretraineds/custom/ and activated in Training Step 4.`,
+      ]);
+      setModelDownloadOutput(
+        'Legacy Core 1.5 V2 (32k G & D) queued and linked to Training Step 4 Custom Pretrains.'
       );
       return;
     }
@@ -1034,6 +1068,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = React.memo(({
               onChange={(e) => setPretrainedModel(e.target.value)}
               className="w-full rounded-lg bg-[#100506] border border-[#47161D] px-3 py-2 text-sm text-[#FDF7F7] focus:outline-none focus:border-[#E51923]"
             >
+              <option value={LEGACY_CORE_PRETRAIN_NAME}>Legacy Core 1.5 V2</option>
               <option value="Titan">Titan</option>
               <option value="Snowie">Snowie</option>
               <option value="KLM">KLM</option>

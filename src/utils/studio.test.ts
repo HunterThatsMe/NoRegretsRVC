@@ -2,7 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { APP_VERSION, DEFAULT_PROJECTS, DEFAULT_STUDIO_STATE, SAMPLE_TRAINING_LOG } from '../data/defaults.ts';
+import {
+  APP_VERSION,
+  DEFAULT_PROJECTS,
+  DEFAULT_STUDIO_STATE,
+  LEGACY_CORE_PRETRAIN_D,
+  LEGACY_CORE_PRETRAIN_G,
+  LEGACY_CORE_PRETRAIN_NAME,
+  SAMPLE_OVERTRAIN_LOG,
+  SAMPLE_TRAINING_LOG,
+} from '../data/defaults.ts';
 import { FREE_SAMPLES } from '../data/freeSamples.ts';
 import {
   buildBlendCliCommand,
@@ -16,6 +25,7 @@ import {
   isHuggingFaceRepoUrl,
   isPretrainedZipUrl,
   resolveCustomPretrainedPath,
+  resolvePerGpuBatchSize,
   validateForkConfig,
 } from './rvcTuning.ts';
 import { createTranslator, resolveLocale } from './i18n.ts';
@@ -182,7 +192,10 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   const turboFile = files.find((f) => f.id === 'turbo-py');
   assert.ok(turboFile);
   assert.match(turboFile.content, /cudnn\.benchmark = True/);
-  assert.match(turboFile.content, /fused=True/);
+  assert.match(turboFile.content, /kwargs\["foreach"\] = True/);
+  assert.doesNotMatch(turboFile.content, /fused=True/);
+  assert.match(turboFile.content, /NR_DDP_LR_SCALE/);
+  assert.match(turboFile.content, /destroy_process_group/);
   assert.match(turboFile.content, /gradient_as_bucket_view/);
   assert.match(turboFile.content, /_MIN_SYSTEM_FREE_RAM_BYTES/);
   assert.doesNotMatch(turboFile.content, /allow_tf32/);
@@ -222,7 +235,7 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.match(appFile.content, /"TTS"/);
   assert.match(appFile.content, /"Settings"/);
   assert.doesNotMatch(appFile.content, /active_tab == "Extra"/);
-  assert.doesNotMatch(appFile.content, /TensorBoard/i);
+  assert.doesNotMatch(appFile.content, /active_tab == "TensorBoard"|"TensorBoard"/);
   assert.doesNotMatch(appFile.content, /Refresh Log/);
   assert.doesNotMatch(appFile.content, /Save Language/);
   assert.doesNotMatch(appFile.content, /none_strict/);
@@ -627,6 +640,133 @@ test('collectUnusedBlobUrls protects duplicate queue items and Recent Generated 
   );
   assert.deepEqual(deadAfterClear, [sharedBlob, savedConverted]);
 });
+
+test('multi-metric logParser scores datasetMatchPercent, stabilityScore, and metricBreakdown accurately', () => {
+  const multiMetricLog = [
+    'epoch=5 | step=100 | training_speed=0:00:45 | lowest_value=24.50 (epoch 5) | mel=24.5 kl=1.45 fm=6.8 d_total=2.15 g_total=32.1',
+    'epoch=10 | step=200 | training_speed=0:00:44 | lowest_value=17.80 (epoch 10) | mel=17.8 kl=1.10 fm=4.9 d_total=1.92 g_total=25.4',
+    'epoch=15 | step=300 | training_speed=0:00:44 | lowest_value=13.90 (epoch 15) | mel=13.9 kl=0.88 fm=3.8 d_total=1.88 g_total=20.2',
+  ].join('\n');
+
+  const analysis = parseTrainingNotebookOrLog(multiMetricLog);
+  assert.ok(analysis);
+  assert.equal(analysis.epochsCompleted, 15);
+  assert.ok(analysis.avgKlLoss != null && analysis.avgKlLoss < 1.5);
+  assert.ok(analysis.avgFmLoss != null && analysis.avgFmLoss < 7);
+  assert.ok(analysis.avgDiscLoss != null);
+  assert.ok(analysis.avgGenLoss != null);
+
+  const zone = analyzeTrainingZones(analysis, DEFAULT_PROJECTS[0], 'clean');
+  assert.equal(zone.confidence, 'observed');
+  assert.ok(zone.datasetMatchPercent != null && zone.datasetMatchPercent >= 70 && zone.datasetMatchPercent <= 99);
+  assert.ok(zone.stabilityScore != null && zone.stabilityScore >= 50 && zone.stabilityScore <= 99);
+  assert.ok(Array.isArray(zone.metricBreakdown) && zone.metricBreakdown.length === 8);
+  assert.ok(Array.isArray(zone.rankedCheckpoints) && zone.rankedCheckpoints.length > 0);
+  assert.equal(typeof zone.undertrainingRiskPercent, 'number');
+  assert.equal(typeof zone.overtrainingRiskPercent, 'number');
+});
+
+test('1-GPU Applio batch parity splits per-GPU batch on Dual T4 and overtraining detector catches tail rebound', () => {
+  const split = resolvePerGpuBatchSize(8, 2, true);
+  assert.equal(split.perGpuBatchSize, 4);
+  assert.equal(split.totalEffectiveBatchSize, 8);
+  assert.equal(split.isParitySplit, true);
+
+  const rawDual = resolvePerGpuBatchSize(8, 2, false);
+  assert.equal(rawDual.perGpuBatchSize, 8);
+  assert.equal(rawDual.totalEffectiveBatchSize, 16);
+  assert.equal(rawDual.isParitySplit, false);
+
+  const cmd = buildTrainPipelineCommands({
+    ...DEFAULT_PROJECTS[0],
+    name: 'ParityModel',
+    batchSize: 8,
+    gpuCount: 2,
+    batchParity1Gpu: true,
+    totalEpoch: 200,
+    saveEveryEpoch: 100,
+  });
+  assert.match(cmd, /--batch_size 4\b/);
+  assert.match(cmd, /--save_every_epoch 100\b/);
+  assert.match(cmd, /--total_epoch 200\b/);
+
+  const overParsed = parseTrainingNotebookOrLog(SAMPLE_OVERTRAIN_LOG);
+  assert.ok(overParsed);
+  assert.equal(overParsed.epochsCompleted, 240);
+  const overZone = analyzeTrainingZones(overParsed, { ...DEFAULT_PROJECTS[0], saveEveryEpoch: 20, totalEpoch: 240 }, 'untested');
+  assert.equal(overZone.trainingVerdict, 'overtrained');
+  assert.ok((overZone.overtrainingRiskPercent ?? 0) >= 50, `Expected high overtraining risk, got ${overZone.overtrainingRiskPercent}`);
+  assert.ok((overZone.sweetSpotEpoch ?? 999) < 240, `Expected recommended epoch < 240, got ${overZone.sweetSpotEpoch}`);
+  assert.ok(overZone.stepsPerClip !== null && overZone.stepsPerClip !== undefined && overZone.stepsPerClip > 5);
+  assert.equal(overZone.rankedCheckpoints?.[0]?.epoch, overZone.sweetSpotEpoch);
+});
+
+test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.0 fixes and Legacy Core 1.5 V2 defaults', () => {
+  assert.equal(LEGACY_CORE_PRETRAIN_NAME, 'Legacy Core 1.5 V2');
+  assert.match(LEGACY_CORE_PRETRAIN_G, /G_LegacyCore1\.5v2\.pth/);
+  assert.match(LEGACY_CORE_PRETRAIN_D, /D_LegacyCore1\.5v2\.pth/);
+
+  const bundle = generateForkBundle(
+    DEFAULT_STUDIO_STATE.forkConfig,
+    DEFAULT_PROJECTS[0],
+    DEFAULT_STUDIO_STATE.downloadManifest
+  );
+  const appFile = bundle.find((f) => f.id === 'app-py');
+  const nbFile = bundle.find((f) => f.id === 'notebook');
+  const turboFile = bundle.find((f) => f.id === 'turbo-py');
+  assert.ok(appFile && nbFile && turboFile);
+
+  // Streamlit WebUI checks
+  assert.match(appFile.content, /\[data-testid="InputInstructions"\]/);
+  assert.match(appFile.content, /Lossless Turbo Training/);
+  assert.match(appFile.content, /NR_TURBO_ENABLED/);
+  assert.match(appFile.content, /Dual T4 Effective:/);
+  assert.match(appFile.content, /1-GPU Applio Batch Parity/);
+  assert.match(appFile.content, /nr_batch_parity/);
+  assert.match(appFile.content, /Legacy Core 1\.5 V2/);
+  assert.match(appFile.content, /G_LegacyCore1\.5v2\.pth/);
+  assert.match(appFile.content, /D_LegacyCore1\.5v2\.pth/);
+  assert.match(appFile.content, /ETA Accuracy:/);
+  assert.match(appFile.content, /data-nr-fin-ms=/);
+  assert.match(appFile.content, /Dataset Similarity Fit/);
+  assert.match(appFile.content, /Apply WebUI Update & Restart/);
+  assert.match(appFile.content, /st\.session_state\["nr_trn_log"\] = msg\n\s+st\.rerun\(\)/);
+  assert.match(appFile.content, /def _resolve_pretrain_path/);
+  assert.match(appFile.content, /SimpleNamespace/);
+  assert.match(appFile.content, /Voice Similarity \(Index Rate\)/);
+  assert.match(appFile.content, /Following Step 3/);
+  assert.match(appFile.content, /Custom Override/);
+  assert.match(appFile.content, /Load in Samples/);
+  assert.match(appFile.content, /Undertrained Risk/);
+  assert.match(appFile.content, /Overtrained Risk/);
+
+  // noregrets_turbo.py sync exported weight save fix + NR_TURBO_ENABLED check + world_size DDP tuning
+  assert.match(turboFile.content, /NR_TURBO_ENABLED/);
+  assert.match(turboFile.content, /WORLD_SIZE/);
+  assert.match(turboFile.content, /def flush_saves/);
+  assert.match(turboFile.content, /fname\.startswith\(\("G_", "D_"\)\)/);
+
+  // Kaggle Notebook Cell 1 & Cell 2 monitor checks
+  assert.match(nbFile.content, /credentials\.toml/);
+  assert.match(nbFile.content, /raw\.githubusercontent\.com\/HunterThatsMe\/NoRegretsRVC\/main/);
+  assert.match(nbFile.content, /RED_BOLD = \\"\\\\033\[1;31m\\"/);
+  assert.match(nbFile.content, /🟥/);
+  assert.match(nbFile.content, /\(saved\)/);
+  assert.match(nbFile.content, /Training Stopped/);
+  assert.match(nbFile.content, /Training Resumed/);
+  assert.match(nbFile.content, /Training Complete/);
+  assert.match(nbFile.content, /Idle — waiting for next epoch batches\.\.\./);
+
+  // Final-turn hardening checks
+  assert.match(appFile.content, /nr_set_turbo_chk/);
+  assert.match(appFile.content, /def _read_tb_metrics_for_model/);
+  assert.match(appFile.content, /@st\.cache_data\(ttl=300, show_spinner=False\)\ndef _gpu_info_lines/);
+  assert.match(appFile.content, /noregrets_turbo\.flush_saves\(\)/);
+  assert.match(appFile.content, /extract_model/);
+  assert.match(appFile.content, /NoRegretsRVC_Kaggle\.ipynb/);
+  assert.match(nbFile.content, /_gh_updated_any/);
+});
+
 
 
 

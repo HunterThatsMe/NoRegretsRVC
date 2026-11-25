@@ -19,6 +19,39 @@ elif active_tab == "Samples":
     idxs = _list_index_files(q_filter)
     audio_inputs = _list_audio_inputs()
 
+    _s1_pth = str(st.session_state.get("nr_inf_pth", "")).strip()
+    _s2_mode = str(st.session_state.get("nr_inf_mode", "Audio Files"))
+    _s2_q = st.session_state.get("nr_sample_queue", [])
+    _s2_ready = bool(_s2_q) if _s2_mode == "Audio Files" else bool(str(st.session_state.get("nr_batch_folder", "")).strip())
+    _s3_p = int(st.session_state.get("nr_def_pitch", 0))
+    _s3_p_txt = f"+{_s3_p}" if _s3_p > 0 else str(_s3_p)
+    _s3_idx = float(st.session_state.get("nr_def_idx_rate", 0.75))
+    _s4_n = len(st.session_state.get("nr_saved_samples", []))
+    _rc1, _rc2, _rc3, _rc4 = st.columns(4, gap="small")
+    _rc1.markdown(
+        f'<div class="nr-metric-box" style="{"border-color:rgba(16,185,129,0.55);background:#081A14;" if _s1_pth else ""}">'
+        f'<div class="nr-metric-k">1. Voice Model</div>'
+        f'<div class="nr-metric-v">{html.escape(Path(_s1_pth).name) if _s1_pth else "Pick .pth below"}</div></div>',
+        unsafe_allow_html=True,
+    )
+    _rc2.markdown(
+        f'<div class="nr-metric-box" style="{"border-color:rgba(16,185,129,0.55);background:#081A14;" if _s2_ready else ""}">'
+        f'<div class="nr-metric-k">2. Audio Source</div>'
+        f'<div class="nr-metric-v">{f"{len(_s2_q)} clip(s) queued" if _s2_mode == "Audio Files" and _s2_q else ("Batch folder ready" if _s2_mode == "Batch" and _s2_ready else "Upload or quick-pick")}</div></div>',
+        unsafe_allow_html=True,
+    )
+    _rc3.markdown(
+        f'<div class="nr-metric-box"><div class="nr-metric-k">3. Pitch &amp; Similarity</div>'
+        f'<div class="nr-metric-v">Pitch {_s3_p_txt} · Index {_s3_idx:.2f}</div></div>',
+        unsafe_allow_html=True,
+    )
+    _rc4.markdown(
+        f'<div class="nr-metric-box" style="{"border-color:rgba(16,185,129,0.55);background:#081A14;" if _s4_n > 0 else ""}">'
+        f'<div class="nr-metric-k">4. Convert &amp; Output</div>'
+        f'<div class="nr-metric-v">{f"{_s4_n} sample(s) ready" if _s4_n > 0 else ("Ready to convert" if _s1_pth and _s2_ready else "Complete Steps 1–2")}</div></div>',
+        unsafe_allow_html=True,
+    )
+
     # --- STEP 1: Voice Model ---
     with _nr_card("nr_samples_step_1"):
         _step_head(1, "Voice Model", "Pick the default .pth voice checkpoint and optional FAISS .index file for new clips.")
@@ -293,6 +326,39 @@ elif active_tab == "Samples":
                             })
                             st.rerun()
 
+                # Inline Quick Test Voice (Free Samples) so users never have to leave Samples tab
+                st.markdown('<div class="nr-field-title" style="margin-top:6px">Quick Test Voice (Free Samples — No Upload Needed)</div>', unsafe_allow_html=True)
+                fs_quick_cols = st.columns(4, gap="small")
+                for _fq_idx, _fq_item in enumerate(FREE_SAMPLES_CATALOG[:4]):
+                    _short_lbl = _fq_item["title"].replace(" Speaking ", " ")
+                    if fs_quick_cols[_fq_idx].button(f"+ {_short_lbl}", type="secondary", use_container_width=True, key=f"nr_quick_fs_{_fq_item['id']}"):
+                        _fq_dir = Path(now_dir) / "assets" / "free_samples"
+                        _fq_dir.mkdir(parents=True, exist_ok=True)
+                        _fq_wav = _fq_dir / _fq_item["repoWav"]
+                        if not _fq_wav.is_file():
+                            try:
+                                urllib.request.urlretrieve(f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/public/assets/aistudio/{_fq_item['repoWav']}", _fq_wav)
+                            except Exception:
+                                pass
+                        st.session_state["nr_sample_queue"].append({
+                            "id": _next_clip_id(f"qfs-{_fq_item['id']}"),
+                            "name": _fq_item["fileName"],
+                            "path": str(_fq_wav.relative_to(now_dir)),
+                            "pitch": int(st.session_state.get("nr_def_pitch", 0)),
+                            "index_rate": float(st.session_state.get("nr_def_idx_rate", 0.75)),
+                            "protect": float(st.session_state.get("nr_def_protect", 0.5)),
+                            "volume_envelope": float(st.session_state.get("nr_def_vol_env", 1.0)),
+                            "autotune": bool(st.session_state.get("nr_def_autotune", False)),
+                            "proposed_pitch": bool(st.session_state.get("nr_def_proposed", False)),
+                            "split_audio": bool(st.session_state.get("nr_def_split", False)),
+                            "format": str(st.session_state.get("nr_def_fmt", "WAV")).upper(),
+                            "model": "",
+                            "index": "",
+                            "converted_path": "",
+                        })
+                        st.session_state["nr_inf_log"] = f"Added {_fq_item['title']} following Step 3 settings."
+                        st.rerun()
+
                 q_items = st.session_state["nr_sample_queue"]
                 if q_items:
                     qh_l, qh_m, qh_r = st.columns([3, 1.8, 1], gap="small")
@@ -353,11 +419,16 @@ elif active_tab == "Samples":
                         with st.container(border=True):
                             ch1, ch2, ch3 = st.columns([4, 1.3, 0.55], gap="small")
                             p_str = f'+{clip["pitch"]}' if clip["pitch"] > 0 else str(clip["pitch"])
-                            p_src = "(custom)" if clip.get("custom_pitch") else "(from Step 3)"
+                            p_badge = (
+                                '<span style="border:1px solid rgba(245,158,11,0.5);background:#1B1207;color:#F59E0B;border-radius:4px;padding:1px 6px;font-family:JetBrains Mono,monospace;font-size:10.5px;font-weight:600">Custom Override</span>'
+                                if clip.get("custom_pitch")
+                                else '<span style="border:1px solid rgba(16,185,129,0.5);background:#081A14;color:#10B981;border-radius:4px;padding:1px 6px;font-family:JetBrains Mono,monospace;font-size:10.5px;font-weight:600">Following Step 3</span>'
+                            )
                             status_tag = " · Converted" if clip.get("converted_path") else ""
                             ch1.markdown(
                                 f'<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:#FDF7F7">{idx_c + 1}. {html.escape(clip["name"])}</div>'
-                                f'<div style="font-size:12.5px;color:#C89EA4">Pitch {p_str} {p_src} · Index {clip["index_rate"]:.2f} · {clip["format"].upper()}{status_tag}</div>',
+                                f'<div style="font-size:12.5px;color:#C89EA4;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:2px">'
+                                f'<span>Pitch {p_str}</span>{p_badge}<span>· Index {clip["index_rate"]:.2f} · {clip["format"].upper()}{status_tag}</span></div>',
                                 unsafe_allow_html=True,
                             )
                             if ch2.button("Re-Convert" if clip.get("converted_path") else "Convert", type="primary", use_container_width=True, key=f"nr_conv_one_{cid}"):
@@ -502,7 +573,7 @@ elif active_tab == "Samples":
 
         # --- STEP 3: Pitch & Settings ---
         with _nr_card("nr_samples_step_3"):
-            _step_head(3, "Pitch & Settings", "Adjust Pitch and voice quality here. Changes update queued clips and batch mode automatically.")
+            _step_head(3, "Pitch & Settings", "Master Voice Settings — controls Pitch and Voice Similarity for all clips unless overridden in Step 2.")
 
             st.session_state.setdefault("nr_def_pitch", 0)
             st.session_state["nr_def_pitch"] = _synced_slider_num(
@@ -514,6 +585,23 @@ elif active_tab == "Samples":
                 0,
             )
 
+            _pp_cols = st.columns(5, gap="small")
+            for _pp_idx, (_pp_lbl, _pp_val) in enumerate((("-12 F → M", -12), ("-5 Lower", -5), ("0 Same Pitch", 0), ("+5 Higher", 5), ("+12 M → F", 12))):
+                if _pp_cols[_pp_idx].button(
+                    _pp_lbl,
+                    type="primary" if int(st.session_state.get("nr_def_pitch", 0)) == _pp_val else "secondary",
+                    use_container_width=True,
+                    key=f"nr_pitch_pre_{_pp_val}",
+                ):
+                    st.session_state["nr_def_pitch"] = _pp_val
+                    st.session_state["nr_def_pitch__sl"] = _pp_val
+                    st.session_state["nr_def_pitch__nm"] = _pp_val
+                    st.rerun()
+
+            with st.container(border=True):
+                st.markdown('<div class="nr-field-title">Voice Similarity (Index Rate)</div><div class="nr-field-help">Controls how strongly converted vocals adopt your trained .index accent &amp; timbre (0.75 recommended).</div>', unsafe_allow_html=True)
+                st.session_state["nr_def_idx_rate"] = st.slider("Voice Similarity (Index Rate)", 0.0, 1.0, step=0.05, label_visibility="collapsed", key="nr_adv_idx")
+
             f0_cur = st.session_state.get("nr_def_f0", "rmvpe")
             idx_cur = float(st.session_state.get("nr_def_idx_rate", 0.75))
             env_cur = float(st.session_state.get("nr_def_vol_env", 1.0))
@@ -521,7 +609,6 @@ elif active_tab == "Samples":
             adv_lbl = f"Advanced Settings ({f0_cur} · index {idx_cur:.2f} · env {env_cur:g} · protect {prot_cur:g})"
             with st.expander(adv_lbl, expanded=False):
                 with st.expander("Voice Matching", expanded=True):
-                    st.session_state["nr_def_idx_rate"] = st.slider("Search Feature Ratio", 0.0, 1.0, step=0.05, key="nr_adv_idx")
                     st.session_state["nr_def_vol_env"] = st.slider("Volume Envelope", 0.0, 1.0, step=0.05, key="nr_adv_vol")
                     st.session_state["nr_def_protect"] = st.slider("Protect Voiceless Consonants", 0.0, 0.5, step=0.01, key="nr_adv_prot")
 
@@ -854,6 +941,11 @@ elif active_tab == "Diagnostics":
     auto_log = _read_train_log(m_diag_raw)
     raw_source = st.session_state.get("nr_diag_log_input", "").strip() or auto_log
     parsed_diag = _parse_training_log(raw_source) if raw_source else None
+    if parsed_diag and m_diag_raw and not st.session_state.get("nr_diag_log_input", "").strip():
+        tb_m = _read_tb_metrics_for_model(m_diag_raw)
+        for tb_k in ("avg_kl_loss", "avg_fm_loss", "avg_disc_loss", "avg_gen_loss", "latest_grad_norm"):
+            if parsed_diag.get(tb_k) is None and tb_m.get(tb_k) is not None:
+                parsed_diag[tb_k] = tb_m[tb_k]
     ds_slices_d = _dataset_slice_count(m_diag_raw) if m_diag_raw else 0
 
     eff_batch_d = int(st.session_state["nr_batch_size"]) * max(1, len([x for x in str(st.session_state["nr_gpu_num"]).split("-") if x.strip()]))
@@ -903,16 +995,59 @@ elif active_tab == "Diagnostics":
                     unsafe_allow_html=True,
                 )
         else:
+            _v_kind = str(zone.get("verdict", "sweet_spot"))
+            _v_border = "#E51923" if _v_kind == "overtrained" else ("rgba(245,158,11,0.75)" if _v_kind == "undertrained" else "rgba(16,185,129,0.65)")
+            _v_bg = "#24090D" if _v_kind == "overtrained" else ("#1B1207" if _v_kind == "undertrained" else "#081A14")
+            _under_pct = int(zone.get("under_risk_pct", 10))
+            _over_pct = int(zone.get("over_risk_pct", 10))
+            _spc = zone.get("steps_per_clip")
+            _eff_steps = int(zone.get("effective_steps", 0))
+            _spc_badge = f'<span class="nr-mono-badge">{_spc} steps/clip</span>' if _spc is not None else ""
+            st.markdown(
+                f'<div style="border:1px solid {_v_border};background:{_v_bg};border-radius:10px;padding:14px 16px;margin:10px 0">'
+                f'<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px">'
+                f'<div><div style="font-family:Space Grotesk,sans-serif;font-size:17px;font-weight:700;color:#FDF7F7">{html.escape(str(zone.get("verdict_title", "Optimal Sweet Spot")))}</div>'
+                f'<div style="font-size:13px;color:#DFBFC3;margin-top:3px">{html.escape(str(zone.get("verdict_guidance", "")))}</div></div>'
+                f'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+                f'{_spc_badge}'
+                f'<span class="nr-mono-badge">{_eff_steps} eff. steps</span></div></div></div>',
+                unsafe_allow_html=True,
+            )
+            _rm1, _rm2 = st.columns(2, gap="small")
+            _rm1.markdown(
+                f'<div class="nr-metric-box" style="margin-bottom:8px">'
+                f'<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">'
+                f'<span style="color:#F59E0B;font-weight:600">Undertrained Risk</span>'
+                f'<span style="font-family:JetBrains Mono,monospace;color:#FDF7F7;font-weight:700">{_under_pct}%</span></div>'
+                f'<div style="height:8px;background:#160709;border:1px solid #47161D;border-radius:3px;overflow:hidden">'
+                f'<div style="height:100%;width:{max(0, min(100, _under_pct))}%;background:#F59E0B"></div></div></div>',
+                unsafe_allow_html=True,
+            )
+            _rm2.markdown(
+                f'<div class="nr-metric-box" style="margin-bottom:8px">'
+                f'<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">'
+                f'<span style="color:#FF5A62;font-weight:600">Overtrained Risk</span>'
+                f'<span style="font-family:JetBrains Mono,monospace;color:#FDF7F7;font-weight:700">{_over_pct}%</span></div>'
+                f'<div style="height:8px;background:#160709;border:1px solid #47161D;border-radius:3px;overflow:hidden">'
+                f'<div style="height:100%;width:{max(0, min(100, _over_pct))}%;background:#E51923"></div></div></div>',
+                unsafe_allow_html=True,
+            )
+
             cand_badges = " ".join(
                 f'<span class="nr-mono-badge" style="{"border-color:#E51923;color:#FDF7F7;background:#2A0D12;" if ep_c == zone["best_epoch"] else ""}">Epoch {ep_c}</span>'
                 for ep_c in zone["candidate_epochs"]
             )
             best_loss_lbl = f"{zone['best_loss']:.3f}" if zone["best_loss"] is not None else "—"
+            ds_match_pct = int(zone.get("dataset_match_pct", 0))
+            stab_pct = int(zone.get("stability_pct", 0))
+            conv_lbl = str(zone.get("convergence_label", "Converging"))
             with st.container(border=True):
                 st.markdown(
                     f'<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px">'
                     f'<div><div style="font-size:12.5px;font-weight:600;color:#FF5A63;text-transform:uppercase;letter-spacing:0.04em">Recommended Best Epoch</div>'
-                    f'<div style="font-family:Space Grotesk,sans-serif;font-size:28px;font-weight:700;color:#FDF7F7;line-height:1.15;margin-top:2px">Epoch {zone["best_epoch"]}</div>'
+                    f'<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-top:2px">'
+                    f'<span style="font-family:Space Grotesk,sans-serif;font-size:28px;font-weight:700;color:#FDF7F7;line-height:1.15">Epoch {zone["best_epoch"]}</span>'
+                    f'<span class="nr-mono-badge" style="border-color:#E51923;color:#FDF7F7">Dataset Match: {ds_match_pct}% · Stability {stab_pct}% · {html.escape(conv_lbl)}</span></div>'
                     f'<div style="font-family:JetBrains Mono,monospace;font-size:12.5px;color:#DFBFC3;margin-top:4px">Checkpoint hint: {html.escape(zone["checkpoint_hint"])}</div></div>'
                     f'<div style="text-align:right"><div style="font-size:12px;color:#C89EA4;margin-bottom:5px">Best Checkpoints to Audition</div><div>{cand_badges}</div></div>'
                     f'</div>',
@@ -927,8 +1062,8 @@ elif active_tab == "Diagnostics":
                     unsafe_allow_html=True,
                 )
                 zc2.markdown(
-                    f'<div class="nr-zone-card nr-zone-sweet"><div style="font-size:12.5px;font-weight:600;color:#FDF7F7">Audition Window</div>'
-                    f'<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:#FDF7F7;margin-top:4px">e{zone["sweet_min"]} – e{zone["sweet_max"]}</div>'
+                    f'<div class="nr-zone-card nr-zone-sweet"><div style="font-size:12.5px;font-weight:600;color:#FDF7F7">Dataset Closeness &amp; Window</div>'
+                    f'<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:#FDF7F7;margin-top:4px">{ds_match_pct}% Fit · e{zone["sweet_min"]}–e{zone["sweet_max"]}</div>'
                     f'<div style="font-size:12.5px;color:#DFBFC3;margin-top:4px">Test saved checkpoints in Samples tab.</div></div>',
                     unsafe_allow_html=True,
                 )
@@ -938,6 +1073,52 @@ elif active_tab == "Diagnostics":
                     f'<div style="font-size:12.5px;color:#C89EA4;margin-top:4px">Watch for metallic timbre past this point.</div></div>',
                     unsafe_allow_html=True,
                 )
+
+                breakdown_items = zone.get("metric_breakdown") or []
+                if breakdown_items:
+                    st.markdown('<div class="nr-field-title" style="margin:12px 0 6px 0">Multi-Metric &amp; Dataset Fit Breakdown</div>', unsafe_allow_html=True)
+                    for row_start in range(0, len(breakdown_items), 4):
+                        mb_cols = st.columns(4, gap="small")
+                        for c_idx, mb_item in enumerate(breakdown_items[row_start:row_start + 4]):
+                            st_c = "#10B981" if mb_item.get("status") == "optimal" else ("#F59E0B" if mb_item.get("status") == "watch" else "#FF2B35")
+                            mb_cols[c_idx].markdown(
+                                f'<div class="nr-metric-box" style="margin-bottom:6px">'
+                                f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                                f'<span class="nr-metric-k">{html.escape(str(mb_item["label"]))}</span>'
+                                f'<span style="width:7px;height:7px;border-radius:99px;background:{st_c};display:inline-block"></span></div>'
+                                f'<div class="nr-metric-v">{html.escape(str(mb_item["value"]))}</div>'
+                                f'<div style="font-size:11.5px;color:#C89EA4;margin-top:3px">{html.escape(str(mb_item["detail"]))}</div></div>',
+                                unsafe_allow_html=True,
+                            )
+
+                ranked_ckpts = zone.get("ranked_checkpoints") or []
+                if ranked_ckpts:
+                    st.markdown('<div class="nr-field-title" style="margin:10px 0 6px 0">Top Recommended Checkpoints — 1-Click Audition</div>', unsafe_allow_html=True)
+                    _avail_pths = _list_pth_files("")
+                    _m_slug = _safe_model_slug(m_diag_raw)
+                    for _rk_i, _rk in enumerate(ranked_ckpts):
+                        _rk_ep = int(_rk["epoch"])
+                        _rk_cols = st.columns([0.5, 1.8, 1.0, 1.1, 1.35], gap="small")
+                        _rk_cols[0].markdown(f'<div style="font-family:JetBrains Mono,monospace;font-size:12.5px;font-weight:700;color:#FDF7F7;padding-top:6px">#{_rk_i + 1}</div>', unsafe_allow_html=True)
+                        _rk_cols[1].markdown(
+                            f'<div style="font-family:JetBrains Mono,monospace;font-size:12.5px;color:#FDF7F7">{html.escape(str(_rk["checkpoint"]))}</div>'
+                            f'<div style="font-size:11px;color:#C89EA4">{html.escape(str(_rk["tag"]))} · Score {_rk["score"]}/100</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _rk_cols[2].markdown(f'<div style="font-family:JetBrains Mono,monospace;font-size:12.5px;color:#DFBFC3;padding-top:6px">Mel {float(_rk["mel_loss"]):.3f}</div>', unsafe_allow_html=True)
+                        _rk_cols[3].markdown(f'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:#C89EA4;padding-top:6px">+{float(_rk["drift_pct"]):.1f}% drift</div>', unsafe_allow_html=True)
+                        if _rk_cols[4].button("Load in Samples", type="primary" if _rk.get("status") == "best" else "secondary", use_container_width=True, key=f"nr_diag_load_{_rk_ep}"):
+                            _cand_match = next((p for p in _avail_pths if f"_{_rk_ep}e" in Path(p).name and (not m_diag_raw or _m_slug.lower() in p.lower())), "")
+                            if not _cand_match:
+                                _cand_match = next((p for p in _avail_pths if f"_{_rk_ep}e" in Path(p).name), "")
+                            _chosen_p = _cand_match or (f"logs/{_m_slug}/{_rk['checkpoint']}" if m_diag_raw else str(_rk["checkpoint"]))
+                            st.session_state["nr_inf_pth"] = _chosen_p
+                            _auto_i = _match_index(_chosen_p, _list_index_files(""))
+                            if _auto_i:
+                                st.session_state["nr_inf_idx"] = _auto_i
+                            st.session_state["nr_active_tab"] = "Samples"
+                            _push_toast("Checkpoint Loaded", f"Selected {Path(_chosen_p).name} in Samples.")
+                            st.rerun()
 
             # Model Sound Feedback selector
             st.markdown('<div class="nr-field-title" style="margin:12px 0 6px 0">How does this checkpoint sound in Samples?</div>', unsafe_allow_html=True)
@@ -975,19 +1156,26 @@ elif active_tab == "Diagnostics":
                 max_l = math.ceil(max(p["lowest_loss"] for p in pts) * 1.05)
                 span_l = max(0.5, max_l - min_l)
                 to_x = lambda ep: PAD_L + ((min(max_ep, max(min_ep, ep)) - min_ep) / max(1, max_ep - min_ep)) * PLOT_W
-                coords = [(to_x(p["epoch"]), PAD_T + (1.0 - (p["lowest_loss"] - min_l) / span_l) * PLOT_H, p["epoch"]) for p in pts]
-                poly_pts = " ".join(f"{cx:.1f},{cy:.1f}" for cx, cy, _ in coords)
+                coords = [(to_x(p["epoch"]), PAD_T + (1.0 - (p["lowest_loss"] - min_l) / span_l) * PLOT_H, p["epoch"], float(p["lowest_loss"])) for p in pts]
+                poly_pts = " ".join(f"{cx:.1f},{cy:.1f}" for cx, cy, _, _ in coords)
                 sw_s = to_x(zone["sweet_min"])
                 sw_e = to_x(zone["sweet_max"])
                 best_x = to_x(zone["best_epoch"])
-                dots_svg = "".join(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3.5" fill="#FDF7F7" stroke="#E51923" stroke-width="2" />' for cx, cy, _ in coords)
+                ov_s = to_x(zone["over_start"]) if zone.get("over_start") else W - PAD_R
+                ov_w = max(0.0, (W - PAD_R) - ov_s)
+                ov_rect = f'<rect x="{ov_s:.1f}" y="{PAD_T}" width="{ov_w:.1f}" height="{PLOT_H}" fill="#991B1B" fill-opacity="0.22" />' if ov_w > 4 else ""
+                dots_svg = "".join(
+                    f'<g><circle cx="{cx:.1f}" cy="{cy:.1f}" r="3.5" fill="#FDF7F7" stroke="#E51923" stroke-width="2"><title>Epoch {ep_v} · Mel {mel_v:.3f}</title></circle>'
+                    f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="9" fill="transparent"><title>Epoch {ep_v} · Mel {mel_v:.3f}</title></circle></g>'
+                    for cx, cy, ep_v, mel_v in coords
+                )
                 lbl_coords = [coords[0]] if coords else []
-                for cx, cy, ep_v in coords[1:-1]:
+                for cx, cy, ep_v, mel_v in coords[1:-1]:
                     if cx - lbl_coords[-1][0] >= 55 and coords[-1][0] - cx >= 55:
-                        lbl_coords.append((cx, cy, ep_v))
+                        lbl_coords.append((cx, cy, ep_v, mel_v))
                 if len(coords) > 1:
                     lbl_coords.append(coords[-1])
-                lbls_svg = "".join(f'<text x="{cx:.1f}" y="{H - 5}" text-anchor="middle" fill="#C89EA4" font-size="11" font-family="JetBrains Mono, monospace">e{ep_v}</text>' for cx, _, ep_v in lbl_coords)
+                lbls_svg = "".join(f'<text x="{cx:.1f}" y="{H - 5}" text-anchor="middle" fill="#C89EA4" font-size="11" font-family="JetBrains Mono, monospace">e{ep_v}</text>' for cx, _, ep_v, _ in lbl_coords)
                 grid_svg = "".join(f'<line x1="{PAD_L}" y1="{PAD_T + PLOT_H * r:.1f}" x2="{W - PAD_R}" y2="{PAD_T + PLOT_H * r:.1f}" stroke="#47161D" stroke-dasharray="3 3" />' for r in (0.25, 0.5, 0.75))
 
                 svg_html = (
@@ -997,6 +1185,7 @@ elif active_tab == "Diagnostics":
                     f'<span style="font-family:JetBrains Mono,monospace;font-size:11px;color:#C89EA4">● Best Epoch Window</span></div>'
                     f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto">'
                     f'<rect x="{sw_s:.1f}" y="{PAD_T}" width="{max(8.0, sw_e - sw_s):.1f}" height="{PLOT_H}" fill="#E51923" fill-opacity="0.16" />'
+                    f'{ov_rect}'
                     f'{grid_svg}'
                     f'<line x1="{best_x:.1f}" y1="{PAD_T}" x2="{best_x:.1f}" y2="{PAD_T + PLOT_H}" stroke="#FF2B35" stroke-width="1.5" stroke-dasharray="4 3" />'
                     f'<text x="{best_x:.1f}" y="{PAD_T - 6}" text-anchor="middle" fill="#FDF7F7" font-size="11" font-family="JetBrains Mono, monospace">Best Epoch (e{zone["best_epoch"]})</text>'
@@ -1314,18 +1503,88 @@ elif active_tab == "Settings":
                 unsafe_allow_html=True,
             )
             st.markdown(f'<div class="nr-output-box" style="margin-bottom:10px">{html.escape(st.session_state["nr_ver_status"])}</div>', unsafe_allow_html=True)
-            u1, u2, _ = st.columns([1.45, 1.35, 3.2], gap="small")
+            u1, u2, u3, _ = st.columns([1.45, 1.85, 1.35, 1.4], gap="small")
             if u1.button(_tr("Check for updates"), type="secondary", use_container_width=True, key="nr_set_chk_upd"):
                 try:
                     req = urllib.request.Request("https://api.github.com/repos/HunterThatsMe/NoRegretsRVC/commits/main", headers={"User-Agent": "NoRegretsRVC"})
                     with urllib.request.urlopen(req, timeout=8) as resp:
                         data = json.loads(resp.read().decode("utf-8"))
                         sha = str(data.get("sha", ""))[:7]
-                        st.session_state["nr_ver_status"] = f"NoRegretsRVC Beta version {APP_VERSION} · Latest GitHub commit: {sha}."
+                        st.session_state["nr_ver_status"] = f"NoRegretsRVC Beta version {APP_VERSION} · Latest GitHub commit: {sha}. Kaggle auto-fetches updates on boot or via Apply Update."
                 except Exception as exc:
                     st.session_state["nr_ver_status"] = f"NoRegretsRVC Beta version {APP_VERSION} (offline check: {exc})."
                 st.rerun()
-            if u2.button(_tr("Restart Applio"), type="primary", use_container_width=True, key="nr_set_restart"):
+            if u2.button("Apply WebUI Update & Restart", type="primary", use_container_width=True, key="nr_set_apply_upd"):
+                import base64 as _upd_b64
+                upd_errors: list[str] = []
+                updated_files: list[str] = []
+                raw_targets = [
+                    ("streamlit_app.py", Path(now_dir) / "streamlit_app.py", "CRIMSON_CSS"),
+                    ("noregrets_turbo.py", Path(now_dir) / "noregrets_turbo.py", "def apply("),
+                    (".streamlit/config.toml", Path(now_dir) / ".streamlit" / "config.toml", "primaryColor"),
+                ]
+                for gh_path, dst_path, marker_str in raw_targets:
+                    try:
+                        req_raw = urllib.request.Request(
+                            f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{gh_path}",
+                            headers={"User-Agent": "NoRegretsRVC"},
+                        )
+                        try:
+                            with urllib.request.urlopen(req_raw, timeout=10) as r_up:
+                                body_bytes = r_up.read()
+                        except Exception:
+                            req_alt = urllib.request.Request(
+                                f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/assets/{gh_path}",
+                                headers={"User-Agent": "NoRegretsRVC"},
+                            )
+                            with urllib.request.urlopen(req_alt, timeout=10) as r_up2:
+                                body_bytes = r_up2.read()
+                        body_txt = body_bytes.decode("utf-8", errors="replace")
+                        if marker_str in body_txt and len(body_bytes) > 64:
+                            dst_path.parent.mkdir(parents=True, exist_ok=True)
+                            dst_path.write_bytes(body_bytes)
+                            updated_files.append(gh_path)
+                    except Exception as exc_u:
+                        upd_errors.append(f"{gh_path}: {exc_u}")
+                if not updated_files:
+                    for nb_rel in ("NoRegretsRVC_Kaggle.ipynb", "assets/NoRegretsRVC_Kaggle.ipynb", "public/NoRegretsRVC_Kaggle.ipynb"):
+                        try:
+                            req_nb = urllib.request.Request(
+                                f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{nb_rel}",
+                                headers={"User-Agent": "NoRegretsRVC"},
+                            )
+                            with urllib.request.urlopen(req_nb, timeout=12) as r_nb:
+                                nb_obj = json.loads(r_nb.read().decode("utf-8", errors="replace"))
+                            cell_src = "\\n".join(
+                                "".join(c.get("source", [])) if isinstance(c.get("source"), list) else str(c.get("source", ""))
+                                for c in nb_obj.get("cells", []) if c.get("cell_type") == "code"
+                            )
+                            for pat_rel, label_rel, dst_path, marker_str in (
+                                (r'\\(repo_dir / "streamlit_app\\.py"\\)\\.write_bytes\\(base64\\.b64decode\\("([A-Za-z0-9+/=]+)"\\)\\)', "streamlit_app.py", Path(now_dir) / "streamlit_app.py", "CRIMSON_CSS"),
+                                (r'\\(repo_dir / "noregrets_turbo\\.py"\\)\\.write_bytes\\(base64\\.b64decode\\("([A-Za-z0-9+/=]+)"\\)\\)', "noregrets_turbo.py", Path(now_dir) / "noregrets_turbo.py", "def apply("),
+                                (r'\\(repo_dir / "\\.streamlit" / "config\\.toml"\\)\\.write_bytes\\(base64\\.b64decode\\("([A-Za-z0-9+/=]+)"\\)\\)', ".streamlit/config.toml", Path(now_dir) / ".streamlit" / "config.toml", "primaryColor"),
+                            ):
+                                bm = re.search(pat_rel, cell_src)
+                                if bm:
+                                    dec = _upd_b64.b64decode(bm.group(1))
+                                    if len(dec) > 64 and marker_str in dec.decode("utf-8", errors="replace"):
+                                        dst_path.parent.mkdir(parents=True, exist_ok=True)
+                                        dst_path.write_bytes(dec)
+                                        updated_files.append(label_rel)
+                            if updated_files:
+                                break
+                        except Exception as exc_nb:
+                            upd_errors.append(f"{nb_rel}: {exc_nb}")
+                if updated_files:
+                    restart_flag = Path(now_dir) / "logs" / ".nr_restart_webui"
+                    restart_flag.parent.mkdir(parents=True, exist_ok=True)
+                    restart_flag.write_text("1", encoding="utf-8")
+                    st.session_state["nr_ver_status"] = f"✔ Synced {', '.join(updated_files)} from GitHub main! Reloading WebUI in 2 seconds..."
+                    threading.Timer(1.2, lambda: os._exit(0)).start()
+                else:
+                    st.session_state["nr_ver_status"] = f"Could not fetch newer raw WebUI files from GitHub main ({'; '.join(upd_errors) or 'repo raw unavailable'}). Your active build ({APP_VERSION}) was kept intact."
+                st.rerun()
+            if u3.button(_tr("Restart Applio"), type="secondary", use_container_width=True, key="nr_set_restart"):
                 st.session_state["nr_ver_status"] = "Restarting WebUI session state cleanly..."
                 st.rerun()
     else:
@@ -1358,7 +1617,12 @@ elif active_tab == "Settings":
                 st.rerun()
 
         with _nr_card("nr_set_trn_3"):
-            _step_head(3, "Kaggle Tunnel & Runtime Hardening", "Active Streamlit WebUI runtime, precision, and CUDA session details.")
+            _step_head(3, "Kaggle Tunnel & Runtime Hardening", "Active Streamlit WebUI runtime, precision, Lossless Turbo mode, and CUDA session details.")
+            st.session_state["nr_turbo_training"] = st.checkbox(
+                "Lossless Turbo Training — Always ON by default (adaptive RAM cache, fused AdamW, cuDNN benchmark, DDP bucket view)",
+                value=bool(st.session_state.get("nr_turbo_training", True)),
+                key="nr_set_turbo_chk",
+            )
             rt1, rt2 = st.columns(2, gap="small")
             rt1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Working Directory</div><div class="nr-metric-v">{html.escape(now_dir)}</div></div>', unsafe_allow_html=True)
             rt2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Active Precision</div><div class="nr-metric-v">{html.escape(st.session_state["nr_precision"].upper())}</div></div>', unsafe_allow_html=True)
