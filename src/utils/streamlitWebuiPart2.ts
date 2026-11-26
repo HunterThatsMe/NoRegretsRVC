@@ -43,13 +43,15 @@ if active_tab == "Training":
         s1_c1, s1_c2 = st.columns(2, gap="medium")
         with s1_c1:
             st.markdown('<div class="nr-field-title">Model Name</div><div class="nr-field-help">Identifier used for saved checkpoints, index files, and log directories.</div>', unsafe_allow_html=True)
-            st.session_state["nr_model_name"] = st.text_input(
+            if "nr_model_name_inp" not in st.session_state:
+                st.session_state["nr_model_name_inp"] = st.session_state["nr_model_name"]
+            st.text_input(
                 "Model Name",
-                value=st.session_state["nr_model_name"],
                 placeholder="Enter model name (e.g. VocalModel-32k)",
                 label_visibility="collapsed",
                 key="nr_model_name_inp",
             )
+            st.session_state["nr_model_name"] = st.session_state["nr_model_name_inp"]
         with s1_c2:
             st.markdown('<div class="nr-field-title">Sampling Rate</div><div class="nr-field-help">Target audio resolution in Hz for preprocessed slices and model synthesis.</div>', unsafe_allow_html=True)
             sr_opts = [32000, 40000, 48000]
@@ -90,12 +92,14 @@ if active_tab == "Training":
             a1_l, a1_r = st.columns(2, gap="medium")
             with a1_l:
                 st.markdown('<div class="nr-field-title">GPU Number</div><div class="nr-field-help">Target CUDA device IDs separated by hyphens (for dual T4 sessions keep 0-1).</div>', unsafe_allow_html=True)
-                st.session_state["nr_gpu_num"] = st.text_input(
+                if "nr_gpu_num_inp" not in st.session_state:
+                    st.session_state["nr_gpu_num_inp"] = st.session_state["nr_gpu_num"]
+                st.text_input(
                     "GPU Number",
-                    value=st.session_state["nr_gpu_num"],
                     label_visibility="collapsed",
                     key="nr_gpu_num_inp",
                 )
+                st.session_state["nr_gpu_num"] = st.session_state["nr_gpu_num_inp"]
             with a1_r:
                 st.markdown('<div class="nr-field-title">GPU Information</div><div class="nr-field-help">Detected CUDA accelerator allocation for this session.</div>', unsafe_allow_html=True)
                 _output_box("Detected CUDA Devices", _gpu_info_lines(st.session_state["nr_gpu_num"]))
@@ -125,17 +129,23 @@ if active_tab == "Training":
     with _nr_card("nr_train_step_2"):
         _step_head(2, "Prepare Dataset", "Link your Kaggle dataset folder and split clean vocal segments for training.")
         detected_datasets = _list_datasets()
-        if (not st.session_state["nr_dataset_path"].strip() or "your-username" in st.session_state["nr_dataset_path"]) and detected_datasets:
+        if "nr_ds_path_inp" not in st.session_state:
+            st.session_state["nr_ds_path_inp"] = st.session_state["nr_dataset_path"]
+        cur_ds_val = str(st.session_state.get("nr_ds_path_inp", "")).strip()
+        if (not cur_ds_val or "your-username" in cur_ds_val or not Path(cur_ds_val).is_dir()) and detected_datasets:
             st.session_state["nr_dataset_path"] = detected_datasets[0]
+            st.session_state["nr_ds_path_inp"] = detected_datasets[0]
 
         st.markdown('<div class="nr-field-title">Dataset Path</div><div class="nr-field-help">Mounted Kaggle input path containing your dry vocal recordings.</div>', unsafe_allow_html=True)
-        st.session_state["nr_dataset_path"] = st.text_input(
+        st.text_input(
             "Dataset Path",
-            value=st.session_state["nr_dataset_path"],
             placeholder="/kaggle/input/datasets/your-username/voice-dataset",
             label_visibility="collapsed",
             key="nr_ds_path_inp",
         )
+        st.session_state["nr_dataset_path"] = st.session_state["nr_ds_path_inp"]
+        if detected_datasets:
+            st.caption(f"✔ Auto-detected Kaggle dataset folder ({len(detected_datasets)} found): {st.session_state['nr_dataset_path']}")
 
         ds_l, ds_r = st.columns([3, 1.3], gap="small")
         with ds_l:
@@ -148,7 +158,8 @@ if active_tab == "Training":
             if st.button("Refresh models and datasets", use_container_width=True, key="nr_refresh_ds_btn"):
                 _clear_fs_caches()
                 refreshed_ds = _list_datasets()
-                if refreshed_ds and ("your-username" in st.session_state["nr_dataset_path"] or not st.session_state["nr_dataset_path"].strip()):
+                cur_ds_chk = str(st.session_state.get("nr_dataset_path", "")).strip()
+                if refreshed_ds and ("your-username" in cur_ds_chk or not cur_ds_chk or not Path(cur_ds_chk).is_dir()):
                     st.session_state["nr_dataset_path"] = refreshed_ds[0]
                     st.session_state["nr_ds_path_inp"] = refreshed_ds[0]
                 st.session_state["nr_prep_log"] = f"Refreshed dataset & model scan ({len(refreshed_ds)} dataset folder(s) found)."
@@ -381,7 +392,7 @@ if active_tab == "Training":
 
         st.session_state["nr_batch_size"] = _synced_slider_num(
             "Batch Size",
-            "Target batch size. When 1-GPU Parity is checked, ≥4 batches split evenly across dual T4s so 150–250 epoch runs match 1-GPU Original Applio steps.",
+            "Target batch size. 1-GPU Applio Batch Parity (ON in Settings -> Training) splits >= 4 across dual T4s so under-300 epoch runs match Original Applio step count.",
             "nr_batch_size",
             1,
             64,
@@ -389,13 +400,6 @@ if active_tab == "Training":
         )
         bs_now = int(st.session_state["nr_batch_size"])
         parity_now = bool(st.session_state.get("nr_batch_parity", True))
-        if gpu_cnt_cur >= 2:
-            st.session_state["nr_batch_parity"] = st.checkbox(
-                "1-GPU Applio Batch Parity (<300 Epoch Fix) — Split batch ≥ 4 across both T4s so under-300 epoch runs get full Original Applio steps/epoch",
-                value=parity_now,
-                key="nr_t_batch_parity",
-            )
-            parity_now = bool(st.session_state["nr_batch_parity"])
         is_parity_split = parity_now and gpu_cnt_cur >= 2 and bs_now >= 4
         per_gpu_bs = max(2, bs_now // gpu_cnt_cur) if is_parity_split else bs_now
         eff_now = per_gpu_bs * gpu_cnt_cur
@@ -471,7 +475,10 @@ if active_tab == "Training":
                                     st.session_state["nr_cp_g_pick"] = ""
 
                             st.selectbox("Detected G Pretrain", options=[""] + g_list, format_func=lambda x: "Pick G file..." if x == "" else x, on_change=_on_pick_cp_g, key="nr_cp_g_pick")
-                        st.session_state["nr_custom_g"] = st.text_input("G Pretrained Path or URL", value=st.session_state["nr_custom_g"], placeholder="rvc/models/pretraineds/custom/G.pth", key="nr_cp_g_inp")
+                        if "nr_cp_g_inp" not in st.session_state:
+                            st.session_state["nr_cp_g_inp"] = st.session_state["nr_custom_g"]
+                        st.text_input("G Pretrained Path or URL", placeholder="rvc/models/pretraineds/custom/G.pth", key="nr_cp_g_inp")
+                        st.session_state["nr_custom_g"] = st.session_state["nr_cp_g_inp"]
                         up_cp_g = st.file_uploader("Upload Custom G Pretrain (.pth or .zip)", type=["pth", "zip"], key="nr_cp_g_up")
                         if up_cp_g is not None:
                             g_sig = f"{up_cp_g.name}:{up_cp_g.size}"
@@ -513,7 +520,10 @@ if active_tab == "Training":
                                     st.session_state["nr_cp_d_pick"] = ""
 
                             st.selectbox("Detected D Pretrain", options=[""] + d_list, format_func=lambda x: "Pick D file..." if x == "" else x, on_change=_on_pick_cp_d, key="nr_cp_d_pick")
-                        st.session_state["nr_custom_d"] = st.text_input("D Pretrained Path or URL (optional auto-pair)", value=st.session_state["nr_custom_d"], placeholder="rvc/models/pretraineds/custom/D.pth", key="nr_cp_d_inp")
+                        if "nr_cp_d_inp" not in st.session_state:
+                            st.session_state["nr_cp_d_inp"] = st.session_state["nr_custom_d"]
+                        st.text_input("D Pretrained Path or URL (optional auto-pair)", placeholder="rvc/models/pretraineds/custom/D.pth", key="nr_cp_d_inp")
+                        st.session_state["nr_custom_d"] = st.session_state["nr_cp_d_inp"]
                         up_cp_d = st.file_uploader("Upload Custom D Pretrain (.pth)", type=["pth"], key="nr_cp_d_up")
                         if up_cp_d is not None:
                             d_sig = f"{up_cp_d.name}:{up_cp_d.size}"
@@ -593,6 +603,8 @@ if active_tab == "Training":
                                 "nr_ddp_lr_scale": lr_scale_cfg,
                             },
                         )
+                        if msg.startswith("✖"):
+                            _push_toast("Training Blocked", msg)
                         st.session_state["nr_trn_log"] = msg
                         st.rerun()
         with b_idx:
@@ -668,36 +680,64 @@ if active_tab == "Training":
                         hrs, mins = divmod(mins, 60)
                         rem_lbl = f"~{hrs} hr {mins} min" if hrs > 0 else f"~{mins} min {secs}s"
                         fin_epoch_ms = int((time.time() + rem_sec) * 1000)
-                        fin_ts = time.localtime(time.time() + rem_sec)
-                        fin_time = time.strftime("%I:%M %p", fin_ts).lstrip("0")
-                        fin_day = time.strftime("%a, %b %d", fin_ts)
-                        with _nr_card("nr_train_eta_box"):
-                            st.markdown(
-                                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-                                f'<span style="font-size:12px;font-weight:600;color:#FDF7F7">⏱ Estimated Finish · Updating live</span>'
-                                f'<span class="nr-mono-badge" style="color:#FDF7F7;border-color:#E51923">ETA Accuracy: {acc_pct}%</span></div>',
-                                unsafe_allow_html=True,
+                        if _st_components is not None:
+                            _st_components.html(
+                                f"""<!doctype html>
+                                <html><head><style>
+                                * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }}
+                                body {{ background: transparent; color: #FDF7F7; overflow: hidden; }}
+                                .eta-card {{ background: #160709; border: 1px solid #47161D; border-radius: 12px; padding: 12px 14px; }}
+                                .eta-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }}
+                                .eta-title {{ font-size: 12px; font-weight: 600; color: #FDF7F7; }}
+                                .eta-acc {{ font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: #FDF7F7; background: #200B0E; border: 1px solid #E51923; border-radius: 6px; padding: 2px 8px; font-variant-numeric: tabular-nums; }}
+                                .eta-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
+                                .eta-box {{ background: #100506; border: 1px solid #47161D; border-radius: 8px; padding: 8px 10px; }}
+                                .eta-k {{ font-size: 10.5px; font-weight: 600; color: #AD8288; letter-spacing: 0.03em; }}
+                                .eta-v {{ font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; font-weight: 700; color: #FDF7F7; margin-top: 3px; font-variant-numeric: tabular-nums; }}
+                                </style></head><body>
+                                <div class="eta-card" data-nr-fin-ms="{fin_epoch_ms}">
+                                  <div class="eta-top">
+                                    <span class="eta-title">⏱ Estimated Finish · Updating live</span>
+                                    <span class="eta-acc">ETA Accuracy: {acc_pct}%</span>
+                                  </div>
+                                  <div class="eta-grid">
+                                    <div class="eta-box"><div class="eta-k">REMAINING TIME</div><div class="eta-v">Finishes in {html.escape(rem_lbl)}</div></div>
+                                    <div class="eta-box"><div class="eta-k">YOUR LOCAL TIME</div><div class="eta-v" id="nr-fin-local-time">--:--</div></div>
+                                    <div class="eta-box"><div class="eta-k">FINISH DAY</div><div class="eta-v" id="nr-fin-local-day">Today</div></div>
+                                  </div>
+                                </div>
+                                <script>
+                                  (function() {{
+                                    var fin = new Date({fin_epoch_ms});
+                                    var now = new Date();
+                                    var tEl = document.getElementById("nr-fin-local-time");
+                                    var dEl = document.getElementById("nr-fin-local-day");
+                                    if (tEl) tEl.textContent = fin.toLocaleTimeString([], {{ hour: "numeric", minute: "2-digit" }});
+                                    var finMid = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate()).getTime();
+                                    var nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                                    var diffDays = Math.round((finMid - nowMid) / 86400000);
+                                    var dayStr = fin.toLocaleDateString([], {{ weekday: "short", month: "short", day: "numeric" }});
+                                    var prefix = diffDays === 0 ? "Today · " : (diffDays === 1 ? "Tomorrow · " : "");
+                                    if (dEl) dEl.textContent = prefix + dayStr;
+                                  }})();
+                                </script></body></html>""",
+                                height=122,
                             )
-                            e_c1, e_c2, e_c3 = st.columns(3, gap="small")
-                            e_c1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">REMAINING TIME</div><div class="nr-metric-v">Finishes in {rem_lbl}</div></div>', unsafe_allow_html=True)
-                            e_c2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">YOUR LOCAL TIME</div><div class="nr-metric-v"><span id="nr-fin-local-time" data-nr-fin-ms="{fin_epoch_ms}">{fin_time}</span></div></div>', unsafe_allow_html=True)
-                            e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v"><span id="nr-fin-local-day" data-nr-fin-ms="{fin_epoch_ms}">{fin_day}</span></div></div>', unsafe_allow_html=True)
-                            if _st_components is not None:
-                                _st_components.html(
-                                    f"""<script>
-                                    (function() {{
-                                      try {{
-                                        var doc = window.parent.document;
-                                        var d = new Date({fin_epoch_ms});
-                                        var tEl = doc.getElementById("nr-fin-local-time");
-                                        var dEl = doc.getElementById("nr-fin-local-day");
-                                        if (tEl) tEl.textContent = d.toLocaleTimeString([], {{ hour: "numeric", minute: "2-digit" }});
-                                        if (dEl) dEl.textContent = d.toLocaleDateString([], {{ weekday: "short", month: "short", day: "numeric" }});
-                                      }} catch (e) {{}}
-                                    }})();
-                                    </script>""",
-                                    height=0,
+                        else:
+                            fin_ts = time.localtime(time.time() + rem_sec)
+                            fin_time = time.strftime("%I:%M %p", fin_ts).lstrip("0")
+                            fin_day = time.strftime("%a, %b %d", fin_ts)
+                            with _nr_card("nr_train_eta_box"):
+                                st.markdown(
+                                    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+                                    f'<span style="font-size:12px;font-weight:600;color:#FDF7F7">⏱ Estimated Finish · Updating live</span>'
+                                    f'<span class="nr-mono-badge" style="color:#FDF7F7;border-color:#E51923">ETA Accuracy: {acc_pct}%</span></div>',
+                                    unsafe_allow_html=True,
                                 )
+                                e_c1, e_c2, e_c3 = st.columns(3, gap="small")
+                                e_c1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">REMAINING TIME</div><div class="nr-metric-v">Finishes in {rem_lbl}</div></div>', unsafe_allow_html=True)
+                                e_c2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">SERVER TIME</div><div class="nr-metric-v" data-nr-fin-ms="{fin_epoch_ms}">{fin_time}</div></div>', unsafe_allow_html=True)
+                                e_c3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">FINISH DAY</div><div class="nr-metric-v">{fin_day}</div></div>', unsafe_allow_html=True)
                 _output_box("Training output", _filter_status_lines(st.session_state["nr_trn_log"], st.session_state["nr_trn_log"]))
                 if done_t and _HAS_FRAGMENT:
                     try:
@@ -838,14 +878,6 @@ elif active_tab == "Models":
         with p_r:
             sr_opts_pre = ["32k"] if pre_arch == "Legacy Core 1.5 V2" else ["32k", "40k", "48k"]
             pre_sr = st.selectbox("Sampling Rate", sr_opts_pre, index=0, key="nr_pre_sr_sel")
-
-        if pre_arch == "Legacy Core 1.5 V2":
-            st.markdown(
-                '<div style="font-family:JetBrains Mono,monospace;font-size:11.5px;color:#DFBFC3;background:#100506;border:1px solid #47161D;border-radius:8px;padding:8px 12px;margin:4px 0 10px 0">'
-                '<span style="color:#E51923;font-weight:700">Default 1-Click Pretrain:</span> Legacy Core 1.5 V2 (32k G + D) — auto-links directly to Training Custom Pretrains upon download.'
-                '</div>',
-                unsafe_allow_html=True,
-            )
 
         use_custom_pre_m = st.checkbox("Custom Pretrains", value=bool(st.session_state["nr_custom_pre"]), key="nr_models_cpre_chk")
         cpre_g_in = ""

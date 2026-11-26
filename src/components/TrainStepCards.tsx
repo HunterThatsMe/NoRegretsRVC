@@ -963,7 +963,7 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
               <p className="text-[13px] text-[#C89EA4] mt-0.5">
                 {batchAlloc.isParitySplit
                   ? `Splitting evenly (${batchAlloc.perGpuBatchSize} per GPU × ${gpuCount}) so total effective batch stays ${batchAlloc.totalEffectiveBatchSize}, matching 1-GPU Original Applio optimizer steps/epoch.`
-                  : "Per-GPU slice batch size. Keep 1-GPU Parity checked for ≥4 batches so dual T4s don't cut steps/epoch in half."}
+                  : '1-GPU Applio Batch Parity (<300 Epoch Fix) is ON by default in Settings → Training and splits ≥4 batches across dual T4s.'}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -1002,22 +1002,6 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
             <span>1</span>
             <span>64</span>
           </div>
-          {gpuCount > 1 && (
-            <label className="mt-3 flex items-start gap-2.5 rounded-lg border border-[#47161D] bg-[#160709] px-3 py-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={batchParity1Gpu}
-                onChange={(e) =>
-                  onPatchProject({ batchParity1Gpu: e.target.checked })
-                }
-                className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
-              />
-              <span className="text-xs text-[#DFBFC3] leading-snug">
-                <strong className="text-[#FDF7F7]">1-GPU Applio Batch Parity (&lt;300 Epoch Fix)</strong>{' '}
-                — Automatically splits batch sizes ≥ 4 across both T4s (e.g. 8 → 4/GPU × 2) so 150–250 epoch runs receive the full Original Applio step count.
-              </span>
-            </label>
-          )}
         </div>
 
         {/* Save Every Epoch (default 5) */}

@@ -58,6 +58,8 @@ export function buildStreamlitHeaderAndTabsPart1(
   return `"""${BRAND_NAME} Streamlit WebUI — exact parity with ${BRAND_NAME} Studio."""
 from __future__ import annotations
 
+NR_BUILD_REV = 2026112603
+
 import hmac
 import html
 import inspect
@@ -1141,6 +1143,42 @@ def _start_core_task_bg(
     toast_title: str,
     done_note: str,
 ) -> str:
+    raw_m = model_name.strip() or "UnnamedModel"
+    safe_m = _safe_model_slug(model_name)
+    m_log_dir = Path(now_dir) / "logs" / raw_m
+    if not m_log_dir.is_dir() and (Path(now_dir) / "logs" / safe_m).is_dir():
+        m_log_dir = Path(now_dir) / "logs" / safe_m
+    if task_kind == "preprocess":
+        ds_dir = Path(str(kwargs.get("dataset_path", "")).strip())
+        if not ds_dir.is_dir():
+            err_msg = f"✖ Dataset folder not found: {ds_dir}. Enter or auto-detect a valid Dataset Path in Step 2 first."
+            print(err_msg, flush=True)
+            return err_msg
+        audio_exts = (".wav", ".mp3", ".flac", ".ogg", ".m4a")
+        has_audio = any(
+            fn.lower().endswith(audio_exts)
+            for _, _, files in os.walk(str(ds_dir), followlinks=True)
+            for fn in files
+        )
+        if not has_audio:
+            err_msg = f"✖ No audio files (.wav/.mp3/.flac/.ogg/.m4a) found inside {ds_dir}."
+            print(err_msg, flush=True)
+            return err_msg
+    elif task_kind == "extract":
+        sdir_chk = m_log_dir / "sliced_audios"
+        n_slices = sum(1 for f in sdir_chk.glob("*.wav") if f.is_file()) if sdir_chk.is_dir() else 0
+        if n_slices == 0:
+            err_msg = f"✖ Cannot extract features: 0 sliced audio clips in {m_log_dir.name}/sliced_audios. Check your Dataset Path and run Preprocess Dataset in Step 2 first."
+            print(err_msg, flush=True)
+            return err_msg
+    elif task_kind == "index":
+        edir_chk = m_log_dir / "extracted"
+        n_feats = sum(1 for f in edir_chk.glob("*.npy") if f.is_file()) if edir_chk.is_dir() else 0
+        if n_feats == 0:
+            err_msg = f"✖ Cannot build index: 0 feature embeddings in {m_log_dir.name}/extracted. Run Step 2 (Preprocess Dataset) and Step 3 (Extract Features) first."
+            print(err_msg, flush=True)
+            return err_msg
+
     meta_p, log_p = _task_paths(task_kind)
     args_p = meta_p.with_suffix(".args.json")
     if meta_p.is_file():
@@ -1160,8 +1198,10 @@ def _start_core_task_bg(
         f"meta_p = Path({json.dumps(str(meta_p))})\\n"
         f"args_p = Path({json.dumps(str(args_p))})\\n"
         f"task_kind = {json.dumps(task_kind)}\\n"
-        f"model_safe = {json.dumps(_safe_model_slug(model_name))}\\n"
+        f"model_raw = {json.dumps(raw_m)}\\n"
+        f"model_safe = {json.dumps(safe_m)}\\n"
         "status = 'done'\\n"
+        "exit_code = 0\\n"
         "try:\\n"
         "    kw = json.loads(args_p.read_text(encoding='utf-8'))\\n"
         "    import core\\n"
@@ -1173,21 +1213,37 @@ def _start_core_task_bg(
         "        print(' '.join(str(x) for x in res if x is not None), flush=True)\\n"
         "    elif res is not None:\\n"
         "        print(str(res), flush=True)\\n"
+        "    model_dir = Path('logs') / (model_raw if (Path('logs') / model_raw).is_dir() else model_safe)\\n"
         "    if task_kind == 'preprocess':\\n"
-        "        sdir = Path('logs') / model_safe / 'sliced_audios'\\n"
-        "        cnt = sum(1 for f in sdir.glob('*.wav')) if sdir.is_dir() else 0\\n"
-        "        print(f'\\\\n✔ Preprocess complete! ({cnt} sliced audio clip(s) ready in logs/{model_safe}/sliced_audios)', flush=True)\\n"
+        "        sdir = model_dir / 'sliced_audios'\\n"
+        "        cnt = sum(1 for f in sdir.glob('*.wav') if f.is_file()) if sdir.is_dir() else 0\\n"
+        "        if cnt == 0:\\n"
+        "            status = 'error'\\n"
+        "            exit_code = 2\\n"
+        "            print(f'\\\\n✖ Preprocess produced 0 sliced audio clip(s) in {model_dir}/sliced_audios! Verify Dataset Path.', flush=True)\\n"
+        "        else:\\n"
+        "            print(f'\\\\n✔ Preprocess complete! ({cnt} sliced audio clip(s) ready in {model_dir}/sliced_audios)', flush=True)\\n"
         "    elif task_kind == 'extract':\\n"
-        "        edir = Path('logs') / model_safe / 'extracted'\\n"
-        "        cnt = sum(1 for f in edir.glob('*.npy')) if edir.is_dir() else 0\\n"
-        "        print(f'\\\\n✔ Feature extraction complete! ({cnt} feature embedding(s) saved in logs/{model_safe})', flush=True)\\n"
+        "        edir = model_dir / 'extracted'\\n"
+        "        cnt = sum(1 for f in edir.glob('*.npy') if f.is_file()) if edir.is_dir() else 0\\n"
+        "        if cnt == 0:\\n"
+        "            status = 'error'\\n"
+        "            exit_code = 2\\n"
+        "            print(f'\\\\n✖ Feature extraction saved 0 embeddings in {model_dir}/extracted! Run Preprocess Dataset first.', flush=True)\\n"
+        "        else:\\n"
+        "            print(f'\\\\n✔ Feature extraction complete! ({cnt} feature embedding(s) saved in {model_dir})', flush=True)\\n"
         "    elif task_kind == 'index':\\n"
-        "        mdir = Path('logs') / model_safe\\n"
-        "        idxs = [f.name for f in mdir.glob('*.index') if 'trained' not in f.name.lower()] if mdir.is_dir() else []\\n"
-        "        idx_lbl = idxs[0] if idxs else 'added.index'\\n"
-        "        print(f'\\\\n✔ Index generation complete! ({idx_lbl} ready for inference)', flush=True)\\n"
+        "        mdir = model_dir\\n"
+        "        idxs = [f.name for f in mdir.glob('*.index') if 'trained' not in f.name.lower() and f.is_file() and f.stat().st_size > 0] if mdir.is_dir() else []\\n"
+        "        if not idxs:\\n"
+        "            status = 'error'\\n"
+        "            exit_code = 2\\n"
+        "            print(f'\\\\n✖ Index generation failed: no added.index created in {model_dir}.', flush=True)\\n"
+        "        else:\\n"
+        "            print(f'\\\\n✔ Index generation complete! ({idxs[0]} ready for inference)', flush=True)\\n"
         "except Exception:\\n"
         "    status = 'error'\\n"
+        "    exit_code = 1\\n"
         "    traceback.print_exc()\\n"
         "    sys.stdout.flush()\\n"
         "    sys.stderr.flush()\\n"
@@ -1199,6 +1255,8 @@ def _start_core_task_bg(
         "        meta_p.write_text(json.dumps(meta), encoding='utf-8')\\n"
         "    except Exception:\\n"
         "        pass\\n"
+        "if exit_code:\\n"
+        "    sys.exit(exit_code)\\n"
     )
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
@@ -1502,7 +1560,7 @@ def _poll_core_tasks() -> tuple[bool, bool]:
             except Exception:
                 if not txt and log_p.is_file():
                     txt = _read_tail_text(log_p, 32768)
-                has_err = ("Traceback (" in txt) or (f"✖ {task_kind.capitalize()} failed" in txt) or ("✖ Pretrained download failed" in txt) or ("NameError:" in txt)
+                has_err = ("Traceback (" in txt) or ("✖ " in txt) or ("could not be loaded correctly" in txt) or ("NameError:" in txt)
                 meta["status"] = "error" if has_err else "done"
                 try:
                     meta_p.write_text(json.dumps(meta), encoding="utf-8")
@@ -1572,7 +1630,13 @@ def _poll_core_tasks() -> tuple[bool, bool]:
                 if tlp.is_file():
                     try:
                         t_txt = _read_tail_text(tlp, 32768)
-                        train_err = ("Traceback (" in t_txt) or ("✖ Training exited with error code" in t_txt) or ("NameError:" in t_txt)
+                        has_ep = bool(re.search(r"epoch=\\d+\\s*\\|\\s*step=\\d+", t_txt))
+                        train_err = (
+                            ("Traceback (" in t_txt)
+                            or ("✖ " in t_txt)
+                            or ("NameError:" in t_txt)
+                            or (not has_ep and "✔ Training complete!" not in t_txt)
+                        )
                     except Exception:
                         pass
                 tmeta["status"] = "error" if train_err else "done"
@@ -1583,7 +1647,7 @@ def _poll_core_tasks() -> tuple[bool, bool]:
                     completed = True
                     changed = True
                     if train_err:
-                        _push_toast("Training Failed", f"Error during training for {tmodel or 'your model'} — check Training output box.")
+                        _push_toast("Training Failed", f"Training exited early before completing epochs for {tmodel or 'your model'} — check Training output box.")
                     else:
                         _push_toast("Training Complete", f"Training finished for {tmodel or 'your model'} — open Diagnostics to inspect best epoch.")
         except Exception:
@@ -1640,6 +1704,31 @@ def _read_train_log(model_name: str, max_chars: int = 16384) -> str:
 
 
 def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
+    raw_m = model_name.strip() or "UnnamedModel"
+    safe_m = _safe_model_slug(model_name)
+    m_log_dir = Path(now_dir) / "logs" / raw_m
+    if not m_log_dir.is_dir() and (Path(now_dir) / "logs" / safe_m).is_dir():
+        m_log_dir = Path(now_dir) / "logs" / safe_m
+    sdir_chk = m_log_dir / "sliced_audios"
+    edir_chk = m_log_dir / "extracted"
+    fl_chk = m_log_dir / "filelist.txt"
+    n_slices_chk = sum(1 for f in sdir_chk.glob("*.wav") if f.is_file()) if sdir_chk.is_dir() else 0
+    n_feats_chk = sum(1 for f in edir_chk.glob("*.npy") if f.is_file()) if edir_chk.is_dir() else 0
+    n_fl_chk = (
+        sum(1 for ln in fl_chk.read_text(encoding="utf-8", errors="ignore").splitlines() if ln.strip())
+        if fl_chk.is_file()
+        else 0
+    )
+    if n_slices_chk == 0 or n_feats_chk == 0 or n_fl_chk == 0:
+        err_msg = (
+            f"✖ Cannot start training for '{model_name}': found {n_slices_chk} sliced clip(s), "
+            f"{n_feats_chk} feature embedding(s), and {n_fl_chk} filelist entry(s) in logs/{m_log_dir.name}. "
+            "Verify your Dataset Path and run Step 2 (Preprocess Dataset) and Step 3 (Extract Features) completely first."
+        )
+        st.session_state["nr_is_training"] = False
+        print(err_msg, flush=True)
+        return err_msg
+
     log_p = _train_log_path(model_name)
     pid_p = log_p.parent / "nr_train.pid"
     args_p = log_p.parent / "nr_train.args.json"
@@ -1655,9 +1744,10 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
     args_p.write_text(json.dumps(kwargs, ensure_ascii=False), encoding="utf-8")
 
     cmd_script = (
-        "import sys, os, json, re, inspect, urllib.request, urllib.parse, types; from pathlib import Path\\n"
+        "import sys, os, json, re, inspect, time, urllib.request, urllib.parse, types; from pathlib import Path\\n"
         "sys.path.insert(0, os.getcwd())\\n"
         f"kw = json.loads(Path({json.dumps(str(args_p))}).read_text(encoding='utf-8'))\\n"
+        "train_start_ts = time.time()\\n"
         "def _resolve_pretrain_path(raw_val, role):\\n"
         "    val = str(raw_val or '').strip()\\n"
         "    if not val:\\n"
@@ -1716,7 +1806,7 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
         "    if m_dir.is_dir() and tot_ep > 0 and kw.get('save_every_weights', True):\\n"
         "        has_final = list(m_dir.glob(f'*_{tot_ep}e_*.pth')) or list(m_dir.glob(f'*_{tot_ep}e.pth'))\\n"
         "        if not has_final:\\n"
-        "            g_cands = sorted([p for p in m_dir.glob('G_*.pth') if p.is_file() and p.stat().st_size > 1024], key=lambda p: p.stat().st_mtime, reverse=True)\\n"
+        "            g_cands = sorted([p for p in m_dir.glob('G_*.pth') if p.is_file() and p.stat().st_size > 1024 and p.stat().st_mtime >= train_start_ts], key=lambda p: p.stat().st_mtime, reverse=True)\\n"
         "            if g_cands:\\n"
         "                g_best = g_cands[0]\\n"
         "                import torch\\n"
@@ -1797,21 +1887,56 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
     except Exception:
         pass
 
+    train_started_ts = time.time()
+
     def _pump() -> None:
+        epochs_logged = 0
         try:
             if proc.stdout is not None:
                 for ln in proc.stdout:
+                    if re.search(r"epoch=\\d+\\s*\\|\\s*step=\\d+", ln):
+                        epochs_logged += 1
                     lf.write(ln)
                     lf.flush()
                     print(ln, end="", flush=True)
         finally:
             rc = proc.wait()
-            if rc == 0:
-                lf.write("\\n✔ Training complete!\\n")
+            elapsed_s = max(0.0, time.time() - train_started_ts)
+            new_ckpt = any(
+                p.is_file() and p.stat().st_mtime >= train_started_ts
+                for p in m_log_dir.glob("G_*.pth")
+            ) if m_log_dir.is_dir() else False
+            was_stopped = False
+            try:
+                if ACTIVE_TRAIN_META.is_file():
+                    tmeta_chk = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8"))
+                    was_stopped = tmeta_chk.get("status") == "stopped"
+            except Exception:
+                pass
+            fin_status = "done"
+            if was_stopped:
+                fin_status = "stopped"
+                fin_ln = "\\n■ Training stopped by user.\\n"
+            elif rc == 0 and (epochs_logged > 0 or new_ckpt):
+                fin_ln = "\\n✔ Training complete!\\n"
+            elif rc == 0:
+                fin_status = "error"
+                fin_ln = f"\\n✖ Training failed to start or exited early in {elapsed_s:.1f}s (0 epochs completed — verify Step 2 Preprocess, Step 3 Extract Features, and CUDA/GPU setup).\\n"
             else:
-                lf.write(f"\\n✖ Training exited with error code {rc}.\\n")
+                fin_status = "error"
+                fin_ln = f"\\n✖ Training exited with error code {rc} after {elapsed_s:.1f}s.\\n"
+            lf.write(fin_ln)
             lf.flush()
+            print(fin_ln, end="", flush=True)
             lf.close()
+            try:
+                if ACTIVE_TRAIN_META.is_file():
+                    tmeta = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8"))
+                    if tmeta.get("status") == "running":
+                        tmeta["status"] = fin_status
+                        ACTIVE_TRAIN_META.write_text(json.dumps(tmeta), encoding="utf-8")
+            except Exception:
+                pass
 
     threading.Thread(target=_pump, daemon=True).start()
     st.session_state["nr_is_training"] = True
@@ -1819,7 +1944,8 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
 
 
 def _stop_training(model_name: str) -> str:
-    pid_p = _train_log_path(model_name).parent / "nr_train.pid"
+    log_p = _train_log_path(model_name)
+    pid_p = log_p.parent / "nr_train.pid"
     st.session_state["nr_is_training"] = False
     killed = 0
     pids: list[int] = []
@@ -1850,7 +1976,14 @@ def _stop_training(model_name: str) -> str:
             except Exception:
                 pass
     _clear_fs_caches()
-    return f"Stop signal sent to training ({killed} process group(s))."
+    stop_msg = f"Stop signal sent to training ({killed} process group(s))."
+    try:
+        with open(log_p, "a", encoding="utf-8") as _lf:
+            _lf.write(f"\\n{stop_msg}\\n")
+    except Exception:
+        pass
+    print(stop_msg, flush=True)
+    return stop_msg
 
 
 def _is_training_process_alive(model_name: str) -> bool:
@@ -1876,24 +2009,34 @@ def _list_models() -> list[str]:
 
 @st.cache_data(ttl=6, show_spinner=False)
 def _dataset_slice_count(model_name: str) -> int:
-    if not model_name.strip():
+    raw_m = model_name.strip()
+    if not raw_m:
         return 0
-    sdir = Path(now_dir) / "logs" / _safe_model_slug(model_name) / "sliced_audios"
-    if not sdir.is_dir():
-        return 0
-    return sum(1 for p in sdir.iterdir() if p.is_file() and p.suffix.lower() == ".wav")
+    for cand in (raw_m, _safe_model_slug(raw_m)):
+        sdir = Path(now_dir) / "logs" / cand / "sliced_audios"
+        if sdir.is_dir():
+            cnt = sum(1 for p in sdir.iterdir() if p.is_file() and p.suffix.lower() == ".wav")
+            if cnt > 0:
+                return cnt
+    return 0
 
 
 @st.cache_data(ttl=6, show_spinner=False)
 def _list_datasets() -> list[str]:
     found: list[str] = []
+    seen_real: set[str] = set()
     audio_exts = (".wav", ".mp3", ".flac", ".ogg", ".m4a")
-    max_depth = 4
+    max_depth = 5
     for base in (Path("/kaggle/input"), Path(now_dir) / "assets" / "datasets"):
         if not base.is_dir():
             continue
         base_parts = len(base.parts)
-        for root_str, dirs, files in os.walk(str(base)):
+        for root_str, dirs, files in os.walk(str(base), followlinks=True):
+            real_root = os.path.realpath(root_str)
+            if real_root in seen_real:
+                dirs[:] = []
+                continue
+            seen_real.add(real_root)
             cur_p = Path(root_str)
             depth = len(cur_p.parts) - base_parts
             dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d != "__pycache__")
@@ -2075,6 +2218,7 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
                 low_ep = int(lm.group(2)) if lm.group(2) else ep
                 if best_recorded is None or low < best_recorded[0]:
                     best_recorded = (low, low_ep)
+            mel_m = mel_re.search(raw_ln)
             mel_v = float(mel_m.group(1)) if mel_m else low
             kl_m = kl_re.search(raw_ln)
             fm_m = fm_re.search(raw_ln)
@@ -2710,7 +2854,10 @@ if _auth_pass and not st.session_state.get("nr_authed", False):
 # TOP BAR & 8-TAB NAVIGATION (EXACT PREVIEW MATCH)
 # ==============================================================================
 gpu_cnt = max(1, len([x for x in str(st.session_state["nr_gpu_num"]).split("-") if x.strip()]))
-eff_batch = int(st.session_state["nr_batch_size"]) * gpu_cnt
+bs_top = int(st.session_state["nr_batch_size"])
+parity_top = bool(st.session_state.get("nr_batch_parity", True))
+per_gpu_top = max(2, bs_top // gpu_cnt) if (parity_top and gpu_cnt >= 2 and bs_top >= 4) else bs_top
+eff_batch = per_gpu_top * gpu_cnt
 active_model_label = st.session_state["nr_model_name"].strip() or "Untitled Model"
 
 st.markdown(

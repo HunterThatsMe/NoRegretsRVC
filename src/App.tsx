@@ -270,6 +270,19 @@ export default function App() {
     []
   );
 
+  const handleUpdateBatchParityAcrossProjects = useCallback(
+    (batchParity1Gpu: boolean) => {
+      setState((prev) => ({
+        ...prev,
+        projects: prev.projects.map((p) => ({
+          ...p,
+          batchParity1Gpu,
+        })),
+      }));
+    },
+    []
+  );
+
   const handleUpdateForkConfig = useCallback((forkConfig: ForkConfig) => {
     setState((prev) => ({ ...prev, forkConfig }));
   }, []);
@@ -487,6 +500,7 @@ export default function App() {
                 onUpdateGeneral={handleUpdateGeneral}
                 onUpdateTrainingSettings={handleUpdateTrainingSettings}
                 onUpdatePrecisionAcrossProjects={handleUpdatePrecisionAcrossProjects}
+                onUpdateBatchParityAcrossProjects={handleUpdateBatchParityAcrossProjects}
                 onUpdateForkConfig={handleUpdateForkConfig}
               />
             )}

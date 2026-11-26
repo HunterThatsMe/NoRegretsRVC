@@ -1617,18 +1617,23 @@ elif active_tab == "Settings":
                 st.rerun()
 
         with _nr_card("nr_set_trn_3"):
-            _step_head(3, "Kaggle Tunnel & Runtime Hardening", "Active Streamlit WebUI runtime, precision, Lossless Turbo mode, and CUDA session details.")
+            _step_head(3, "Kaggle Tunnel & Runtime Hardening", "Active Streamlit WebUI runtime, precision, Lossless Turbo mode, 1-GPU Applio Batch Parity, and CUDA session details.")
             st.session_state["nr_turbo_training"] = st.checkbox(
                 "Lossless Turbo Training — Always ON by default (adaptive RAM cache, fused AdamW, cuDNN benchmark, DDP bucket view)",
                 value=bool(st.session_state.get("nr_turbo_training", True)),
                 key="nr_set_turbo_chk",
+            )
+            st.session_state["nr_batch_parity"] = st.checkbox(
+                "1-GPU Applio Batch Parity (<300 Epoch Fix) — Always ON by default. Splits batch >= 4 across both T4s so under-300 epoch runs get full Original Applio steps/epoch",
+                value=bool(st.session_state.get("nr_batch_parity", True)),
+                key="nr_set_batch_parity_chk",
             )
             rt1, rt2 = st.columns(2, gap="small")
             rt1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Working Directory</div><div class="nr-metric-v">{html.escape(now_dir)}</div></div>', unsafe_allow_html=True)
             rt2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Active Precision</div><div class="nr-metric-v">{html.escape(st.session_state["nr_precision"].upper())}</div></div>', unsafe_allow_html=True)
             rt3, rt4 = st.columns(2, gap="small")
             rt3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">GPU Allocation</div><div class="nr-metric-v">{html.escape(_gpu_info_lines(st.session_state["nr_gpu_num"]).replace(chr(10), " · "))}</div></div>', unsafe_allow_html=True)
-            rt4.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Python Environment</div><div class="nr-metric-v">{html.escape(sys.executable)}</div></div>', unsafe_allow_html=True)
+            rt4.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Batch Parity (&lt;300 ep)</div><div class="nr-metric-v">{"ON (1-GPU Applio Match)" if st.session_state.get("nr_batch_parity", True) else "OFF (Raw Dual T4)"}</div></div>', unsafe_allow_html=True)
 
 # __NR_FOOTER_START__
 _render_active_tab(active_tab)

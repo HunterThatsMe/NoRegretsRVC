@@ -317,7 +317,7 @@ test('generateForkBundle produces locked NoRegretsRVC Streamlit WebUI, config.to
   assert.doesNotMatch(appFile.content, /background-attachment:\s*fixed/i);
   assert.match(appFile.content, /def _next_clip_id\(/);
   assert.match(appFile.content, /def _read_tail_text\(/);
-  assert.match(appFile.content, /os\.walk\(str\(base\)\)/);
+  assert.match(appFile.content, /os\.walk\(str\(base\),\s*followlinks=True\)/);
   assert.match(appFile.content, /nr_inf_seen_ups/);
   assert.match(appFile.content, /nr_dl_sav_\{s_id\}/);
   assert.match(appFile.content, /st\.session_state\["nr_vb_ratio_sl"\] = 0\.5/);
@@ -728,6 +728,12 @@ test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.
   assert.match(appFile.content, /D_LegacyCore1\.5v2\.pth/);
   assert.match(appFile.content, /ETA Accuracy:/);
   assert.match(appFile.content, /data-nr-fin-ms=/);
+  assert.doesNotMatch(appFile.content, /window\.parent\.document/);
+  assert.doesNotMatch(appFile.content, /Default 1-Click Pretrain/);
+  assert.doesNotMatch(appFile.content, /key="nr_t_batch_parity"/);
+  assert.match(appFile.content, /key="nr_set_batch_parity_chk"/);
+  assert.match(appFile.content, /0 epochs completed/);
+  assert.match(appFile.content, /Auto-detected Kaggle dataset folder/);
   assert.match(appFile.content, /Dataset Similarity Fit/);
   assert.match(appFile.content, /Apply WebUI Update & Restart/);
   assert.match(appFile.content, /st\.session_state\["nr_trn_log"\] = msg\n\s+st\.rerun\(\)/);
@@ -746,16 +752,20 @@ test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.
   assert.match(turboFile.content, /def flush_saves/);
   assert.match(turboFile.content, /fname\.startswith\(\("G_", "D_"\)\)/);
 
-  // Kaggle Notebook Cell 1 & Cell 2 monitor checks
+  // Kaggle Notebook Cell 1 & Cell 2 in-place HTML crimson monitor checks
   assert.match(nbFile.content, /credentials\.toml/);
   assert.match(nbFile.content, /raw\.githubusercontent\.com\/HunterThatsMe\/NoRegretsRVC\/main/);
-  assert.match(nbFile.content, /RED_BOLD = \\"\\\\033\[1;31m\\"/);
-  assert.match(nbFile.content, /🟥/);
+  assert.match(nbFile.content, /display_id=\\"nr_live_monitor\\"/);
+  assert.match(nbFile.content, /color:#E51923/);
+  assert.match(nbFile.content, /background:#E51923/);
+  assert.doesNotMatch(nbFile.content, /🟥|⬛/);
   assert.match(nbFile.content, /\(saved\)/);
   assert.match(nbFile.content, /Training Stopped/);
   assert.match(nbFile.content, /Training Resumed/);
   assert.match(nbFile.content, /Training Complete/);
   assert.match(nbFile.content, /Idle — waiting for next epoch batches\.\.\./);
+  assert.match(nbFile.content, /_free_port_6969/);
+  assert.match(nbFile.content, /_pick_py/);
 
   // Final-turn hardening checks
   assert.match(appFile.content, /nr_set_turbo_chk/);
