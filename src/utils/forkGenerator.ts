@@ -67,7 +67,7 @@ export function generateAppPython(
 export function generateTurboTrainerPython(): string {
   return `from __future__ import annotations
 
-NR_BUILD_REV = 2026112603
+NR_BUILD_REV = 2026112604
 
 import atexit
 from concurrent.futures import Future, ThreadPoolExecutor

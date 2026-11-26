@@ -775,7 +775,16 @@ test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.
   assert.match(appFile.content, /extract_model/);
   assert.match(appFile.content, /NoRegretsRVC_Kaggle\.ipynb/);
   assert.match(nbFile.content, /_gh_updated_any/);
+
+  // Pretrain download NameError regression checks
+  assert.doesNotMatch(appFile.content, /\bLEGACY_CORE_PRETRAIN_G\b/);
+  assert.doesNotMatch(appFile.content, /\bLEGACY_CORE_PRETRAIN_D\b/);
+  assert.match(appFile.content, /json\.dumps\(LEGACY_CORE_G_URL\)/);
+  assert.match(appFile.content, /json\.dumps\(LEGACY_CORE_D_URL\)/);
+  assert.match(appFile.content, /def _dl_url/);
+  assert.match(appFile.content, /def _is_d_file/);
 });
+
 
 
 
