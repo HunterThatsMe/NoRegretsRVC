@@ -1,14 +1,14 @@
 # NoRegretsRVC
 
-**NoRegretsRVC** is an RVC v2 voice-model training studio and configuration platform built around Applio-based Retrieval-based Voice Conversion workflows. It brings together a configurable training workspace, audio conversion tools, model management, diagnostics, and an integrated Kaggle deployment system in one interface.
+**NoRegretsRVC** is an RVC v2 voice-model training studio and configuration platform built around Applio-based Retrieval-based Voice Conversion workflows. It combines model training configuration, dataset preparation, voice conversion, model management, diagnostics, and Kaggle deployment tools in a unified interface.
 
-**Current Version:** Beta 0.0
+<text>Current Version: **Beta 0.0 (0.0.0)**</text>
 
-> **Project scope**
->
-> This repository contains the NoRegretsRVC web interface, its configuration utilities, and its Kaggle notebook generator. It prepares training and conversion settings and generates configurable workflows for an Applio-based runtime.
->
-> The repository does **not** bundle the complete Applio training runtime or pretrained model weights. Some workspaces configure settings or display project data, while actual training and conversion depend on the corresponding runtime and generated workflow.
+## Project Scope
+
+This repository contains the NoRegretsRVC web interface, configuration utilities, pre-packaged notebook and archive generators, and Kaggle deployment generator. It prepares training and conversion settings and generates configurable workflows for an Applio-based Streamlit runtime.
+
+The repository does **not** bundle the complete Applio training runtime or pretrained model weights. Some workspaces configure settings or display project data, while actual training and conversion depend on the corresponding Applio runtime and generated Kaggle workflow.
 
 ---
 
@@ -17,560 +17,340 @@
 - [Features](#features)
   - [1. Training Workspace](#1-training-workspace)
   - [2. Dataset Preprocessing](#2-dataset-preprocessing)
-  - [3. Pitch and Feature Extraction](#3-pitch--feature-extraction)
-  - [4. Samples and Voice Conversion](#4-samples--voice-conversion)
-  - [5. Advanced Voice Matching and Audio Settings](#5-advanced-voice-matching--audio-settings)
+  - [3. Pitch and Feature Extraction](#3-pitch-and-feature-extraction)
+  - [4. Samples and Voice Conversion](#4-samples-and-voice-conversion)
+  - [5. Advanced Voice Matching and Audio Settings](#5-advanced-voice-matching-and-audio-settings)
   - [6. Models Manager](#6-models-manager)
   - [7. Voice Blender](#7-voice-blender)
   - [8. TTS Studio](#8-tts-studio)
   - [9. Free Samples Studio](#9-free-samples-studio)
-  - [10. Diagnostics and Training Analysis](#10-diagnostics--training-analysis)
+  - [10. Diagnostics and Training Analysis](#10-diagnostics-and-training-analysis)
   - [11. Application Settings](#11-application-settings)
-- [Kaggle Integration and Exclusive Features](#kaggle-integration--exclusive-features)
+- [Kaggle Integration and Exclusive Features](#kaggle-integration-and-exclusive-features)
   - [12. One-Click Kaggle Notebook Launch](#12-one-click-kaggle-notebook-launch)
-  - [13. In-App Kaggle Notebook and Bundle Exporter](#13-in-app-kaggle-notebook--bundle-exporter)
-  - [14. Kaggle Live Monitor and Training Progress](#14-kaggle-live-monitor--training-progress)
+  - [13. Pre-Packaged Notebook, WebUI, and Bundle Exporter](#13-pre-packaged-notebook-webui-and-bundle-exporter)
+  - [14. Kaggle Live Monitor and Training Progress](#14-kaggle-live-monitor-and-training-progress)
   - [15. Turbo Training Optimizations](#15-turbo-training-optimizations)
   - [16. Browser-Side DSP Audio Cleanup](#16-browser-side-dsp-audio-cleanup)
-  - [17. Live Dual-T4 VRAM Estimator and Kaggle Survival Predictor](#17-live-dual-t4-vram-estimator--kaggle-survival-predictor)
-  - [18. Cloud Hardening and Automated Checkpoint Backups](#18-cloud-hardening--automated-checkpoint-backups)
+  - [17. Live Dual-T4 VRAM Estimator and Kaggle Survival Predictor](#17-live-dual-t4-vram-estimator-and-kaggle-survival-predictor)
+  - [18. Cloud Hardening, Preflight Guards, and Seamless Auto-Update](#18-cloud-hardening-preflight-guards-and-seamless-auto-update)
   - [19. Integrated GitHub Documentation](#19-integrated-github-documentation)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [Project Structure](#project-structure)
 - [Environment Variables](#environment-variables)
-- [Upstream Project and Acknowledgements](#upstream-project--acknowledgements)
+- [Upstream Project and Acknowledgements](#upstream-project-and-acknowledgements)
 - [Version Information](#version-information)
 - [License](#license)
 
 ---
 
-## Features
+# Features
 
-### 1. Training Workspace
+## 1. Training Workspace
 
-A guided five-step pipeline for configuring and preparing RVC v2 voice-model projects.
+A four-step interactive workflow in the web studio for configuring and preparing RVC v2 voice-model projects, with Step 5 (Export) available in the generated Kaggle Streamlit WebUI.
 
-#### Five-Step Training Pipeline
+### Training Pipeline
 
-1. **Model Settings** — Configure the model architecture, sample rate, and training parameters.
-2. **Prepare Dataset** — Upload, preprocess, and organize audio datasets.
-3. **Extract Features** — Extract pitch and content features with supported algorithms.
-4. **Train Model** — Configure training parameters and run the generated training workflow.
-5. **Export Model** — Prepare completed voice models for export.
+1. **Model Settings** — Configure model name, sample rate (`32000`, `40000`, or `48000` Hz), vocoder (`HiFi-GAN`, `MRF HiFi-GAN`, or `RefineGAN`), CPU cores (`1–4`), GPU allocation (`0–1`, Dual T4 default), GPU hardware information, and existing Kaggle checkpoint folders for resuming training.
+2. **Prepare Dataset** — Select or upload datasets, automatically detect `/kaggle/input` paths, and preprocess audio.
+3. **Extract Features** — Perform F0 pitch extraction, speaker embeddings, and training filelist preparation.
+4. **Train Model** — Configure batch size (`1–64`, default `2`) with live Effective Batch Allocation, Save Every Epoch (`1–100`, default `5`), Total Epoch (`1–10000`, default `200`), and Index Algorithm (`Auto`, `Faiss`, or `KMeans`), then launch training or index generation.
+5. **Export Model (Kaggle WebUI)** — Download the trained `.pth` model and `.index` feature file.
 
-#### Available Training Configurations
+### Advanced Training Controls
 
-| Category | Available options |
-|---|---|
-| Sample rates | 32,000 / 40,000 / 48,000 Hz |
-| Vocoders | HiFi-GAN / MRF HiFi-GAN / RefineGAN |
-| Optimizers | AdamW / RAdam |
-| Loss functions | Single-Scale Mel / Multi-Scale Mel |
-| Training precision | FP16 / FP32 |
-| Index builders | Auto / Faiss / KMeans |
+- Built-in OG Applio pretrained models are enabled by default (`Pretrained` ON) until Custom Pretrains is enabled or a custom/Legacy Core pretrain is selected.
+- Configurable **Lossless Turbo Training** (default ON), **Save Only Latest** (default ON), **Save Every Weights** (default ON), **Pretrained** (default ON), **Fresh Training**, **Cache Dataset in GPU**, **Checkpointing**, **Shutdown after finishing**, and **Custom Pretrains**.
+- Custom Pretrains supports G/D paths, URLs, ZIP archives, and Hugging Face repositories; automatic `G_` → `D_` pairing discovery and a Refresh pretrained list control are included.
 
-#### Additional Training Controls
+### Single-Click Execution, Preflight Validation, and Browser-Clock ETA
 
-- Configurable batch size and training epochs.
-- Save interval and checkpoint preferences.
-- Speaker ID selection.
-- Pretrained architecture selection.
-- Training precision configuration.
-- T4 GPU memory estimation and configuration warnings.
+- Single-click **Start Training** and **Stop Training** actions without double-click state lag.
+- Kaggle preflight validation checks `sliced_audios/*.wav`, `extracted/*.npy`, and `filelist.txt` before training. Missing preprocessing data cannot silently produce a fake five-second completion.
+- Automatic `extract_model` final-checkpoint rescue on Kaggle when weights have not yet been exported at completion.
+- A self-contained browser-clock **Estimated Finish** card showing remaining time, **Your Local Time**, and **Finish Day** (Today, Tomorrow, or a date using the user's browser clock rather than UTC server time), EMA-smoothed speed, and calibrated **ETA Accuracy %** confidence.
 
-#### Live Training Completion Estimate
+### Zero-Lag Controls and Clean Inputs
 
-A real-time training-time estimator that automatically appears beneath **Start Training** once training begins.
+- Smooth, transition-suppressed range sliders paired with `+/-` numeric stepper controls (`NumberStepperInput`) throughout the steps.
+- Suppresses Streamlit “Press Enter to apply” prompts.
+- Custom crimson scrollbars.
 
-- Continuously recalculates the projected training time without adding separate timers or unnecessary interface elements.
-- Displays a smoothed **Remaining Time** estimate, such as *Finishes in ~1 hr 14 min*.
-- Converts the projected completion time into **Your Local Time**.
-- Displays the expected **Finish Day**, identifying whether training is expected to finish Today, Tomorrow, or on a specific calendar date.
-- Includes a calibrated **Accuracy %** confidence indicator. It starts relatively low during early epoch warmup and increases as training speeds become more consistent, reaching approximately 95% under stable conditions.
-- Smooths the estimate to avoid unnecessary fluctuations as training progresses.
+## 2. Dataset Preprocessing
 
-The displayed estimate is approximate, not a guarantee. Actual completion times can change because of GPU throttling, checkpoint disk writes, batch length, and other runtime conditions.
+Prepare, slice, filter, and normalize recordings before feature extraction.
 
-### 2. Dataset Preprocessing
+- **Automatic Kaggle Dataset Path Detection** — Recursively scans `/kaggle/input` with `followlinks=True`, up to depth 5, on load and refresh. Supports a multi-dataset selector when multiple datasets are attached.
+- **Dataset Creator & Refresh** — Toggleable Dataset Creator uploads raw clips directly to `assets/datasets/<model_name>` on Kaggle, alongside **Refresh models and datasets**.
+- **Audio Cutting Modes** — `Automatic`, `Simple`, and `Skip`.
+- **Slicing Controls** — Chunk length (`0.5–5.0 s`, default `3.0 s)) and overlap length (`0.0–0.4 s`, default `0.3 s`).
+- **Silence Truncation** — Optional trimming with Silence duration (`50–3000 ms`, default `300 ms`).
+- **Filtering and Normalization** — Optional Noise filter (off by default) and Loudness normalization (`-14 LUFS`, off by default).
 
-Audio preparation tools for organizing datasets before feature extraction and training.
+## 3. Pitch and Feature Extraction
 
-- Automatic, Simple, and Skip audio-cutting modes.
-- Adjustable chunk and overlap durations.
-- Silence truncation.
-- Noise filtering.
-- Automatic loudness normalization.
-- Silent mute-file generation.
-- Dataset balancing.
+Extract F0 contours and speaker embeddings from preprocessed segments.
 
-### 3. Pitch & Feature Extraction
+- **Pitch Algorithms** — `rmvpe` (default), `fcpe`, `swift-f0`, and `crepe`.
+- **Embedder Models** — `contentvec` (default), `spin`, and `chinese-hubert-base`.
+- **Silent Training Files** — Slider (`0–10`, default `0`) controlling silent negative-reference slices generated for training stability.
 
-Multiple algorithms are available for extracting pitch and content features.
+## 4. Samples and Voice Conversion
 
-#### Pitch Extractors
+A four-step workspace for auditioning models and converting individual or batched audio.
 
-- RMVPE
-- FCPE
-- Swift-F0
-- CREPE
+### Step 1 — Voice Model
 
-#### Feature Embedders
+- Select a `.pth` model and auto-matched `.index` file.
+- Unload Voice.
+- Refresh models and indexes.
 
-- ContentVec
-- SPIN
-- Chinese-HuBERT-Base
+### Step 2 — Audio Source
 
-Extractors and embedders can be selected according to the intended training configuration.
+- Audio Files (multi-clip queue) and Batch folder conversion.
+- Drag-and-drop or upload `WAV`, `MP3`, `FLAC`, `OGG`, and `M4A`.
+- Select existing recordings.
+- Kaggle Quick Test Voice buttons using Free Samples.
 
-### 4. Samples & Voice Conversion
+### Step 3 — Pitch & Similarity
 
-A configurable conversion workspace for managing voice models, input audio, and conversion settings.
+- Master Pitch: `-32` to `+32` semitones.
+- Quick transpose buttons: `-12`, `-5`, `0`, `+5`, and `+12`.
+- Voice Similarity (Index Rate): `0.00–1.00`, default `0.75`.
 
-#### Model Management
+### Step 4 — Convert & Output
 
-- Load and select .pth voice models.
-- Select corresponding .index files.
-- Refresh and unload loaded models.
+- **Convert** and **Convert All**, or individual **Convert / Re-Convert** actions.
+- Each clip shows inheritance status (`Following Step 3` or `Custom Override`) and supports individual overrides.
+- **Apply Step 3 Settings to All**.
+- Displays the generated `core.py` CLI command.
+- Output playback in **Recent Generated Samples** through the custom `CrimsonAudioPlayer`, with download and discard controls.
 
-#### Audio Input
+## 5. Advanced Voice Matching and Audio Settings
 
-- Single-file audio uploads.
-- Multi-file audio uploads.
-- Drag-and-drop support.
-- Kaggle batch-path mode.
-- Multi-clip conversion queue.
+Fine-grained acoustic controls in Step 3's collapsible **Advanced Settings** drawer.
 
-#### Conversion Controls
+- **Voice Matching** — Volume Envelope (`0.00–1.00`, default `1.00`) and Protect Voiceless Consonants (`0.00–0.50`, default `0.50`).
+- **Models & Algorithms** — Speaker ID (`0–100`), pitch extraction algorithm, and embedder model overrides.
+- **Advanced Pitch & Tuning** — Autotune, Proposed Pitch, and Split Audio toggles.
+- **Audio Cleanup** — Denoising toggle and reduction strength (`1–30 dB`, default `12 dB`, with Subtle, Balanced, and Strong labels).
+- **Formant Shifting** — Toggleable formant preservation and shaping via Formant Quefrency (`0.0–16.0`) and Formant Timbre (`0.0–16.0`).
+- **Output Settings** — Output Path, export format (`WAV`, `MP3`, `FLAC`), and Clear Outputs.
 
-- Pitch shifting from -32 to +32 semitones.
-- Adjustable index rate.
-- Volume envelope.
-- Voiceless consonant protection.
-- Autotune and proposed pitch.
-- Split Audio.
-- Individual export-format selection.
+## 6. Models Manager
 
-#### Multi-Clip Queue
+Manage downloaded voices, local uploads, and pretrained base checkpoints.
 
-Every queued audio clip can use its own independent conversion configuration, including:
+- **Download Model** — Fetch from Hugging Face, Pixeldrain, or Google Drive URLs, and inspect the preconfigured Boot Manifest.
+- **Drop Files** — Upload or drag-and-drop `.pth`, `.index`, and `.zip` voice archives directly into `logs/` on Kaggle.
+- **Download Pretrained Models** — Architectures include `Legacy Core 1.5 V2` at 32k (with a dedicated **Download Legacy Core 1.5 V2 (G + D)** action linked to Step 4 Custom Pretrains), `Titan`, `Snowie`, `KLM`, `Ov2Super`, and `Rin_E3` at `32k`, `40k`, and `48k`.
+- OG Applio pretrains remain enabled by default unless Custom Pretrains or Legacy Core 1.5 V2 is enabled/downloaded.
+- Custom Pretrains discovery supports Hugging Face repositories, ZIP bundles, direct `G_`/`D_` URLs, local uploads, and timestamped download logs.
 
-- Pitch.
-- Index rate.
-- Voice model.
-- Index file.
-- Protection.
-- Volume envelope.
-- Autotune.
-- Proposed pitch.
-- Split Audio.
-- Export format.
+## 7. Voice Blender
 
-Playback tools also include side-by-side A/B comparison between original and converted recordings, along with a **Recent Generated Samples** history drawer.
+A three-step checkpoint-fusion workflow for merging two compatible models.
 
-### 5. Advanced Voice Matching & Audio Settings
+1. **Source Models** — Choose Model A and Model B via `.pth` picker or path.
+2. **Blend Settings** — Set output name, target sample rate (`32k`, `40k`, `48k`), and Blend Ratio (`0.00–1.00`) for Model A/B weighting.
+3. **Blend & Export** — Run Fusion, download the merged ZIP/checkpoint with **Download Model**, or inspect/copy the generated blend CLI command.
 
-Advanced conversion controls are grouped into collapsible sections, keeping frequently used settings accessible without overcrowding the interface.
+## 8. TTS Studio
 
-#### Voice Matching *(Expanded by Default)*
+Generate speech using Edge-TTS and convert it to a target RVC voice.
 
-- Search Feature Ratio — default: 0.75.
-- Volume Envelope — default: 1.0.
-- Voiceless Consonant Protection — default: 0.5.
+- **Base Voices** — Web Studio presets: `en-US-AndrewNeural`, `en-US-GuyNeural`, `en-US-AriaNeural`, `en-GB-RyanNeural`, and `en-US-JennyNeural`. Kaggle supports full Edge-TTS catalog synchronization.
+- **Voice Conversion Controls** — Synced target RVC `.pth` and optional `.index`, Text to Speak, Pitch Shift (`-12` to `+12`), Speech Speed (`-50%` to `+50%`), Index Feature Ratio (`0.00–1.00`), and Consonant Protect (`0.00–0.50`).
 
-#### Models & Algorithms
+## 9. Free Samples Studio
 
-- Speaker ID selection.
-- Pitch extraction algorithm.
-- Feature embedder selection.
+Bundled reference recordings for testing conversion without sourcing external audio.
 
-#### Advanced Pitch & Tuning
+- **Reference Clips** — Six dry, mono, 32 kHz WAV recordings (3 male and 3 female), with transcripts and gender filters (All, Male, Female).
+- **Audition & Export** — Preview using `CrimsonAudioPlayer`, send clips using **Use in Samples**, queue all with **Load All into Samples**, download individual WAVs, or export all clips as `NoRegretsRVC_Free_Samples.zip`.
 
-- Autotune.
-- Proposed Pitch.
-- Split Audio.
+## 10. Diagnostics and Training Analysis
 
-#### Audio Cleanup
+A multi-metric log and checkpoint analyzer for identifying undertraining, overtraining, dataset mismatch, and tail drift.
 
-- Local input noise cleanup.
-- Adjustable noise reduction from 1–30 dB, with a default of 12 dB.
+- **Multi-Metric Evaluation** — Parses training logs and live Kaggle TensorBoard/console metrics for Mel Reconstruction, KL Divergence, Feature Matching (FM), G/D Discriminator Balance, Gradient Norm stability, Dataset Alignment / Match %, Dataset Saturation (steps per clip and effective steps), and Tail Drift Watch.
+- **Verdict & Risk Meters** — Verdict Hero Banner plus Undertrained Risk % and Overtrained Risk % meters.
+- **Checkpoint Recommendations** — Recommended Best Epoch and Top Recommended Checkpoints table (Mel Loss, Tail Drift, Score /100), with Kaggle **Load in Samples** actions.
+- **Interactive Chart & Importer** — SVG Observed Mel Loss chart marking Best Epoch and overtraining zones; Model Sound Feedback selector (Not auditioned yet, Undertrained, Clean & natural, Overtrained); and local `.ipynb`, `.log`, and `.txt` import.
 
-#### Formant Shifting
+## 11. Application Settings
 
-- Male and female formant shifting.
-- Adjustable Quefrency and Timbre sliders.
+Runtime, training, localization, and update preferences organized into General and Training tabs.
 
-#### Output Settings
+### General Settings
 
-- Custom output directory.
-- WAV, MP3, and FLAC export formats.
-- Clear Outputs functionality.
+- **List Filtering** — Toggle `filter` (off by default) for file selectors.
+- **Pitch Correction** — RMVPE high-register correction (`true_pitch` / `fold` mode), with F0 ceiling (`1000–2000 Hz`).
+- **Discord Integration** — `discord_presence` (off by default).
+- **Language** — UI localization across 10 languages, including RTL Arabic (`ar_SA`).
+- **Updates & System** — GitHub release/tag/commit check (`/api/check-updates`), **Apply WebUI Update & Restart**, and **Restart Applio** on Kaggle.
 
-### 6. Models Manager
+### Training Settings
 
-A dedicated workspace for managing voice models, pretrained architectures, and supporting files.
-
-- Remote model archive downloads through Hugging Face, Pixeldrain, and Google Drive links.
-- Local .pth and .index file staging.
-- Pretrained architecture selection:
-  - Titan
-  - Snowie
-  - KLM
-  - Ov2Super
-  - Rin_E3
-- Pre-boot download manifest for managing required model files.
-
-### 7. Voice Blender
-
-A model-blending utility for combining two RVC voice-model checkpoints.
-
-- Merge two .pth model checkpoints.
-- Adjustable blending ratio.
-- Sample rate selection.
-- Automatic CLI command generation.
-- Exportable .zip blending recipes.
-
-### 8. TTS Studio
-
-An integrated text-to-speech workspace powered by Edge-TTS.
-
-- Built-in Edge-TTS voice selector.
-- Adjustable speaking rate and pitch.
-- Configurable index rate and protection ratio.
-- Direct routing of generated speech through a loaded RVC model.
-
-### 9. Free Samples Studio
-
-A built-in sample library with ready-to-use audio recordings for testing voice conversion.
-
-#### Included Sample Library
-
-- Six dry, mono, 32 kHz WAV recordings.
-- Three male and three female recordings.
-- Matching transcripts for every recording.
-
-#### Playback & Downloads
-
-- Integrated waveform playback.
-- Individual audio downloads.
-- One-click ZIP download.
-- Instant queuing into the Samples workspace.
-- Automatic GitHub sample retrieval inside Kaggle.
-
-The sample library is available directly through the application and its generated Kaggle interface.
-
-### 10. Diagnostics & Training Analysis
-
-An integrated diagnostics workspace for reviewing training progress and identifying suitable checkpoints.
-
-#### Supported Input
-
-- Raw console stdout.
-- Live tqdm progress bars.
-- Jupyter Notebook (.ipynb) files.
-
-#### Generated Analysis
-
-- Interactive training loss curves.
-- Undertraining checkpoint recommendations.
-- Suggested Sweet Spot recommendations.
-- Overtraining checkpoint recommendations.
-
-Recommended epochs are aligned with the configured **Save Every Epoch** interval to make checkpoint selection easier.
-
-### 11. Application Settings
-
-A centralized settings workspace for configuring application behavior and training preferences.
-
-- General and training preferences.
-- RMVPE high-register correction toggle.
-- Discord Rich Presence integration.
-- Support for 10 UI languages.
-- Model Author metadata.
-- FP16 / FP32 precision switcher.
-- Live release update checker.
-- Configurable Kaggle notebook tabs.
-- Tunnel and checkpoint backup preferences.
+- **Model Author** — Default metadata embedded into exported checkpoints.
+- **Training Precision** — `fp32` (default) or `fp16`.
+- **Kaggle Tunnel & Security** — `Gradio + Cloudflare` or `Horizon` tunnel mode, custom fork URL, random 24-byte WebUI credentials, isolated `uv` Python 3.12 + CUDA 12.8 setup, and ONNX GPU verification toggles.
+- **Lossless Turbo Training & 1-GPU Applio Batch Parity** — Controls for Lossless Turbo Training and **1-GPU Applio Batch Parity (<300 Epoch Fix)** (ON by default). Automatically splits batch sizes `>= 4` across dual T4 GPUs so sub-300-epoch runs retain standard 1-GPU Applio optimizer steps per epoch, with live effective GPU allocation.
 
 ---
 
-## Kaggle Integration & Exclusive Features
+# Kaggle Integration and Exclusive Features
 
-NoRegretsRVC includes a dedicated Kaggle deployment workflow, extending the application beyond its local configuration interface.
+## 12. One-Click Kaggle Notebook Launch
 
-### 12. One-Click Kaggle Notebook Launch
+Deploy to Kaggle Dual Tesla T4 (`nvidiaTeslaT4`) using `NoRegretsRVC_Kaggle.ipynb` or `generateKaggleNotebookJson`.
 
-**Branded NoRegretsRVC Kaggle deployment — assets/NoRegretsRVC_Kaggle.ipynb**
+The workflow provisions CUDA 12.8 (`torch` and `onnxruntime-gpu`), injects `noregrets_turbo.py` hooks into `rvc/train/train.py`, deploys `streamlit_app.py` and `.streamlit/config.toml`, and pre-fetches Free Samples and Boot Manifest items.
 
-The generated notebook provides a branded NoRegretsRVC interface inside a Kaggle-hosted, Applio-based runtime.
+## 13. Pre-Packaged Notebook, WebUI, and Bundle Exporter
 
-Importing the notebook into Kaggle and launching its Public URL opens the NoRegretsRVC interface.
+Deployment artifacts are generated directly through the project and `forkGenerator.ts`.
 
-#### Interface Improvements
+- `generateForkBundle()` creates a five-file deployment set: `assets/NoRegretsRVC_Kaggle.ipynb`, `streamlit_app.py`, `.streamlit/config.toml`, `noregrets_turbo.py`, and `run_commands.sh`.
+- Repository root and `public/` provide ready-to-download assets served with `Content-Disposition: attachment` by `server.ts`: `NoRegretsRVC_Kaggle.ipynb`, `NoRegretsRVC-Beta-0.0.0.zip` (clean flat-root archive with fewer than 100 files for GitHub web uploads), and `NoRegretsRVC-Full-Repo.txt`.
+- Kaggle Step 5 (Export Model) downloads completed `.pth` weights and `.index` files; Voice Blender exports fused models through **Download Model**.
 
-- Deep-crimson application theme.
-- Gradio 6 compatibility.
-- Replaces Applio's default interface with the NoRegretsRVC UI.
-- Removes Preset Settings.
-- Expanded pitch range from -32 to +32 semitones.
-- Integrated Free Samples tab directly inside Gradio.
+## 14. Kaggle Live Monitor and Training Progress
 
-#### Preconfigured Dual-T4 Training Defaults
+A real-time notebook monitor in the final Kaggle execution cell, using an in-place HTML `DisplayHandle` (`nr_live_monitor`) to prevent scroll-jumping.
 
-| Setting | Default |
-|---|---:|
-| Sample Rate | 32,000 Hz |
-| Batch Size | 2 |
-| Save Every | 5 epochs |
+- **Crimson Styling & Progress Bar** — `#E51923` header and seamless HTML epoch progress bar (Current/Total and %), batch speed, and ETA.
+- **Clean Epoch Table & Status Markers** — Suppresses noisy TensorFlow/PyTorch console output and presents a structured Epoch Table with inline `(saved)` indicators. Includes **Training Stopped** (two blank lines below the table), **Training Resumed** (two blank lines above the continued session table), and **Training Complete** (two blank lines below the final table) markers.
+- **Zero-Epoch Failure Guard & Tunnel Links** — Prevents reporting completion when zero epochs ran; displays active WebUI Login, NoRegretsRVC/Cloudflare URL, and Local UI URL links after startup.
 
-### 13. In-App Kaggle Notebook & Bundle Exporter
+## 15. Turbo Training Optimizations
 
-Available under **Settings → Training**, this exporter generates customized Kaggle deployment files directly through the application.
+Runtime acceleration hooks (`noregrets_turbo.py`) are injected during Kaggle setup, with the stated aim of optimizing runtime without changing RVC math or output quality.
 
-#### Available Exports
+- **Vectorized AdamW & Zero-Grad** — Enables `foreach=True` on AdamW with fallback guards, `zero_grad(set_to_none=True)`, and `torch.backends.cudnn.benchmark = True`.
+- **DataLoader & DDP Tuning** — Safe worker caps, `pin_memory=True`, `persistent_workers=True`, `prefetch_factor=2`, `gradient_as_bucket_view=True`, and `flush_saves()` synchronization on `destroy_process_group`.
+- **TensorBoard Overhead Reduction** — Skips costly `SummaryWriter` image and figure rendering (`add_image`/`add_figure`) during epoch loops.
+- **Adaptive RAM Cache & Checkpoint Saves** — Caches audio/features in system RAM (up to `2 GB` per process while retaining at least `8 GB` of system RAM free), using `numpy.load`, `wavfile.read`, and `soundfile.read`. Resume checkpoints (`G_`/`D_`) are written asynchronously; exported inference `.pth` files are written synchronously and atomically.
 
-- Customized NoRegretsRVC_Kaggle.ipynb notebook.
-- Complete .zip runtime bundle.
+## 16. Browser-Side DSP Audio Cleanup
 
-#### Preserved Configuration
+Browser-local Web Audio API noise reduction (`audioCleanup.ts`) before inference or preview.
 
-- Tunnel configuration.
-- Checkpoint backup preferences.
-- Selected application tabs.
+- **High-Pass & Noise-Floor Estimation** — First-order high-pass filter (`65–95 Hz`) and 20 ms frame RMS percentiles for ambient-noise estimation.
+- **Soft-Knee Downward Expander** — Noise reduction from `1–30 dB` (8 ms attack / 120 ms release), retaining `12–26%` natural dry ambience and applying a `tanh` safety soft-clip.
+- **PCM-16 Export & Cleanup** — Standard PCM-16 WAV encoding and revocation of unused `blob:` object URLs.
 
-Generated exports retain the selected deployment preferences, reducing the need to manually reconfigure each notebook.
+## 17. Live Dual-T4 VRAM Estimator and Kaggle Survival Predictor
 
-### 14. Kaggle Live Monitor & Training Progress
+Resource estimator (`rvcTuning.ts`) inside the Training workspace.
 
-An improved monitoring interface designed to keep important deployment information accessible while reducing unnecessary console output.
+- **VRAM Budget & Batch Advisor** — Estimates usage against `16.0 GB`, reports Optimal, Tight, or Risk of OOM, recommends a safe maximum batch size, and displays Effective Batch (including Dual-T4 parity splits).
+- **Disk & Session Predictor** — Estimates disk usage against `20.0 GB` (Safe, Watch Disk, or Risk of OOM/Full) and runtime against Kaggle's 12-hour cap (Fits 12h, Tight 12h, or May Exceed 12h).
 
-#### Persistent Deployment Information
+## 18. Cloud Hardening, Preflight Guards, and Seamless Auto-Update
 
-Displayed at the top of the Kaggle output (**Cell 2**):
+Reliability and security features for headless cloud notebooks.
 
-- NoRegretsRVC Public URL.
-- FileBrowser URL.
-- Automatically generated 24-byte login credentials.
+- **Verified Tunnels & Random Authentication** — SHA-256 verification of downloaded `cloudflared` binaries and 24-byte `secrets.token_urlsafe` credentials for Streamlit (`APPLIO_AUTH_USERNAME`/`PASSWORD`).
+- **Isolated Runtime & Port Management** — Dependency installation through `uv` in an isolated Python 3.12 + CUDA 12.8 environment, ONNX GPU verification, headless `_pick_py()`, and `_free_port_6969()` cleanup.
+- **Revision-Aware Auto-Updates** — `NR_BUILD_REV` anti-downgrade tracking across GitHub raw/notebook sources, **Apply WebUI Update & Restart**, training preflight checks, and `extract_model` rescue exports.
 
-#### Training Monitor
+## 19. Integrated GitHub Documentation
 
-- Filters unnecessary framework warnings.
-- Displays clear [Stage] progress milestones.
-- Live mid-epoch progress indicator.
-- Simplified training statistics table:
-
-| Speed | Step | Epoch | Lowest Loss |
-|---|---|---|---|
-
-### 15. Turbo Training Optimizations
-
-**Training optimization module — noregrets_turbo.py**
-
-An automatic Kaggle training optimization module designed to improve epoch speeds while preserving the intended acoustic training behavior.
-
-**Expected performance improvement: approximately 18–25% faster epochs.**
-
-#### Included Optimizations
-
-- Persistent cudnn.benchmark = True on Linux and Kaggle, overriding Applio's Windows-only check.
-- Fused AdamW optimizer.
-- zero_grad(set_to_none=True).
-- DDP gradient_as_bucket_view.
-- Safe in-memory dataset audio caching.
-- Asynchronous background .pth checkpoint writing.
-- Disabled slow TensorBoard image rendering.
-
-Actual speed improvements depend on hardware, dataset characteristics, and training configuration. The expected performance increase is not a guaranteed benchmark for every workload.
-
-### 16. Browser-Side DSP Audio Cleanup
-
-A built-in Web Audio PCM processing system designed to reduce background noise while preserving natural speech characteristics.
-
-#### Processing Includes
-
-- 65–95 Hz rumble-removal high-pass filtering.
-- 15th-percentile noise-floor tracking.
-- Soft-knee downward expansion.
-- Dry ambience blending.
-
-The system is designed to reduce background hiss and unwanted noise without unnecessarily chopping speech.
-
-### 17. Live Dual-T4 VRAM Estimator & Kaggle Survival Predictor
-
-A resource-monitoring system built specifically around Kaggle dual-T4 GPU environments.
-
-#### GPU Monitoring
-
-- Live T4 VRAM headroom monitoring.
-- Training status indicators: Optimal, Tight, and Risk of OOM.
-- Recommended batch-size calculations.
-
-#### Kaggle Runtime Monitoring
-
-- Estimated 12-hour session survival.
-- 20 GB disk-capacity monitoring.
-- Runtime and storage indicators tailored to dual-T4 environments.
-
-### 18. Cloud Hardening & Automated Checkpoint Backups
-
-A deployment protection and backup system designed to help preserve training sessions and model checkpoints across Kaggle runtime resets.
-
-#### Environment Isolation
-
-- Isolated Python 3.12 environment using uv.
-- CUDA 12.8 configuration.
-- ONNX Runtime GPU CUDA verification.
-
-#### Security & Tunnel Protection
-
-- Automatically randomized 24-byte WebUI passwords.
-- Automatically randomized 24-byte FileBrowser passwords.
-- SHA-256 verification for Cloudflare (cloudflared) and Horizon tunnels.
-
-#### Automated Checkpoint Backups
-
-- Hugging Face checkpoint synchronization.
-- Google Drive backups through rclone.
-- Background backup handling through core_backup.py.
-
-These features help preserve trained models and checkpoints beyond individual Kaggle sessions.
-
-### 19. Integrated GitHub Documentation
-
-External Applio guide buttons have been replaced with direct links to the NoRegretsRVC GitHub README.
-
-Available across:
-
-- Training.
-- Models.
-- Diagnostics.
-- Voice Blender.
-- Kaggle.
+Direct `#readme` links in workspace headers and an Express `/api/check-updates` endpoint querying GitHub releases, tags, and `main` commit SHAs to show live version status in Settings.
 
 ---
 
-## Tech Stack
+# Tech Stack
 
-NoRegretsRVC uses the following technologies for its web interface and supporting utilities:
-
-- **React 19 + TypeScript** — application interface and logic.
-- **Vite 8** — frontend development and build tooling.
-- **Express** — backend server and application endpoints.
-- **Tailwind CSS 4** — interface styling.
-- **Lucide React** — icon library.
-- **Motion** — interface animations.
-
-The project also generates workflows that use Applio and its associated dependencies.
+- **Frontend Studio** — React 19, TypeScript (~7.0), Vite 8, Tailwind CSS v4 (`@tailwindcss/vite`), Lucide React, and Motion.
+- **Backend & Server** — Express 4 and `tsx`; `server.ts` serves Vite middleware in development, production `dist/`, and attachment-download routes.
+- **Audio, Charts & Testing** — Web Audio API (`audioCleanup.ts`), SVG and HTML5 audio (`LossChart`, `CrimsonAudioPlayer`), and Node built-in test runner (`node:test`).
+- **Generated Kaggle Runtime** — Streamlit (`>=1.40.0`) with crimson `.streamlit/config.toml`, `uv`, Python 3.12, PyTorch (CUDA 12.8), Applio RVC core, `edge-tts`, `onnxruntime-gpu`, and `cloudflared`/`hrzn`.
 
 ---
 
-## Getting Started
+# Getting Started
 
-### Requirements
+```bash
+# Install dependencies
+npm install
 
-- Windows, macOS, or Linux.
-- Node.js 22 or newer.
-- npm.
+# Run the development server (Express + Vite on port 3000)
+npm run dev
 
-### Installation
+# Typecheck
+npm run lint
 
-Clone the repository:
+# Build for production
+npm run build
 
-    git clone https://github.com/HunterThatsMe/NoRegretsRVC.git
-    cd NoRegretsRVC
-
-Install dependencies:
-
-    npm install
-
-### Start the Development Server
-
-    npm run dev
-
-The development server prints its local address in the terminal when it starts.
-
-### Build the Frontend
-
-    npm run build
-
-### Run the TypeScript Check
-
-    npm run lint
+# Start the production server
+npm start
+```
 
 ---
 
-## Project Structure
+# Project Structure
 
-The current repository includes the web application, Kaggle notebook assets, sample recordings, and supporting utilities. The main directories and files are organized as follows:
-
-    NoRegretsRVC/
-    ├── assets/
-    │   ├── audios/                 # Source audio recordings
-    │   ├── free_samples/           # Free Samples Studio recordings
-    │   ├── themes/                 # NoRegretsRVC theme files
-    │   └── NoRegretsRVC_Kaggle.ipynb
-    ├── public/
-    │   ├── assets/
-    │   │   └── aistudio/           # Public sample audio assets
-    │   └── NoRegretsRVC_Kaggle.ipynb
-    ├── src/
-    │   ├── components/             # Main interface views and reusable UI
-    │   ├── data/                   # Default settings and sample data
-    │   ├── types/                  # TypeScript data models
-    │   ├── utils/                  # Notebook generation, tuning, parsing, ZIP helpers
-    │   ├── App.tsx
-    │   ├── index.css
-    │   └── main.tsx
-    ├── .gitattributes
-    ├── NoRegretsRVC_Kaggle.ipynb
-    ├── app.py
-    ├── index.html
-    ├── metadata.json
-    ├── noregrets_turbo.py
-    ├── package.json
-    ├── run_commands.sh
-    ├── server.ts
-    ├── tsconfig.json
-    └── vite.config.ts
-
-The original project layout notes also referenced a **docs/** directory, **.env.example** environment-variable template, and **.gitignore** file. Those paths were not present in the inspected main-branch file tree when this README was prepared, so check the current checkout before relying on them.
+```text
+NoRegretsRVC/
+├── .env.example                     # Example environment variables
+├── .gitignore
+├── index.html                       # Vite HTML entry point
+├── metadata.json                    # Application metadata
+├── package.json                     # Scripts and dependencies
+├── tsconfig.json
+├── vite.config.ts
+├── server.ts                        # Express server, update check and downloads
+├── NoRegretsRVC_Kaggle.ipynb        # Pre-built Kaggle Dual-T4 notebook
+├── assets/
+│   └── NoRegretsRVC_Kaggle.ipynb    # Packaged notebook copy
+├── public/
+│   ├── NoRegretsRVC_Kaggle.ipynb
+│   ├── NoRegretsRVC-Beta-0.0.0.zip # GitHub-ready flat-root archive
+│   ├── NoRegretsRVC-Full-Repo.txt
+│   └── assets/aistudio/*.wav        # Free Samples WAV recordings
+└── src/
+    ├── App.tsx                      # Studio layout, navigation and state
+    ├── index.css                    # Tailwind v4 theme and crimson styling
+    ├── main.tsx
+    ├── components/                   # Workspace views, players, charts and settings
+    ├── data/                         # Defaults, locales and Free Samples catalog
+    ├── types/                        # TypeScript interfaces and training state
+    └── utils/                         # Generators, DSP, diagnostics, tuning, i18n and tests
+```
 
 ---
 
-## Environment Variables
+# Environment Variables
 
-The original setup notes describe a starter .env.example file.
+Defined in `.env.example`:
 
-Copy it to .env only when you need to configure the corresponding environment values for your setup.
+- `GEMINI_API_KEY` — Gemini API key (server-side secret, where applicable).
+- `APP_URL` — Public base URL where the studio is hosted.
 
-**Never commit .env files, API keys, access tokens, passwords, or private model credentials.** The original project notes state that the actual .env file is excluded through .gitignore; however, that ignore file was not present in the inspected main-branch tree when this README was prepared. Verify that your local ignore rules exclude sensitive files before committing.
-
----
-
-## Upstream Project & Acknowledgements
-
-NoRegretsRVC generates workflows that use [Applio](https://github.com/IAHispano/Applio).
-
-Applio and its dependencies retain their respective licenses and notices. Review the upstream license and all third-party notices before redistributing generated environments or bundled dependencies.
-
-NoRegretsRVC is an independent project. Ilaria RVC was used only as a reference for repository organization and documentation style; its source code and README text have not been copied into this repository.
+Keep secret values private. Do not commit API keys, credentials, or populated environment files.
 
 ---
 
-## Version Information
+# Upstream Project and Acknowledgements
 
-| Component | Version |
-|---|---|
-| Application | Beta 0.0 |
-| Repository Package | 0.0.0 |
-| Kaggle Interface | NoRegretsRVC Beta |
+NoRegretsRVC is built around the **Applio** RVC v2 voice conversion and training core (`rvc/train/train.py`, `core.py`), alongside Edge-TTS, RMVPE / FCPE / Swift-F0 / CREPE, ContentVec / SPIN / Chinese HuBERT, Faiss, and Cloudflare Tunnel.
 
-See [CHANGELOG.md](CHANGELOG.md) for project changes and development notes.
+Please review upstream projects and their respective licensing and notices when using or redistributing components.
 
 ---
 
-## License
+# Version Information
 
-A project license has not been added yet.
+- **Version:** `Beta 0.0` (`0.0.0`)
+- **Generated Kaggle Build Revision (`NR_BUILD_REV`):** `2026112603`
 
-Do not assume the repository is licensed for reuse or redistribution until the original project code and upstream-derived portions have been reviewed and an appropriate license has been selected.
+---
+
+# License
+
+Refer to the repository license and upstream **Applio** license terms for runtime, training core, and model usage terms.
