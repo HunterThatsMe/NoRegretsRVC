@@ -58,7 +58,7 @@ export function buildStreamlitHeaderAndTabsPart1(
   return `"""${BRAND_NAME} Streamlit WebUI — exact parity with ${BRAND_NAME} Studio."""
 from __future__ import annotations
 
-NR_BUILD_REV = 2026112701
+NR_BUILD_REV = 2026112702
 
 import hmac
 import html
@@ -2950,6 +2950,7 @@ def _ensure_state() -> None:
         "nr_discord": bool(cfg_init.get("discord_presence", False)),
         "nr_lang": lang_init if lang_init in LANG_LABELS else "System Auto",
         "nr_ver_status": f"${BRAND_NAME} Beta version {APP_VERSION} (newest version: {APP_VERSION}).",
+        "nr_rel_url": "${REPO_URL}/releases",
         "nr_author": str(cfg_init.get("model_author", "None")),
         "nr_author_out": "The output information will be displayed here.",
         "nr_precision": str(cfg_init.get("precision", "fp32")),

@@ -42,7 +42,7 @@ import { buildZipArchive } from './zipBuilder.ts';
 
 test('default project uses empty model name, 32000 SR, batch 2, save every 5, total 200, fp32, and required checkbox defaults', () => {
   const def = DEFAULT_PROJECTS[0];
-  assert.equal(APP_VERSION, '0.0.0');
+  assert.equal(APP_VERSION, '0.1.0');
   assert.equal(DEFAULT_STUDIO_STATE.convertAudio.volumeEnvelope, 1);
   assert.equal(DEFAULT_STUDIO_STATE.convertAudio.protect, 0.5);
   assert.equal(DEFAULT_STUDIO_STATE.ttsDefaults.protect, 0.5);
@@ -739,7 +739,7 @@ test('raw Dual T4 batch scaling keeps per-GPU batch unsplit, outlier-trimmed ETA
   assert.equal(overZone.rankedCheckpoints?.[0]?.epoch, overZone.sweetSpotEpoch);
 });
 
-test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.0 fixes and Legacy Core 1.5 V2 defaults', () => {
+test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.1.0 fixes and Legacy Core 1.5 V2 defaults', () => {
   assert.equal(LEGACY_CORE_PRETRAIN_NAME, 'Legacy Core 1.5 V2');
   assert.match(LEGACY_CORE_PRETRAIN_G, /G_LegacyCore1\.5v2\.pth/);
   assert.match(LEGACY_CORE_PRETRAIN_D, /D_LegacyCore1\.5v2\.pth/);
@@ -847,6 +847,18 @@ test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.
   assert.match(appFile.content, /json\.dumps\(LEGACY_CORE_D_URL\)/);
   assert.match(appFile.content, /def _dl_url/);
   assert.match(appFile.content, /def _is_d_file/);
+
+  // v0.1.0 update checker & Cell 2 tunnel-safe restart hardening checks
+  assert.match(appFile.content, /Update available!/);
+  assert.match(appFile.content, /releases\/latest/);
+  assert.match(appFile.content, /\{dst_path\.name\}\.bak/);
+  assert.match(appFile.content, /NR_KAGGLE_SUPERVISOR/);
+  const parsedNb2 = JSON.parse(nbFile.content);
+  const cell2Py = parsedNb2.cells[4].source.join('');
+  assert.match(cell2Py, /"NR_KAGGLE_SUPERVISOR": "1"/);
+  assert.match(cell2Py, /def _wait_port_6969_free/);
+  assert.match(cell2Py, /legacy_restart_flag_p = repo_dir \/ "logs" \/ "\.nr_restart_webui"/);
+  assert.match(cell2Py, /streamlit_app\.py\.bak/);
 });
 
 

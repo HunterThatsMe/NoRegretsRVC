@@ -128,7 +128,7 @@ async function startServer() {
   for (const downloadName of [
     'NoRegretsRVC-Full-Repo.txt',
     'NoRegretsRVC_Kaggle.ipynb',
-    'NoRegretsRVC-Beta-0.0.0.zip',
+    'NoRegretsRVC-Beta-0.1.0.zip',
   ]) {
     app.get(`/${downloadName}`, (_req, res, next) => {
       const distCandidate = path.resolve(__dirname, 'dist', downloadName);

@@ -1503,21 +1503,154 @@ elif active_tab == "Settings":
                 unsafe_allow_html=True,
             )
             st.markdown(f'<div class="nr-output-box" style="margin-bottom:10px">{html.escape(st.session_state["nr_ver_status"])}</div>', unsafe_allow_html=True)
+            rel_link = str(st.session_state.get("nr_rel_url") or "")
+            if rel_link and ("Update available" in str(st.session_state.get("nr_ver_status") or "")):
+                st.link_button("Open GitHub Releases", rel_link, type="secondary")
+            def _ver_tuple(ver_s: str) -> tuple[int, ...]:
+                nums = re.findall(r"[0-9]+", str(ver_s or ""))
+                return tuple(int(x) for x in nums[:4]) if nums else (0,)
+            def _is_newer_ver(cand_s: str, cur_s: str) -> bool:
+                a = _ver_tuple(cand_s)
+                b = _ver_tuple(cur_s)
+                mlen = max(len(a), len(b))
+                a_pad = a + (0,) * (mlen - len(a))
+                b_pad = b + (0,) * (mlen - len(b))
+                return a_pad > b_pad
+            def _extract_rev_and_ver(raw_bytes: bytes) -> tuple[int, str]:
+                txt_b = raw_bytes.decode("utf-8", errors="replace")
+                m_rev = re.search(r"NR_BUILD_REV\\s*=\\s*([0-9]+)", txt_b)
+                m_ver = re.search(r"""APP_VERSION\\s*=\\s*['"]([0-9]+\\.[0-9]+\\.[0-9]+)['"]""", txt_b)
+                return (int(m_rev.group(1)) if m_rev else 0), (m_ver.group(1) if m_ver else "")
+            def _trigger_webui_restart(status_msg: str) -> None:
+                sup_env = os.environ.get("NR_KAGGLE_SUPERVISOR") == "1"
+                has_kaggle_logs = any((Path(now_dir) / fn).is_file() for fn in ("webui-cf.log", "webui-hrzn.log", "cloudflared.log"))
+                if sup_env or has_kaggle_logs:
+                    NR_STATE_DIR.mkdir(parents=True, exist_ok=True)
+                    (NR_STATE_DIR / "nr_restart_webui").write_text("1", encoding="utf-8")
+                    if not sup_env:
+                        try:
+                            leg_logs = Path(now_dir) / "logs"
+                            leg_logs.mkdir(parents=True, exist_ok=True)
+                            (leg_logs / ".nr_restart_webui").write_text("1", encoding="utf-8")
+                        except Exception:
+                            pass
+                    st.session_state["nr_ver_status"] = status_msg
+                    try:
+                        import streamlit.components.v1 as _st_comp
+                        _st_comp.html(
+                            "<script>(function(){var n=0;function ping(){n++;fetch(window.location.pathname||'/',{cache:'no-store'}).then(function(r){if(r.ok||n>=20){try{window.top.location.reload();}catch(e){window.location.reload();}}else{setTimeout(ping,900);}}).catch(function(){if(n>=20){try{window.top.location.reload();}catch(e){window.location.reload();}}else{setTimeout(ping,900);}});}setTimeout(ping,2800);})();</script>",
+                            height=0,
+                        )
+                    except Exception:
+                        pass
+                    threading.Timer(2.0, lambda: os._exit(0)).start()
+                else:
+                    st.cache_data.clear()
+                    st.cache_resource.clear()
+                    st.session_state["nr_ver_status"] = status_msg + " (Standalone mode: cache cleared; reload browser if needed.)"
+
             u1, u2, u3, _ = st.columns([1.45, 1.85, 1.35, 1.4], gap="small")
             if u1.button(_tr("Check for updates"), type="secondary", use_container_width=True, key="nr_set_chk_upd"):
+                gh_headers = {"User-Agent": "NoRegretsRVC-UpdateChecker", "Accept": "application/vnd.github+json", "Cache-Control": "no-cache"}
+                newest_ver = APP_VERSION
+                rel_url = "https://github.com/HunterThatsMe/NoRegretsRVC/releases"
+                sha = ""
+                remote_rev = 0
                 try:
-                    req = urllib.request.Request("https://api.github.com/repos/HunterThatsMe/NoRegretsRVC/commits/main", headers={"User-Agent": "NoRegretsRVC"})
-                    with urllib.request.urlopen(req, timeout=8) as resp:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        sha = str(data.get("sha", ""))[:7]
-                        st.session_state["nr_ver_status"] = f"NoRegretsRVC Beta version {APP_VERSION} · Latest GitHub commit: {sha}. Kaggle auto-fetches updates on boot or via Apply Update."
+                    found_rel = False
+                    try:
+                        req_rel = urllib.request.Request("https://api.github.com/repos/HunterThatsMe/NoRegretsRVC/releases/latest", headers=gh_headers)
+                        with urllib.request.urlopen(req_rel, timeout=7) as r_rel:
+                            rel_d = json.loads(r_rel.read().decode("utf-8"))
+                            tag_s = str(rel_d.get("tag_name") or "").lstrip("vV").strip()
+                            if tag_s:
+                                newest_ver = tag_s
+                                found_rel = True
+                            if rel_d.get("html_url"):
+                                rel_url = str(rel_d["html_url"])
+                    except Exception:
+                        pass
+                    if not found_rel:
+                        try:
+                            req_rels = urllib.request.Request("https://api.github.com/repos/HunterThatsMe/NoRegretsRVC/releases?per_page=10", headers=gh_headers)
+                            with urllib.request.urlopen(req_rels, timeout=7) as r_rels:
+                                rel_list = json.loads(r_rels.read().decode("utf-8"))
+                                if isinstance(rel_list, list):
+                                    for rel_item in rel_list:
+                                        if rel_item.get("draft"):
+                                            continue
+                                        tag_s = str(rel_item.get("tag_name") or "").lstrip("vV").strip()
+                                        if tag_s and (_is_newer_ver(tag_s, newest_ver) or not found_rel):
+                                            newest_ver = tag_s
+                                            if rel_item.get("html_url"):
+                                                rel_url = str(rel_item["html_url"])
+                                            found_rel = True
+                        except Exception:
+                            pass
+                    if not found_rel:
+                        try:
+                            req_tags = urllib.request.Request("https://api.github.com/repos/HunterThatsMe/NoRegretsRVC/tags?per_page=10", headers=gh_headers)
+                            with urllib.request.urlopen(req_tags, timeout=7) as r_tags:
+                                t_list = json.loads(r_tags.read().decode("utf-8"))
+                                if isinstance(t_list, list):
+                                    for t_item in t_list:
+                                        raw_tag = str(t_item.get("name") or "").strip()
+                                        tag_s = raw_tag.lstrip("vV").strip()
+                                        if tag_s and (_is_newer_ver(tag_s, newest_ver) or not found_rel):
+                                            newest_ver = tag_s
+                                            rel_url = f"https://github.com/HunterThatsMe/NoRegretsRVC/releases/tag/{raw_tag}"
+                                            found_rel = True
+                        except Exception:
+                            pass
+                    try:
+                        req_cm = urllib.request.Request("https://api.github.com/repos/HunterThatsMe/NoRegretsRVC/commits/main", headers=gh_headers)
+                        with urllib.request.urlopen(req_cm, timeout=7) as r_cm:
+                            cm_d = json.loads(r_cm.read().decode("utf-8"))
+                            sha = str(cm_d.get("sha") or "")[:7]
+                    except Exception:
+                        pass
+                    ts_bust = int(time.time())
+                    try:
+                        req_def = urllib.request.Request(f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/src/data/defaults.ts?t={ts_bust}", headers={"User-Agent": "NoRegretsRVC", "Cache-Control": "no-cache"})
+                        with urllib.request.urlopen(req_def, timeout=6) as r_def:
+                            _, raw_ver = _extract_rev_and_ver(r_def.read())
+                            if raw_ver and _is_newer_ver(raw_ver, newest_ver):
+                                newest_ver = raw_ver
+                    except Exception:
+                        pass
+                    try:
+                        req_p1 = urllib.request.Request(f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/src/utils/streamlitWebuiPart1.ts?t={ts_bust}", headers={"User-Agent": "NoRegretsRVC", "Cache-Control": "no-cache"})
+                        with urllib.request.urlopen(req_p1, timeout=6) as r_p1:
+                            r_rev, _ = _extract_rev_and_ver(r_p1.read())
+                            remote_rev = max(remote_rev, r_rev)
+                    except Exception:
+                        pass
+                    if remote_rev == 0:
+                        try:
+                            req_app = urllib.request.Request(f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/streamlit_app.py?t={ts_bust}", headers={"User-Agent": "NoRegretsRVC", "Cache-Control": "no-cache"})
+                            with urllib.request.urlopen(req_app, timeout=6) as r_app:
+                                r_rev2, r_ver2 = _extract_rev_and_ver(r_app.read())
+                                remote_rev = max(remote_rev, r_rev2)
+                                if r_ver2 and _is_newer_ver(r_ver2, newest_ver):
+                                    newest_ver = r_ver2
+                        except Exception:
+                            pass
+                    st.session_state["nr_rel_url"] = rel_url
+                    sha_part = f" (commit {sha})" if sha else ""
+                    if _is_newer_ver(newest_ver, APP_VERSION):
+                        st.session_state["nr_ver_status"] = f"Update available! Installed: Beta version {APP_VERSION} -> Newest GitHub release: {newest_ver}{sha_part}. Click 'Apply WebUI Update & Restart' to install it."
+                    elif remote_rev > NR_BUILD_REV:
+                        st.session_state["nr_ver_status"] = f"Update available! A newer WebUI build (rev {remote_rev}{sha_part}) is on GitHub for Beta version {APP_VERSION}. Click 'Apply WebUI Update & Restart' to install it."
+                    else:
+                        st.session_state["nr_ver_status"] = f"✔ NoRegretsRVC Beta version {APP_VERSION} is up to date (newest version: {newest_ver}){sha_part}."
                 except Exception as exc:
-                    st.session_state["nr_ver_status"] = f"NoRegretsRVC Beta version {APP_VERSION} (offline check: {exc})."
+                    st.session_state["nr_ver_status"] = f"NoRegretsRVC Beta version {APP_VERSION} (could not reach GitHub: {exc})."
                 st.rerun()
             if u2.button("Apply WebUI Update & Restart", type="primary", use_container_width=True, key="nr_set_apply_upd"):
                 import base64 as _upd_b64
                 upd_errors: list[str] = []
-                updated_files: list[str] = []
+                candidates: dict[str, tuple[Path, str, bytes]] = {}
+                ts_bust = int(time.time())
                 raw_targets = [
                     ("streamlit_app.py", Path(now_dir) / "streamlit_app.py", "CRIMSON_CSS"),
                     ("noregrets_turbo.py", Path(now_dir) / "noregrets_turbo.py", "def apply("),
@@ -1526,36 +1659,36 @@ elif active_tab == "Settings":
                 for gh_path, dst_path, marker_str in raw_targets:
                     try:
                         req_raw = urllib.request.Request(
-                            f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{gh_path}",
-                            headers={"User-Agent": "NoRegretsRVC"},
+                            f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{gh_path}?t={ts_bust}",
+                            headers={"User-Agent": "NoRegretsRVC", "Cache-Control": "no-cache"},
                         )
                         try:
                             with urllib.request.urlopen(req_raw, timeout=10) as r_up:
                                 body_bytes = r_up.read()
                         except Exception:
                             req_alt = urllib.request.Request(
-                                f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/assets/{gh_path}",
-                                headers={"User-Agent": "NoRegretsRVC"},
+                                f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/assets/{gh_path}?t={ts_bust}",
+                                headers={"User-Agent": "NoRegretsRVC", "Cache-Control": "no-cache"},
                             )
                             with urllib.request.urlopen(req_alt, timeout=10) as r_up2:
                                 body_bytes = r_up2.read()
                         body_txt = body_bytes.decode("utf-8", errors="replace")
                         if marker_str in body_txt and len(body_bytes) > 64:
-                            dst_path.parent.mkdir(parents=True, exist_ok=True)
-                            dst_path.write_bytes(body_bytes)
-                            updated_files.append(gh_path)
+                            if gh_path.endswith(".py"):
+                                compile(body_txt, gh_path, "exec")
+                            candidates[gh_path] = (dst_path, marker_str, body_bytes)
                     except Exception as exc_u:
                         upd_errors.append(f"{gh_path}: {exc_u}")
-                if not updated_files:
+                if not candidates:
                     for nb_rel in ("NoRegretsRVC_Kaggle.ipynb", "assets/NoRegretsRVC_Kaggle.ipynb", "public/NoRegretsRVC_Kaggle.ipynb"):
                         try:
                             req_nb = urllib.request.Request(
-                                f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{nb_rel}",
-                                headers={"User-Agent": "NoRegretsRVC"},
+                                f"https://raw.githubusercontent.com/HunterThatsMe/NoRegretsRVC/main/{nb_rel}?t={ts_bust}",
+                                headers={"User-Agent": "NoRegretsRVC", "Cache-Control": "no-cache"},
                             )
-                            with urllib.request.urlopen(req_nb, timeout=12) as r_nb:
+                            with urllib.request.urlopen(req_nb, timeout=14) as r_nb:
                                 nb_obj = json.loads(r_nb.read().decode("utf-8", errors="replace"))
-                            cell_src = "\\n".join(
+                            cell_src = chr(10).join(
                                 "".join(c.get("source", [])) if isinstance(c.get("source"), list) else str(c.get("source", ""))
                                 for c in nb_obj.get("cells", []) if c.get("cell_type") == "code"
                             )
@@ -1567,25 +1700,47 @@ elif active_tab == "Settings":
                                 bm = re.search(pat_rel, cell_src)
                                 if bm:
                                     dec = _upd_b64.b64decode(bm.group(1))
-                                    if len(dec) > 64 and marker_str in dec.decode("utf-8", errors="replace"):
-                                        dst_path.parent.mkdir(parents=True, exist_ok=True)
-                                        dst_path.write_bytes(dec)
-                                        updated_files.append(label_rel)
-                            if updated_files:
+                                    dec_txt = dec.decode("utf-8", errors="replace")
+                                    if len(dec) > 64 and marker_str in dec_txt:
+                                        if label_rel.endswith(".py"):
+                                            compile(dec_txt, label_rel, "exec")
+                                        candidates[label_rel] = (dst_path, marker_str, dec)
+                            if candidates:
                                 break
                         except Exception as exc_nb:
                             upd_errors.append(f"{nb_rel}: {exc_nb}")
+                updated_files: list[str] = []
+                skipped_older = False
+                if candidates:
+                    NR_STATE_DIR.mkdir(parents=True, exist_ok=True)
+                    for label_rel, (dst_path, _, new_bytes) in candidates.items():
+                        cur_bytes = dst_path.read_bytes() if dst_path.is_file() else b""
+                        new_rev, _ = _extract_rev_and_ver(new_bytes)
+                        cur_rev, _ = _extract_rev_and_ver(cur_bytes)
+                        if cur_bytes and new_rev > 0 and cur_rev > 0 and new_rev < cur_rev:
+                            skipped_older = True
+                            continue
+                        if cur_bytes == new_bytes:
+                            continue
+                        if cur_bytes:
+                            try:
+                                (NR_STATE_DIR / f"{dst_path.name}.bak").write_bytes(cur_bytes)
+                            except Exception:
+                                pass
+                        dst_path.parent.mkdir(parents=True, exist_ok=True)
+                        dst_path.write_bytes(new_bytes)
+                        updated_files.append(label_rel)
                 if updated_files:
-                    restart_flag = NR_STATE_DIR / "nr_restart_webui"
-                    restart_flag.parent.mkdir(parents=True, exist_ok=True)
-                    restart_flag.write_text("1", encoding="utf-8")
-                    st.session_state["nr_ver_status"] = f"✔ Synced {', '.join(updated_files)} from GitHub main! Reloading WebUI in 2 seconds..."
-                    threading.Timer(1.2, lambda: os._exit(0)).start()
+                    _trigger_webui_restart(f"✔ Synced {', '.join(updated_files)} from GitHub main! Reloading WebUI in ~4 seconds (tunnel URL stays the same)...")
+                elif candidates and not skipped_older:
+                    st.session_state["nr_ver_status"] = f"✔ Already running the newest NoRegretsRVC build (Beta {APP_VERSION}) — no restart needed."
+                elif skipped_older:
+                    st.session_state["nr_ver_status"] = f"GitHub main currently hosts an older build revision than your installed Beta {APP_VERSION}. Kept your newer build intact."
                 else:
-                    st.session_state["nr_ver_status"] = f"Could not fetch newer raw WebUI files from GitHub main ({'; '.join(upd_errors) or 'repo raw unavailable'}). Your active build ({APP_VERSION}) was kept intact."
+                    st.session_state["nr_ver_status"] = f"Could not fetch valid WebUI files from GitHub main ({'; '.join(upd_errors) or 'repo raw unavailable'}). Your active build ({APP_VERSION}) was kept intact."
                 st.rerun()
             if u3.button(_tr("Restart NoRegretsRVC"), type="secondary", use_container_width=True, key="nr_set_restart"):
-                st.session_state["nr_ver_status"] = "Restarting WebUI session state cleanly..."
+                _trigger_webui_restart("Restarting NoRegretsRVC WebUI cleanly (~4 seconds — tunnel URL stays active)...")
                 st.rerun()
     else:
         with _nr_card("nr_set_trn_1"):

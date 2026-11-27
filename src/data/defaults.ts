@@ -6,7 +6,7 @@ import type {
 
 export const BRAND_NAME = 'NoRegretsRVC';
 export const ACCENT_HEX = '#E51923';
-export const APP_VERSION = '0.0.0';
+export const APP_VERSION = '0.1.0';
 export const REPO_URL = 'https://github.com/HunterThatsMe/NoRegretsRVC';
 export const REPO_README_URL = 'https://github.com/HunterThatsMe/NoRegretsRVC#readme';
 export const LEGACY_CORE_PRETRAIN_NAME = 'Legacy Core 1.5 V2';
