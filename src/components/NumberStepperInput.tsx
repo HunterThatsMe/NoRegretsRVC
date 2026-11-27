@@ -100,8 +100,8 @@ export const NumberStepperInput: React.FC<NumberStepperInputProps> = React.memo(
             return;
           }
           const parsed = Number(trimmed);
-          if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
-            onChange(parsed);
+          if (Number.isFinite(parsed)) {
+            onChange(clamp(parsed));
           }
         }}
         onBlur={() => {

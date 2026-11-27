@@ -1576,7 +1576,7 @@ elif active_tab == "Settings":
                         except Exception as exc_nb:
                             upd_errors.append(f"{nb_rel}: {exc_nb}")
                 if updated_files:
-                    restart_flag = Path(now_dir) / "logs" / ".nr_restart_webui"
+                    restart_flag = NR_STATE_DIR / "nr_restart_webui"
                     restart_flag.parent.mkdir(parents=True, exist_ok=True)
                     restart_flag.write_text("1", encoding="utf-8")
                     st.session_state["nr_ver_status"] = f"✔ Synced {', '.join(updated_files)} from GitHub main! Reloading WebUI in 2 seconds..."
@@ -1584,7 +1584,7 @@ elif active_tab == "Settings":
                 else:
                     st.session_state["nr_ver_status"] = f"Could not fetch newer raw WebUI files from GitHub main ({'; '.join(upd_errors) or 'repo raw unavailable'}). Your active build ({APP_VERSION}) was kept intact."
                 st.rerun()
-            if u3.button(_tr("Restart Applio"), type="secondary", use_container_width=True, key="nr_set_restart"):
+            if u3.button(_tr("Restart NoRegretsRVC"), type="secondary", use_container_width=True, key="nr_set_restart"):
                 st.session_state["nr_ver_status"] = "Restarting WebUI session state cleanly..."
                 st.rerun()
     else:
@@ -1617,23 +1617,18 @@ elif active_tab == "Settings":
                 st.rerun()
 
         with _nr_card("nr_set_trn_3"):
-            _step_head(3, "Kaggle Tunnel & Runtime Hardening", "Active Streamlit WebUI runtime, precision, Lossless Turbo mode, 1-GPU Applio Batch Parity, and CUDA session details.")
+            _step_head(3, "Kaggle Tunnel & Runtime Hardening", "Active Streamlit WebUI runtime, precision, Lossless Turbo mode, raw Dual T4 batch scaling, and CUDA session details.")
             st.session_state["nr_turbo_training"] = st.checkbox(
                 "Lossless Turbo Training — Always ON by default (adaptive RAM cache, fused AdamW, cuDNN benchmark, DDP bucket view)",
                 value=bool(st.session_state.get("nr_turbo_training", True)),
                 key="nr_set_turbo_chk",
-            )
-            st.session_state["nr_batch_parity"] = st.checkbox(
-                "1-GPU Applio Batch Parity (<300 Epoch Fix) — Always ON by default. Splits batch >= 4 across both T4s so under-300 epoch runs get full Original Applio steps/epoch",
-                value=bool(st.session_state.get("nr_batch_parity", True)),
-                key="nr_set_batch_parity_chk",
             )
             rt1, rt2 = st.columns(2, gap="small")
             rt1.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Working Directory</div><div class="nr-metric-v">{html.escape(now_dir)}</div></div>', unsafe_allow_html=True)
             rt2.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Active Precision</div><div class="nr-metric-v">{html.escape(st.session_state["nr_precision"].upper())}</div></div>', unsafe_allow_html=True)
             rt3, rt4 = st.columns(2, gap="small")
             rt3.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">GPU Allocation</div><div class="nr-metric-v">{html.escape(_gpu_info_lines(st.session_state["nr_gpu_num"]).replace(chr(10), " · "))}</div></div>', unsafe_allow_html=True)
-            rt4.markdown(f'<div class="nr-metric-box"><div class="nr-metric-k">Batch Parity (&lt;300 ep)</div><div class="nr-metric-v">{"ON (1-GPU Applio Match)" if st.session_state.get("nr_batch_parity", True) else "OFF (Raw Dual T4)"}</div></div>', unsafe_allow_html=True)
+            rt4.markdown('<div class="nr-metric-box"><div class="nr-metric-k">Dual T4 Batch Scaling</div><div class="nr-metric-v">Raw 2x per-GPU batch</div></div>', unsafe_allow_html=True)
 
 # __NR_FOOTER_START__
 _render_active_tab(active_tab)

@@ -101,23 +101,53 @@ export function estimateTrainingCompletion(
     }
   }
 
-  // Exponentially smoothed completed epoch duration when history exists
+  // Filter warmup spikes & save-checkpoint stalls with median/MAD trimming for higher ETA accuracy
   let smoothedEpochSec = currentEpochPaceSec;
   let cvPenalty = 0;
+  let cleanSampleCount = completedEpochs;
   if (history.length > 0) {
-    let ema = history[0];
-    for (let i = 1; i < history.length; i++) {
-      ema = ema * 0.65 + history[i] * 0.35;
-    }
-    const historyWeight = Math.min(0.88, 0.45 + history.length * 0.12);
-    smoothedEpochSec = ema * historyWeight + currentEpochPaceSec * (1 - historyWeight);
+    const valid = history.filter((v) => Number.isFinite(v) && v > 0.2);
+    const sorted = [...valid].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median =
+      sorted.length === 0
+        ? currentEpochPaceSec
+        : sorted.length % 2 === 1
+          ? sorted[mid]
+          : (sorted[mid - 1] + sorted[mid]) / 2;
+    const deviations = sorted.map((v) => Math.abs(v - median)).sort((a, b) => a - b);
+    const mad =
+      deviations.length === 0
+        ? 0
+        : deviations[Math.floor(deviations.length / 2)];
+    const tolerance = Math.max(median * 0.25, mad * 2.8, 0.8);
+    const trimmed = valid.filter((v) => Math.abs(v - median) <= tolerance);
+    const stableSeries = trimmed.length >= 2 ? trimmed : valid;
+    cleanSampleCount = Math.max(completedEpochs, stableSeries.length);
 
-    if (history.length >= 2) {
-      const mean = history.reduce((sum, v) => sum + v, 0) / history.length;
-      const variance =
-        history.reduce((sum, v) => sum + (v - mean) ** 2, 0) / history.length;
-      const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
-      cvPenalty = Math.min(22, cv * 65);
+    if (stableSeries.length > 0) {
+      let ema = stableSeries[0];
+      for (let i = 1; i < stableSeries.length; i++) {
+        ema = ema * 0.58 + stableSeries[i] * 0.42;
+      }
+      const recentTail = stableSeries.slice(-4);
+      const recentMean =
+        recentTail.reduce((sum, v) => sum + v, 0) / recentTail.length;
+      const blendedHistory = ema * 0.45 + recentMean * 0.55;
+      const historyWeight = Math.min(0.92, 0.5 + stableSeries.length * 0.11);
+      smoothedEpochSec =
+        blendedHistory * historyWeight +
+        currentEpochPaceSec * (1 - historyWeight);
+
+      if (stableSeries.length >= 2) {
+        const mean =
+          stableSeries.reduce((sum, v) => sum + v, 0) / stableSeries.length;
+        const variance =
+          stableSeries.reduce((sum, v) => sum + (v - mean) ** 2, 0) /
+          stableSeries.length;
+        const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+        cvPenalty = Math.min(18, cv * 55);
+      }
     }
   } else if (completedEpochs > 0 && input.elapsedSec > 0.5) {
     const progressInEpochs = completedEpochs + batchDone / batchTotal;
@@ -126,7 +156,7 @@ export function estimateTrainingCompletion(
       avgObservedEpochSec >= instantaneousEpochSec * 0.45 &&
       avgObservedEpochSec <= instantaneousEpochSec * 2.5
     ) {
-      const obsWeight = Math.min(0.75, 0.35 + completedEpochs * 0.1);
+      const obsWeight = Math.min(0.78, 0.38 + completedEpochs * 0.1);
       smoothedEpochSec =
         avgObservedEpochSec * obsWeight + currentEpochPaceSec * (1 - obsWeight);
     }
@@ -147,15 +177,17 @@ export function estimateTrainingCompletion(
   const finishMs = nowMs + remainingSeconds * 1000;
   const finishDate = new Date(finishMs);
 
-  // Calibrated confidence scale (28% warmup -> climbs cleanly up to ~95% as epochs stabilize)
+  // Calibrated confidence scale (28% warmup -> climbs cleanly up to ~97% as trimmed epochs stabilize)
   const batchWarmup = Math.min(1, batchDone / Math.max(1, batchTotal)) * 14;
-  const sampleCount = Math.max(completedEpochs, history.length);
-  const sampleConfidence = 30 + batchWarmup * (sampleCount === 0 ? 1 : 0.25) + 49 * (1 - Math.exp(-sampleCount / 3.5));
+  const sampleConfidence =
+    30 +
+    batchWarmup * (cleanSampleCount === 0 ? 1 : 0.25) +
+    52 * (1 - Math.exp(-cleanSampleCount / 3.0));
   const horizonHours = remainingSeconds / 3600;
-  const horizonPenalty = Math.min(8, horizonHours * 0.65);
+  const horizonPenalty = Math.min(7, horizonHours * 0.55);
   const accuracyPercent = Math.max(
     28,
-    Math.min(95, Math.round(sampleConfidence - cvPenalty - horizonPenalty))
+    Math.min(97, Math.round(sampleConfidence - cvPenalty - horizonPenalty))
   );
 
   return {
@@ -165,7 +197,7 @@ export function estimateTrainingCompletion(
     finishDayLabel: formatFinishDayLabel(nowMs, finishMs),
     accuracyPercent,
     disclaimer:
-      'Rough estimate only — real completion time may vary with GPU throttling, checkpoint disk saves, and batch length.',
+      'Live estimate uses warmup-filtered epoch times — brief variations may still occur during checkpoint disk saves.',
   };
 }
 
@@ -179,21 +211,16 @@ export interface PerGpuBatchResolution {
 
 export function resolvePerGpuBatchSize(
   requestedBatchSize: number,
-  gpuCount: number,
-  batchParity1Gpu = true
+  gpuCount: number
 ): PerGpuBatchResolution {
   const safeRequested = Math.max(1, Math.round(requestedBatchSize || 1));
   const safeGpus = Math.max(1, Math.round(gpuCount || 1));
-  const isParitySplit = Boolean(batchParity1Gpu) && safeGpus >= 2 && safeRequested >= 4;
-  const perGpuBatchSize = isParitySplit
-    ? Math.max(2, Math.floor(safeRequested / safeGpus))
-    : safeRequested;
   return {
     requestedBatchSize: safeRequested,
-    perGpuBatchSize,
-    totalEffectiveBatchSize: perGpuBatchSize * safeGpus,
+    perGpuBatchSize: safeRequested,
+    totalEffectiveBatchSize: safeRequested * safeGpus,
     gpuCount: safeGpus,
-    isParitySplit,
+    isParitySplit: false,
   };
 }
 
@@ -215,8 +242,7 @@ export function estimateT4VramUsage(project: VoiceModelProject): T4VramEstimate 
   const checkpointFactor = project.checkpointing ? 0.78 : 1.0;
   const batchAlloc = resolvePerGpuBatchSize(
     project.batchSize,
-    project.gpuCount,
-    project.batchParity1Gpu ?? true
+    project.gpuCount
   );
 
   const baseModelGb = 2.6 * srFactor * vocoderFactor;
@@ -411,12 +437,11 @@ export function resolveCustomPretrainedPath(
 
 export function buildTrainPipelineCommands(project: VoiceModelProject): string {
   const safeName = sanitizeModelName(project.name);
-  const dsPath = project.datasetPath.trim() || `/kaggle/input/datasets/your-username/${safeName}`;
+  const dsPath = project.datasetPath.trim() || '<NO_DATASET_PATH_SET>';
   const gpus = project.gpuNumber.trim() || (project.gpuCount === 2 ? '0-1' : '0');
   const batchAlloc = resolvePerGpuBatchSize(
     project.batchSize,
-    project.gpuCount,
-    project.batchParity1Gpu ?? true
+    project.gpuCount
   );
   const silenceFlags = project.truncateSilenceEnabled
     ? ` --truncate_silence True --silence_duration_ms ${project.silenceDurationMs}`

@@ -87,13 +87,12 @@ export const DEFAULT_PROJECTS: VoiceModelProject[] = [
     truncateSilenceEnabled: false,
     silenceDurationMs: 300,
     noiseFilter: false,
-    loudnessNorm: false,
-    loudnessTargetLufs: -14.0,
+    loudnessNorm: true,
+    loudnessTargetLufs: -20.0,
     pitchExtractor: 'rmvpe',
     embedder: 'contentvec',
     silentTrainingFiles: 0,
     batchSize: 2,
-    batchParity1Gpu: true,
     saveEveryEpoch: 5,
     totalEpoch: 200,
     fp16: false,
@@ -233,14 +232,14 @@ Embedding extraction completed in 19.52 seconds.
 Saved index file '/kaggle/working/program_ml/logs/StudioDemo/StudioDemo.index'
 Using HiFi-GAN vocoder
 Using AdamW optimizer
-Using Single-Scale Mel loss function
+Using Multi-Scale Mel (512 / 1024 / 2048) loss + Generator EMA (0.999) + Grad Clipping
 Using Float32 for training.
 StudioDemo | epoch=1 | step=104 | time=19:04:10 | training_speed=0:00:52
-StudioDemo | epoch=2 | step=208 | time=19:04:59 | training_speed=0:00:49 | lowest_value=20.992 (epoch 1 and step 75)
-StudioDemo | epoch=7 | step=728 | time=19:09:05 | training_speed=0:00:49 | lowest_value=18.901 (epoch 7 and step 653)
-StudioDemo | epoch=13 | step=1352 | time=19:14:00 | training_speed=0:00:49 | lowest_value=16.913 (epoch 13 and step 1331)
-StudioDemo | epoch=44 | step=4576 | time=19:39:40 | training_speed=0:00:49 | lowest_value=15.394 (epoch 44 and step 4506)
-StudioDemo | epoch=51 | step=5304 | time=19:45:28 | training_speed=0:00:50 | lowest_value=14.616 (epoch 51 and step 5287)`;
+StudioDemo | epoch=2 | step=208 | time=19:04:59 | training_speed=0:00:49 | lowest_value=20.992 (epoch 1 and step 75) | ema_decay=0.999 | grad_norm=28.4
+StudioDemo | epoch=7 | step=728 | time=19:09:05 | training_speed=0:00:49 | lowest_value=18.901 (epoch 7 and step 653) | ema_decay=0.999 | grad_norm=26.1
+StudioDemo | epoch=13 | step=1352 | time=19:14:00 | training_speed=0:00:49 | lowest_value=16.913 (epoch 13 and step 1331) | ema_decay=0.999 | grad_norm=24.8
+StudioDemo | epoch=44 | step=4576 | time=19:39:40 | training_speed=0:00:49 | lowest_value=15.394 (epoch 44 and step 4506) | ema_decay=0.999 | grad_norm=23.9
+StudioDemo | epoch=51 | step=5304 | time=19:45:28 | training_speed=0:00:50 | lowest_value=14.616 (epoch 51 and step 5287) | ema_decay=0.999 | grad_norm=24.2`;
 
 export const SAMPLE_OVERTRAIN_LOG = `Starting preprocess with 4 processes...
 Preprocess completed in 4.12 seconds on 00:08:20 seconds of audio.

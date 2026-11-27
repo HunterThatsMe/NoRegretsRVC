@@ -35,7 +35,6 @@ interface SettingsViewProps {
   onUpdateGeneral: (updated: ApplioGeneralSettings) => void;
   onUpdateTrainingSettings: (updated: ApplioTrainingSettings) => void;
   onUpdatePrecisionAcrossProjects: (precision: TrainingPrecision) => void;
-  onUpdateBatchParityAcrossProjects?: (enabled: boolean) => void;
   onUpdateForkConfig: (updated: ForkConfig) => void;
 }
 
@@ -52,11 +51,9 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
   generalSettings,
   trainingSettings,
   forkConfig,
-  activeProject,
   onUpdateGeneral,
   onUpdateTrainingSettings,
   onUpdatePrecisionAcrossProjects,
-  onUpdateBatchParityAcrossProjects,
   onUpdateForkConfig,
 }) => {
   const { t } = useI18n();
@@ -118,8 +115,8 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
     }
   };
 
-  const handleRestartApplio = () => {
-    setRestartMsg('Restart signal queued for Kaggle WebUI runtime (port 6969).');
+  const handleRestartNoRegretsRvc = () => {
+    setRestartMsg('Restart signal queued for NoRegretsRVC WebUI runtime (port 6969).');
     setTimeout(() => setRestartMsg(''), 2500);
   };
 
@@ -471,7 +468,7 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
               </button>
               <button
                 type="button"
-                onClick={handleRestartApplio}
+                onClick={handleRestartNoRegretsRvc}
                 className="rounded-lg px-4 py-2 text-xs font-semibold text-white hover:bg-[#FF2B35] whitespace-nowrap shrink-0"
                 style={{ backgroundColor: ACCENT_HEX }}
               >
@@ -759,19 +756,6 @@ export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
                   className="h-4 w-4 rounded accent-[#E51923]"
                 />
                 <span>{t('settings.tr3.turbo')}</span>
-              </label>
-              <label className="flex items-start gap-2.5 rounded-lg border border-[#47161D] bg-[#100506] p-3 text-[13px] text-[#FDF7F7] cursor-pointer sm:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={activeProject?.batchParity1Gpu ?? true}
-                  onChange={(e) =>
-                    onUpdateBatchParityAcrossProjects?.(e.target.checked)
-                  }
-                  className="mt-0.5 h-4 w-4 rounded accent-[#E51923]"
-                />
-                <span>
-                  1-GPU Applio Batch Parity (&lt;300 Epoch Fix) — Default ON. Splits batch sizes &ge; 4 across dual T4s so under-300 epoch runs receive full Original Applio optimizer steps.
-                </span>
               </label>
             </div>
           </section>

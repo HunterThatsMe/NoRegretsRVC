@@ -75,11 +75,13 @@ export function parseTrainingNotebookOrLog(rawInput: string): TrainingAnalysis |
     /(?:([A-Za-z0-9_.-]+)\s*\|\s*)?epoch=(\d+)\s*\|\s*step=(\d+)(?:\s*\|\s*time=\d{1,2}:\d{2}:\d{2})?\s*\|\s*training_speed=(\d{1,2}:\d{2}:\d{2})(?:\s*\|\s*lowest_value=([0-9.]+)(?:\s*\(epoch\s+(\d+)(?:\s+and\s+step\s+(\d+))?\))?)?/g;
 
   const lines = text.split(/\r?\n/);
+  const multiScaleMelDetected = /multi[-_\s]?scale\s*mel|512\s*\/\s*1024\s*\/\s*2048|\bmel_ms\b/i.test(text);
   const globalKlVals: number[] = [];
   const globalFmVals: number[] = [];
   const globalDiscVals: number[] = [];
   const globalGenVals: number[] = [];
   const globalGradVals: number[] = [];
+  const globalEmaVals: number[] = [];
 
   for (const line of lines) {
     const kl = matchFloat(line, [
@@ -97,11 +99,15 @@ export function parseTrainingNotebookOrLog(rawInput: string): TrainingAnalysis |
     const grad = matchFloat(line, [
       /(?:grad_norm(?:_[dg])?|\bgrad)\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i,
     ]);
+    const emaVal = matchFloat(line, [
+      /(?:ema_decay|gen_ema|\bema)\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i,
+    ]);
     if (kl !== null) globalKlVals.push(kl);
     if (fm !== null) globalFmVals.push(fm);
     if (disc !== null) globalDiscVals.push(disc);
     if (gen !== null) globalGenVals.push(gen);
     if (grad !== null) globalGradVals.push(grad);
+    if (emaVal !== null) globalEmaVals.push(emaVal);
   }
 
   const points: TrainingEpochPoint[] = [];
@@ -122,7 +128,7 @@ export function parseTrainingNotebookOrLog(rawInput: string): TrainingAnalysis |
     const fullLine = text.slice(lineStart, nextNl === -1 ? text.length : nextNl);
 
     const melLoss = matchFloat(fullLine, [
-      /(?:loss\/g\/mel|mel_loss|loss_mel|\bmel)\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i,
+      /(?:loss\/g\/mel_ms|loss\/g\/mel|mel_ms_loss|mel_loss|loss_mel|\bmel_ms|\bmel)\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i,
     ]);
     const klLoss = matchFloat(fullLine, [
       /(?:loss\/g\/kl|kl_loss|loss_kl|\bkl)\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i,
@@ -212,6 +218,9 @@ export function parseTrainingNotebookOrLog(rawInput: string): TrainingAnalysis |
     avgGenLoss: avg(globalGenVals),
     latestGradNorm:
       globalGradVals.length > 0 ? Number(globalGradVals[globalGradVals.length - 1].toFixed(3)) : null,
+    emaDecay:
+      globalEmaVals.length > 0 ? Number(globalEmaVals[globalEmaVals.length - 1].toFixed(4)) : null,
+    multiScaleMel: multiScaleMelDetected,
     gpuDevices,
     vocoderDetected: vocoderMatch ? vocoderMatch[1] : 'HiFi-GAN',
     optimizerDetected: optimizerMatch ? optimizerMatch[1] : 'AdamW',
@@ -465,12 +474,18 @@ export function analyzeTrainingZones(
   const avgGen = genPoints.length > 0 ? genPoints[genPoints.length - 1] : analysis.avgGenLoss ?? null;
   const gradNorm = gradPoints.length > 0 ? gradPoints[gradPoints.length - 1] : analysis.latestGradNorm ?? null;
 
-  // Stability score (0–99)
-  const reboundPenalty = reboundFromMin * 38;
-  const jitterPenalty = avgUpwardJitter * 18;
-  const gradPenalty = gradNorm !== null && gradNorm > 95 ? Math.min(22, (gradNorm - 95) * 0.25) : 0;
+  // Stability score (0–99) — calibrated for clipped grad norms (<= 65 optimal) & Generator EMA smoothing
+  const emaActive = Boolean(analysis.emaDecay) || project?.melLoss === 'Multi-Scale' || Boolean(analysis.multiScaleMel);
+  const reboundPenalty = reboundFromMin * (emaActive ? 34 : 38);
+  const jitterPenalty = avgUpwardJitter * (emaActive ? 15 : 18);
+  const gradPenalty = gradNorm !== null && gradNorm > 85 ? Math.min(22, (gradNorm - 85) * 0.28) : 0;
   const discPenalty = avgDisc !== null ? Math.min(14, Math.abs(avgDisc - 1.9) * 5.5) : 0;
-  const stabilityScore = clamp(Math.round(97 - reboundPenalty - jitterPenalty - gradPenalty - discPenalty), 35, 99);
+  const emaStabilityBonus = analysis.emaDecay ? 2 : 0;
+  const stabilityScore = clamp(
+    Math.round(97 + emaStabilityBonus - reboundPenalty - jitterPenalty - gradPenalty - discPenalty),
+    35,
+    99
+  );
 
   // Dataset alignment & perceptual match score (0–99%)
   const melScore = clamp(
@@ -532,7 +547,7 @@ export function analyzeTrainingZones(
   const discCollapseRisk =
     avgDisc !== null && avgDisc < 1.65 ? clamp((1.65 - avgDisc) * 55, 0, 24) : 0;
   const gradSpikeRisk =
-    gradNorm !== null && gradNorm > 75 ? clamp((gradNorm - 75) * 0.45, 0, 22) : 0;
+    gradNorm !== null && gradNorm > 85 ? clamp((gradNorm - 85) * 0.52, 0, 22) : 0;
   const soundOverBoost =
     soundCheck === 'overtrained' ? 32 : soundCheck === 'clean' ? -15 : soundCheck === 'undertrained' ? -20 : 0;
   const overtrainingRiskPercent = clamp(
@@ -711,12 +726,15 @@ export function analyzeTrainingZones(
     })
     .slice(0, 4);
 
+  const isMultiScale = Boolean(analysis.multiScaleMel) || project?.melLoss === 'Multi-Scale';
   const metricBreakdown: MetricBreakdownItem[] = [
     {
-      label: 'Mel Reconstruction',
+      label: isMultiScale ? 'Multi-Scale Mel (512/1024/2048)' : 'Mel Reconstruction',
       value: `${minPoint.lowestLoss.toFixed(3)} (-${totalDrop.toFixed(2)})`,
       status: minPoint.lowestLoss <= 16 ? 'optimal' : minPoint.lowestLoss <= 22 ? 'watch' : 'high',
-      detail: `Best spectral error at ep ${minPoint.epoch}`,
+      detail: isMultiScale
+        ? `Multi-band FFT convergence · best at ep ${minPoint.epoch}`
+        : `Best spectral error at ep ${minPoint.epoch}`,
     },
     {
       label: 'KL Latent Alignment',
@@ -740,10 +758,20 @@ export function analyzeTrainingZones(
       detail: 'Generator vs. Multi-Period Discriminator parity',
     },
     {
-      label: 'Stability & Grad Norm',
-      value: gradNorm !== null ? `${stabilityScore}% (grad ${gradNorm})` : `${stabilityScore}% steady`,
+      label: 'EMA & Clipped Grad Stability',
+      value:
+        gradNorm !== null
+          ? `${stabilityScore}% (grad ${gradNorm}${analysis.emaDecay ? ` · ema ${analysis.emaDecay}` : ''})`
+          : analysis.emaDecay
+            ? `${stabilityScore}% (EMA ${analysis.emaDecay})`
+            : `${stabilityScore}% steady`,
       status: stabilityScore >= 80 ? 'optimal' : stabilityScore >= 62 ? 'watch' : 'high',
-      detail: reboundFromMin > 0.12 ? 'Tail rebound detected' : 'Low epoch-to-epoch variance',
+      detail:
+        reboundFromMin > 0.12
+          ? 'Tail rebound detected'
+          : gradNorm !== null && gradNorm <= 65
+            ? 'Clipped grad norm healthy · EMA smoothed'
+            : 'Low epoch-to-epoch variance',
     },
     {
       label: 'Dataset Fit Accuracy',

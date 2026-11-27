@@ -52,6 +52,26 @@ if active_tab == "Training":
                 key="nr_model_name_inp",
             )
             st.session_state["nr_model_name"] = st.session_state["nr_model_name_inp"]
+            if _st_components is not None:
+                _st_components.html(
+                    """<script>
+                    (function() {
+                      try {
+                        var doc = window.frameElement && window.frameElement.ownerDocument;
+                        if (!doc) return;
+                        var mInp = doc.querySelector('[data-testid="stTextInput"] input[aria-label="Model Name"]');
+                        if (mInp) {
+                          mInp.setAttribute("autocomplete", "off");
+                          mInp.setAttribute("autocorrect", "off");
+                          mInp.setAttribute("autocapitalize", "off");
+                          mInp.setAttribute("spellcheck", "false");
+                          mInp.setAttribute("name", "nr-model-name-noautofill");
+                        }
+                      } catch (e) {}
+                    })();
+                    </script>""",
+                    height=0,
+                )
         with s1_c2:
             st.markdown('<div class="nr-field-title">Sampling Rate</div><div class="nr-field-help">Target audio resolution in Hz for preprocessed slices and model synthesis.</div>', unsafe_allow_html=True)
             sr_opts = [32000, 40000, 48000]
@@ -139,13 +159,15 @@ if active_tab == "Training":
         st.markdown('<div class="nr-field-title">Dataset Path</div><div class="nr-field-help">Mounted Kaggle input path containing your dry vocal recordings.</div>', unsafe_allow_html=True)
         st.text_input(
             "Dataset Path",
-            placeholder="/kaggle/input/datasets/your-username/voice-dataset",
+            placeholder="",
             label_visibility="collapsed",
             key="nr_ds_path_inp",
         )
         st.session_state["nr_dataset_path"] = st.session_state["nr_ds_path_inp"]
         if detected_datasets:
             st.caption(f"✔ Auto-detected Kaggle dataset folder ({len(detected_datasets)} found): {st.session_state['nr_dataset_path']}")
+        elif not st.session_state["nr_dataset_path"].strip():
+            st.caption("⚠ No dataset detected yet — enter your mounted Kaggle dataset folder path above or upload clips with Dataset Creator.")
 
         ds_l, ds_r = st.columns([3, 1.3], gap="small")
         with ds_l:
@@ -260,7 +282,7 @@ if active_tab == "Training":
                 )
             with ef_r:
                 st.session_state["nr_loud_norm"] = st.checkbox(
-                    "Loudness normalization (-14 LUFS) — Levels every clip consistently without clipping",
+                    "Loudness normalization (-20 LUFS, On by default) — Balances clip volume cleanly without harsh loudness or clipping",
                     value=bool(st.session_state["nr_loud_norm"]),
                     key="nr_ln_chk",
                 )
@@ -392,18 +414,16 @@ if active_tab == "Training":
 
         st.session_state["nr_batch_size"] = _synced_slider_num(
             "Batch Size",
-            "Target batch size. 1-GPU Applio Batch Parity (ON in Settings -> Training) splits >= 4 across dual T4s so under-300 epoch runs match Original Applio step count.",
+            "Per-GPU batch size. Dual T4 automatically doubles effective batch across both GPUs (e.g. 2 -> 4, 4 -> 8).",
             "nr_batch_size",
             1,
             64,
             2,
         )
         bs_now = int(st.session_state["nr_batch_size"])
-        parity_now = bool(st.session_state.get("nr_batch_parity", True))
-        is_parity_split = parity_now and gpu_cnt_cur >= 2 and bs_now >= 4
-        per_gpu_bs = max(2, bs_now // gpu_cnt_cur) if is_parity_split else bs_now
+        per_gpu_bs = bs_now
         eff_now = per_gpu_bs * gpu_cnt_cur
-        eff_note = f"Split {per_gpu_bs}/GPU × {gpu_cnt_cur} T4s = {eff_now} Total (1-GPU Parity)" if is_parity_split else (f"Dual T4 Effective: {eff_now}" if gpu_cnt_cur >= 2 else f"Effective: {eff_now}")
+        eff_note = f"Dual T4 Effective: {eff_now}" if gpu_cnt_cur >= 2 else f"Effective: {eff_now}"
         st.markdown(
             f'<div style="display:flex;justify-content:space-between;align-items:center;background:#100506;border:1px solid #47161D;border-radius:8px;padding:7px 12px;margin:2px 0 10px 0;font-family:JetBrains Mono,monospace;font-size:12px">'
             f'<span style="color:#DFBFC3">Active Batch Allocation ({gpu_cnt_cur} GPU{"s" if gpu_cnt_cur != 1 else ""})</span>'
@@ -575,10 +595,8 @@ if active_tab == "Training":
                                 for old_f in mdir.glob("D_*.pth"):
                                     old_f.unlink(missing_ok=True)
                         bs_cfg = int(st.session_state["nr_batch_size"])
-                        parity_cfg = bool(st.session_state.get("nr_batch_parity", True))
-                        is_split_cfg = parity_cfg and gpu_cnt_cur >= 2 and bs_cfg >= 4
-                        per_gpu_cfg = max(2, bs_cfg // gpu_cnt_cur) if is_split_cfg else bs_cfg
-                        lr_scale_cfg = "1.0" if parity_cfg else ("1.35" if (gpu_cnt_cur >= 2 and bs_cfg >= 4) else "1.0")
+                        per_gpu_cfg = bs_cfg
+                        lr_scale_cfg = "1.0"
                         msg = _start_training_bg(
                             m_clean_cur,
                             {
@@ -643,11 +661,29 @@ if active_tab == "Training":
                 parsed_live = _parse_training_log(live_raw) if live_raw else None
                 if parsed_live and parsed_live.get("live"):
                     lp = parsed_live["live"]
-                    tot_ep_cur = max(1, int(st.session_state["nr_total_epoch"]))
-                    cur_ep = min(tot_ep_cur, int(lp["epoch"]))
+                    tot_ep_cur = int(st.session_state.get("nr_total_epoch") or 200)
+                    if ACTIVE_TRAIN_META.is_file():
+                        try:
+                            _tm_d = json.loads(ACTIVE_TRAIN_META.read_text(encoding="utf-8"))
+                            if (not m_now or str(_tm_d.get("model_name", "")).strip() == m_now) and _tm_d.get("total_epoch"):
+                                tot_ep_cur = int(_tm_d["total_epoch"])
+                        except Exception:
+                            pass
+                    if m_now:
+                        _args_live = _train_log_path(m_now).parent / "nr_train.args.json"
+                        if _args_live.is_file():
+                            try:
+                                _ad_d = json.loads(_args_live.read_text(encoding="utf-8"))
+                                if _ad_d.get("total_epoch"):
+                                    tot_ep_cur = int(_ad_d["total_epoch"])
+                            except Exception:
+                                pass
+                    tot_ep_cur = max(1, tot_ep_cur)
+                    pct = int(lp["percent"])
+                    ep_done_count = int(parsed_live.get("epochs_completed") or 0)
+                    cur_ep = min(tot_ep_cur, max(int(lp["epoch"]), ep_done_count + (0 if pct >= 100 else 1)))
                     batch_tot = max(1, int(lp["batch_total"]))
                     batch_dn = min(batch_tot, int(lp["batch_done"]))
-                    pct = int(lp["percent"])
                     it_s = float(lp["it_per_sec"])
                     ep_eta = max(0.0, (batch_tot - batch_dn) / max(0.1, it_s))
                     st.markdown(
@@ -663,19 +699,33 @@ if active_tab == "Training":
                     )
                     if run_now:
                         it_s_c = max(0.15, float(lp["it_per_sec"]))
-                        spds_all = [float(p["speed_sec"]) for p in (parsed_live.get("points") or []) if p.get("speed_sec") is not None]
+                        spds_all = [float(p["speed_sec"]) for p in (parsed_live.get("points") or []) if p.get("speed_sec") is not None and float(p["speed_sec"]) > 0]
                         if spds_all:
-                            tail_spds = spds_all[-8:]
+                            if len(spds_all) >= 4:
+                                _s_sorted = sorted(spds_all)
+                                _med = _s_sorted[len(_s_sorted) // 2]
+                                _devs = sorted(abs(x - _med) for x in _s_sorted)
+                                _mad = max(1.0, _devs[len(_devs) // 2])
+                                clean_spds = [x for x in spds_all if abs(x - _med) <= 2.5 * _mad] or spds_all
+                            else:
+                                clean_spds = spds_all
+                            tail_spds = clean_spds[-10:]
                             ema_spd = tail_spds[0]
                             for _s_val in tail_spds[1:]:
-                                ema_spd = 0.68 * ema_spd + 0.32 * _s_val
-                            ep_sec = ema_spd
-                            acc_pct = min(98, 46 + int(len(spds_all) * 4.5))
+                                ema_spd = 0.65 * ema_spd + 0.35 * _s_val
+                            trim_mean = sum(clean_spds) / len(clean_spds)
+                            ep_sec = 0.55 * ema_spd + 0.45 * trim_mean
+                            _var_penalty = 0.0
+                            if len(clean_spds) >= 3:
+                                _mean_c = max(1.0, trim_mean)
+                                _cv = (sum((x - _mean_c) ** 2 for x in clean_spds) / len(clean_spds)) ** 0.5 / _mean_c
+                                _var_penalty = min(14.0, _cv * 28.0)
+                            acc_pct = int(round(max(45.0, min(98.0, 56.0 + len(clean_spds) * 3.8 - _var_penalty))))
                         else:
                             ep_sec = max(1.0, batch_tot / it_s_c)
                             acc_pct = min(65, 28 + int((batch_dn / max(1, batch_tot)) * 32))
                         rem_cur_ep = max(0.0, min(ep_sec, (batch_tot - batch_dn) / it_s_c))
-                        rem_sec = int(max(0, rem_cur_ep + max(0, tot_ep_cur - int(lp["epoch"])) * ep_sec))
+                        rem_sec = int(max(0, rem_cur_ep + max(0, tot_ep_cur - cur_ep) * ep_sec))
                         mins, secs = divmod(rem_sec, 60)
                         hrs, mins = divmod(mins, 60)
                         rem_lbl = f"~{hrs} hr {mins} min" if hrs > 0 else f"~{mins} min {secs}s"
@@ -756,7 +806,7 @@ if active_tab == "Training":
 
         with st.expander("View Generated Kaggle core.py Pipeline Commands", expanded=False):
             m_cmd_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", m_clean_cur or "MyVoice")
-            ds_cmd = st.session_state["nr_dataset_path"].strip() or "/kaggle/input/datasets/your-username/voice-dataset"
+            ds_cmd = st.session_state["nr_dataset_path"].strip() or "<NO_DATASET_PATH_SET>"
             st.code(
                 "\\n".join([
                     "# 1. Preprocess dataset",

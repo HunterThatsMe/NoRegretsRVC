@@ -8,6 +8,7 @@ import {
   REPO_README_URL,
   REPO_URL,
 } from '../data/defaults';
+import { NR_LOGO_DATA_URI } from '../data/logoDataUri';
 import { FREE_SAMPLES } from '../data/freeSamples';
 import { DownloadModelItem, ForkConfig, VoiceModelProject } from '../types/studio';
 import { sanitizeModelName } from './rvcTuning';
@@ -18,8 +19,7 @@ export function buildStreamlitHeaderAndTabsPart1(
   downloads: DownloadModelItem[] = []
 ): string {
   const defaultModelName = project.name.trim() ? sanitizeModelName(project.name) : '';
-  const defaultDatasetPath =
-    project.datasetPath || '/kaggle/input/datasets/your-username/voice-dataset';
+  const defaultDatasetPath = project.datasetPath || '';
   const defaultRepo = (config.customRepoUrl || REPO_URL).trim();
 
   const enabledNav: string[] = [];
@@ -58,7 +58,7 @@ export function buildStreamlitHeaderAndTabsPart1(
   return `"""${BRAND_NAME} Streamlit WebUI — exact parity with ${BRAND_NAME} Studio."""
 from __future__ import annotations
 
-NR_BUILD_REV = 2026112604
+NR_BUILD_REV = 2026112701
 
 import hmac
 import html
@@ -394,6 +394,15 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.nr-nav-marker) .stButton > 
   justify-content: center;
   flex-shrink: 0;
 }
+.nr-badge-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(229, 25, 35, 0.35);
+  background: #160709;
+}
 .nr-brand-title {
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
@@ -654,7 +663,15 @@ LEGACY_CORE_PRETRAIN_NAME = ${JSON.stringify(LEGACY_CORE_PRETRAIN_NAME)}
 LEGACY_CORE_G_URL = ${JSON.stringify(LEGACY_CORE_PRETRAIN_G)}
 LEGACY_CORE_D_URL = ${JSON.stringify(LEGACY_CORE_PRETRAIN_D)}
 CONFIG_PATH = Path(now_dir) / "assets" / "config.json"
-ACTIVE_TRAIN_META = Path(now_dir) / "logs" / ".nr_active_train.json"
+NR_STATE_DIR = Path(now_dir) / ".nr_state"
+NR_STATE_DIR.mkdir(parents=True, exist_ok=True)
+for _legacy_nr in (Path(now_dir) / "logs").glob(".nr_*"):
+    try:
+        if _legacy_nr.is_file() or _legacy_nr.is_symlink():
+            _legacy_nr.unlink(missing_ok=True)
+    except Exception:
+        pass
+ACTIVE_TRAIN_META = NR_STATE_DIR / "nr_active_train.json"
 FREE_SAMPLES_CATALOG = json.loads(${JSON.stringify(freeSamplesJson)})
 BOOT_MANIFEST_DEFAULTS = json.loads(${JSON.stringify(bootManifestJson)})
 SUPPORTED_LANGUAGES = [
@@ -706,7 +723,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "Fusión",
         "Convert Text-to-Speech": "Convertir Texto a Voz",
         "Check for updates": "Buscar actualizaciones",
-        "Restart Applio": "Reiniciar Applio",
+        "Restart NoRegretsRVC": "Reiniciar NoRegretsRVC",
         "Set name": "Guardar nombre",
         "Update precision": "Actualizar precisión",
         "Load All 6 in Samples": "Cargar los 6 en Muestras",
@@ -739,7 +756,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "Fusão",
         "Convert Text-to-Speech": "Converter Texto para Fala",
         "Check for updates": "Verificar atualizações",
-        "Restart Applio": "Reiniciar Applio",
+        "Restart NoRegretsRVC": "Reiniciar NoRegretsRVC",
         "Set name": "Definir nome",
         "Update precision": "Atualizar precisão",
         "Load All 6 in Samples": "Carregar Todos os 6 em Amostras",
@@ -772,7 +789,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "Fusionner",
         "Convert Text-to-Speech": "Convertir en Parole",
         "Check for updates": "Vérifier les mises à jour",
-        "Restart Applio": "Redémarrer Applio",
+        "Restart NoRegretsRVC": "Redémarrer NoRegretsRVC",
         "Set name": "Définir le nom",
         "Update precision": "Mettre à jour la précision",
         "Load All 6 in Samples": "Charger les 6 dans Échantillons",
@@ -805,7 +822,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "ブレンド実行",
         "Convert Text-to-Speech": "音声合成を実行",
         "Check for updates": "更新を確認",
-        "Restart Applio": "Applio を再起動",
+        "Restart NoRegretsRVC": "NoRegretsRVC を再起動",
         "Set name": "名前を保存",
         "Update precision": "精度を更新",
         "Load All 6 in Samples": "全6件をサンプルへ読込",
@@ -838,7 +855,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "Fondi",
         "Convert Text-to-Speech": "Converti Testo in Voce",
         "Check for updates": "Controlla aggiornamenti",
-        "Restart Applio": "Riavvia Applio",
+        "Restart NoRegretsRVC": "Riavvia NoRegretsRVC",
         "Set name": "Imposta nome",
         "Update precision": "Aggiorna precisione",
         "Load All 6 in Samples": "Carica tutti i 6 in Campioni",
@@ -871,7 +888,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "Mengen",
         "Convert Text-to-Speech": "Tekst naar Spraak Converteren",
         "Check for updates": "Controleren op updates",
-        "Restart Applio": "Applio herstarten",
+        "Restart NoRegretsRVC": "NoRegretsRVC herstarten",
         "Set name": "Naam opslaan",
         "Update precision": "Precisie bijwerken",
         "Load All 6 in Samples": "Alle 6 in Voorbeelden laden",
@@ -904,7 +921,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "融合",
         "Convert Text-to-Speech": "合成语音",
         "Check for updates": "检查更新",
-        "Restart Applio": "重启 Applio",
+        "Restart NoRegretsRVC": "重启 NoRegretsRVC",
         "Set name": "保存作者名",
         "Update precision": "更新精度",
         "Load All 6 in Samples": "全部 6 个载入样本",
@@ -937,7 +954,7 @@ UI_STRINGS: dict[str, dict[str, str]] = {
         "Fusion": "دمج",
         "Convert Text-to-Speech": "تحويل النص إلى صوت",
         "Check for updates": "التحقق من التحديثات",
-        "Restart Applio": "إعادة تشغيل Applio",
+        "Restart NoRegretsRVC": "إعادة تشغيل NoRegretsRVC",
         "Set name": "تعيين الاسم",
         "Update precision": "تحديث الدقة",
         "Load All 6 in Samples": "تحميل الكل 6 في العينات",
@@ -1014,20 +1031,28 @@ except Exception:
 
 
 _EPOCH_TELEMETRY_RE = re.compile(
-    r"(?:epoch=\\d+\\s*\\|\\s*step=\\d+|training_speed=|lowest_value=|\\d+%\\|[^|]*\\||\\bit/s\\]|\\bs/it\\]|local_sources_watcher|No module named 'torchvision')",
+    r"(?:epoch=\\d+\\s*\\|\\s*step=\\d+|training_speed=|lowest_value=|\\d+%\\|[^|]*\\||\\bit/s\\]|\\bs/it\\]|\\bbatch=\\d+/\\d+|local_sources_watcher|No module named 'torchvision')",
     re.IGNORECASE,
 )
+
+
+def _collapse_cr_text(raw_text: str) -> str:
+    if not raw_text:
+        return ""
+    return "\\n".join(seg.rsplit("\\r", 1)[-1] for seg in raw_text.split("\\n"))
 
 
 def _filter_status_lines(raw_text: str, fallback: str = "") -> str:
     if not raw_text:
         return fallback
     kept: list[str] = []
-    for raw_ln in raw_text.replace("\\r", "\\n").splitlines():
+    for raw_ln in _collapse_cr_text(raw_text).splitlines():
         ln = raw_ln.strip()
         if not ln:
             continue
         if _EPOCH_TELEMETRY_RE.search(ln):
+            continue
+        if kept and kept[-1] == raw_ln.rstrip():
             continue
         kept.append(raw_ln.rstrip())
     cleaned = "\\n".join(kept[-60:]).strip()
@@ -1093,9 +1118,8 @@ def _safe_model_slug(model_name: str) -> str:
 
 
 def _task_paths(task_kind: str) -> tuple[Path, Path]:
-    logs_root = Path(now_dir) / "logs"
-    logs_root.mkdir(parents=True, exist_ok=True)
-    return logs_root / f".nr_task_{task_kind}.json", logs_root / f".nr_task_{task_kind}.log"
+    NR_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    return NR_STATE_DIR / f"nr_task_{task_kind}.json", NR_STATE_DIR / f"nr_task_{task_kind}.log"
 
 
 def _clear_fs_caches() -> None:
@@ -1260,6 +1284,11 @@ def _start_core_task_bg(
     )
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    if task_kind == "preprocess":
+        env["NR_LOUDNESS_NORM"] = "1" if str(kwargs.get("normalization_mode", "")).lower() == "post" else "0"
+        env["NR_LOUDNESS_TARGET_LUFS"] = "-20.0"
+    elif task_kind == "index":
+        env["NR_FAISS_NPROBE"] = "16"
     lf = open(log_p, "w", encoding="utf-8", buffering=1)
     start_banner = f"⏳ Starting {task_kind} for {model_name or 'model'}...\\n"
     lf.write(start_banner)
@@ -1740,7 +1769,7 @@ def _train_log_path(model_name: str) -> Path:
     return p
 
 
-def _read_train_log(model_name: str, max_chars: int = 16384) -> str:
+def _read_train_log(model_name: str, max_chars: int = 24576) -> str:
     candidates: list[Path] = []
     if model_name.strip():
         candidates.append(_train_log_path(model_name))
@@ -1753,9 +1782,10 @@ def _read_train_log(model_name: str, max_chars: int = 16384) -> str:
             pass
     for p in candidates:
         if p.is_file():
-            tail = _read_tail_text(p, max(32768, max_chars * 2))
+            tail = _read_tail_text(p, max(262144, max_chars * 8))
             if tail:
-                return tail[-max_chars:]
+                compacted = _collapse_cr_text(tail)
+                return compacted[-max_chars:]
     return ""
 
 
@@ -1909,6 +1939,10 @@ def _start_training_bg(model_name: str, kwargs: dict[str, Any]) -> str:
     env["PYTHONUNBUFFERED"] = "1"
     env["NR_TURBO_ENABLED"] = "1" if st.session_state.get("nr_turbo_training", True) else "0"
     env["NR_DDP_LR_SCALE"] = ddp_lr_scale
+    env["NR_MULTISCALE_MEL"] = "1"
+    env["NR_EMA_DECAY"] = "0.999"
+    env["NR_GRAD_CLIP_MAX"] = "50.0"
+    env["NR_FAISS_NPROBE"] = "16"
     lf = open(log_p, "w", encoding="utf-8", buffering=1)
     start_banner = f"⏳ Starting training for {model_name or 'model'}...\\n"
     lf.write(start_banner)
@@ -2246,11 +2280,13 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
     speed_re = re.compile(r"training_speed=([\\d:]+)", re.IGNORECASE)
     low_re = re.compile(r"lowest_value=([\\d.]+)(?:\\s*\\(epoch\\s*(\\d+))?", re.IGNORECASE)
     mel_re = re.compile(r"(?:loss/g/mel|loss_mel|mel_loss|mel)\\s*[:=]\\s*([\\d.]+)", re.IGNORECASE)
+    ms_mel_re = re.compile(r"(?:loss/g/mel_ms|mel_ms|multiscale_mel|mel_512_1024_2048)\\s*[:=]\\s*([\\d.]+)", re.IGNORECASE)
     kl_re = re.compile(r"(?:loss/g/kl|loss_kl|kl_loss|kl)\\s*[:=]\\s*([\\d.]+)", re.IGNORECASE)
     fm_re = re.compile(r"(?:loss/g/fm|loss_fm|fm_loss|fm)\\s*[:=]\\s*([\\d.]+)", re.IGNORECASE)
     disc_re = re.compile(r"(?:loss/d/total|loss_disc|disc_loss|d_total)\\s*[:=]\\s*([\\d.]+)", re.IGNORECASE)
     gen_re = re.compile(r"(?:loss/g/total|loss_gen|gen_loss|g_total)\\s*[:=]\\s*([\\d.]+)", re.IGNORECASE)
     grad_re = re.compile(r"(?:grad_norm_g|grad_norm|grad)\\s*[:=]\\s*([\\d.]+)", re.IGNORECASE)
+    ema_re = re.compile(r"(?:ema_decay|ema)\\s*[:=]\\s*(0\\.\\d+)", re.IGNORECASE)
     tqdm_re = re.compile(
         r"(\\d+)%\\|[^|]*\\|\\s*(?:batch=)?(\\d+)/(\\d+)\\s*\\[([\\d:]+)<([\\d:?]+),\\s*([\\d.]+)\\s*(it/s|s/it)\\]"
     )
@@ -2260,7 +2296,11 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
     last_tq_ep = None
     last_tq_stp = None
     best_recorded: tuple[float, int] | None = None
-    for raw_ln in text.splitlines():
+    latest_ema = None
+    for raw_ln in _collapse_cr_text(text).splitlines():
+        em_m = ema_re.search(raw_ln)
+        if em_m:
+            latest_ema = float(em_m.group(1))
         tq = tqdm_re.search(raw_ln)
         m = epoch_re.search(raw_ln)
         if tq:
@@ -2285,6 +2325,7 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
                     best_recorded = (low, low_ep)
             mel_m = mel_re.search(raw_ln)
             mel_v = float(mel_m.group(1)) if mel_m else low
+            ms_m = ms_mel_re.search(raw_ln)
             kl_m = kl_re.search(raw_ln)
             fm_m = fm_re.search(raw_ln)
             d_m = disc_re.search(raw_ln)
@@ -2296,6 +2337,7 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
                 "speed_sec": spd_sec,
                 "lowest_loss": mel_v,
                 "mel_loss": mel_v,
+                "ms_mel": float(ms_m.group(1)) if ms_m else None,
                 "kl_loss": float(kl_m.group(1)) if kl_m else None,
                 "fm_loss": float(fm_m.group(1)) if fm_m else None,
                 "disc_loss": float(d_m.group(1)) if d_m else None,
@@ -2310,10 +2352,12 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
         it_s = raw_val if unit == "it/s" else (1.0 / raw_val if raw_val > 0 else 1.0)
         max_ep = max(by_epoch.keys()) if by_epoch else 0
         max_stp = max((v["step"] for v in by_epoch.values()), default=0)
+        tq_pct = int(last_tq.group(1))
+        inferred_ep = max_ep if (tq_pct >= 100 and max_ep > 0) else (max_ep + 1)
         live = {
-            "epoch": last_tq_ep if last_tq_ep is not None else (max_ep + 1),
+            "epoch": last_tq_ep if last_tq_ep is not None else inferred_ep,
             "step": last_tq_stp if last_tq_stp is not None else (max_stp + int(last_tq.group(2))),
-            "percent": int(last_tq.group(1)),
+            "percent": tq_pct,
             "batch_done": int(last_tq.group(2)),
             "batch_total": int(last_tq.group(3)),
             "elapsed": last_tq.group(4),
@@ -2326,6 +2370,7 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
         return None
     spds = [p["speed_sec"] for p in points if p["speed_sec"] is not None]
     avg_spd = round(sum(spds) / len(spds), 1) if spds else 0.0
+    ms_mels = [p["ms_mel"] for p in points if p.get("ms_mel") is not None]
     kls = [p["kl_loss"] for p in points if p.get("kl_loss") is not None]
     fms = [p["fm_loss"] for p in points if p.get("fm_loss") is not None]
     discs = [p["disc_loss"] for p in points if p.get("disc_loss") is not None]
@@ -2338,11 +2383,13 @@ def _parse_training_log(raw_text: str) -> dict[str, Any] | None:
         "epochs_completed": ep_max,
         "avg_speed_sec": avg_spd,
         "lowest_loss_epoch": best_ep,
+        "avg_ms_mel": round(sum(ms_mels) / len(ms_mels), 3) if ms_mels else None,
         "avg_kl_loss": round(sum(kls) / len(kls), 3) if kls else None,
         "avg_fm_loss": round(sum(fms) / len(fms), 3) if fms else None,
         "avg_disc_loss": round(sum(discs) / len(discs), 3) if discs else None,
         "avg_gen_loss": round(sum(gens) / len(gens), 3) if gens else None,
         "latest_grad_norm": round(grads[-1], 2) if grads else None,
+        "ema_decay": latest_ema,
         "live": live,
     }
 
@@ -2370,6 +2417,7 @@ def _read_tb_metrics_for_model(model_name: str) -> dict[str, Any]:
                         return round(float(vals[-1].value), 3)
             return None
 
+        out["avg_ms_mel"] = _last_scalar(("loss/g/mel_ms", "mel_ms", "loss/g/mel"))
         out["avg_kl_loss"] = _last_scalar(("loss/g/kl", "loss_kl", "kl_loss"))
         out["avg_fm_loss"] = _last_scalar(("loss/g/fm", "loss_fm", "fm_loss"))
         out["avg_disc_loss"] = _last_scalar(("loss/d/total", "loss_disc", "disc_loss"))
@@ -2515,6 +2563,10 @@ def _analyze_zones(
     fm_val = parsed.get("avg_fm_loss")
     fm_score = max(35.0, min(98.0, 96.0 - max(0.0, (fm_val - 4.0) * 6.0))) if fm_val is not None else (mel_drop_score * 0.92)
     grad_val = parsed.get("latest_grad_norm")
+    grad_score = 96.0 if (grad_val is not None and grad_val <= 65.0) else (82.0 if (grad_val is None or grad_val <= 85.0) else max(40.0, 92.0 - (grad_val - 85.0) * 0.8))
+    ms_mel_val = parsed.get("avg_ms_mel")
+    ema_val = parsed.get("ema_decay")
+    ema_bonus = 3.0 if (ema_val is not None or not rebound) else 0.0
     step_density = round(latest_steps / max(1, ep_completed), 1)
     density_bonus = 92.0 if step_density >= 12 else (80.0 if step_density >= 5 else 68.0)
     feedback_adj = 6.0 if sound_feedback == "clean" else (-7.0 if sound_feedback == "overtrained" else (-5.0 if sound_feedback == "undertrained" else 0.0))
@@ -2526,9 +2578,10 @@ def _analyze_zones(
         + fm_score * 0.14
         + density_bonus * 0.12
         + feedback_adj
+        + ema_bonus
         - rebound_pen
     )))))
-    stability_pct = int(round(max(30.0, min(99.0, (disc_score * 0.45 + kl_score * 0.30 + (90.0 if not rebound else 64.0) * 0.25)))))
+    stability_pct = int(round(max(30.0, min(99.0, (disc_score * 0.38 + kl_score * 0.25 + grad_score * 0.17 + (90.0 if not rebound else 64.0) * 0.20)))))
 
     # Dual risk meters (Undertrained vs Overtrained) + Overall Verdict
     sat_pct = int(max(10, min(100, round((steps_per_clip / 18.0) * 100.0)))) if steps_per_clip is not None else int(max(12, min(100, round((ep_completed / 160.0) * 100.0))))
@@ -2541,7 +2594,7 @@ def _analyze_zones(
     rebound_risk = max(0.0, min(48.0, rebound_amt * 44.0))
     past_best_risk = max(0.0, min(26.0, (ep_completed - lowest_ep) * 0.45))
     disc_collapse_risk = max(0.0, min(24.0, (1.65 - disc_val) * 55.0)) if (disc_val is not None and disc_val < 1.65) else 0.0
-    grad_spike_risk = max(0.0, min(22.0, (grad_val - 75.0) * 0.45)) if (grad_val is not None and grad_val > 75.0) else 0.0
+    grad_spike_risk = max(0.0, min(20.0, (grad_val - 85.0) * 0.42)) if (grad_val is not None and grad_val > 85.0) else 0.0
     over_sound = 32 if sound_feedback == "overtrained" else (-15 if sound_feedback == "clean" else (-20 if sound_feedback == "undertrained" else 0))
     over_risk_pct = int(max(3, min(97, round(rebound_risk + past_best_risk + disc_collapse_risk + grad_spike_risk + over_sound))))
 
@@ -2594,9 +2647,9 @@ def _analyze_zones(
     drift_val = f"+{rebound_pct:.1f}% tail drift" if (best_loss and rebound_amt > 0.05) else "At curve minimum"
     metric_breakdown = [
         {
-            "label": "Mel Reconstruction",
+            "label": "Multi-Scale Mel (512/1024/2048)",
             "value": f"{best_loss:.3f} best" if best_loss is not None else "—",
-            "detail": f"{drop_ratio * 100:.1f}% reduction · {drift_val}",
+            "detail": (f"MS {ms_mel_val:.3f} · " if ms_mel_val is not None else "") + f"{drop_ratio * 100:.1f}% drop · {drift_val}",
             "status": mel_status,
         },
         {
@@ -2624,15 +2677,15 @@ def _analyze_zones(
             "status": "optimal" if (fm_val is None or fm_val <= 6.5) else "watch",
         },
         {
-            "label": "Dataset Scale & Steps/Ep",
-            "value": f"~{step_density} steps/ep",
-            "detail": f"{dataset_slices} sliced clips on disk" if dataset_slices > 0 else f"{ep_completed} epochs · {sr} Hz {vocoder}",
-            "status": "optimal" if step_density >= 8 else "watch",
+            "label": "EMA Weights & Clipped Grad",
+            "value": (f"Grad {grad_val:.1f} · EMA {ema_val:.3f}" if (grad_val is not None and ema_val is not None) else (f"Grad {grad_val:.1f} (clip <=50)" if grad_val is not None else f"EMA {(ema_val or 0.999):.3f} active")),
+            "detail": "Clipped gradient norms & 0.999 generator EMA smoothing",
+            "status": "optimal" if (grad_val is None or grad_val <= 65.0) else ("watch" if grad_val <= 85.0 else "warning"),
         },
         {
             "label": "Dataset Saturation",
             "value": f"{steps_per_clip} steps/clip" if steps_per_clip is not None else f"{sat_pct}% saturated",
-            "detail": f"{latest_steps} optimizer steps logged",
+            "detail": f"{latest_steps} steps · ~{step_density}/ep",
             "status": "optimal" if sat_pct >= 65 else ("watch" if sat_pct >= 35 else "warning"),
         },
         {
@@ -2747,6 +2800,50 @@ def _synced_slider_num(
             on_change=_from_sl,
             label_visibility="collapsed",
         )
+        if _st_components is not None:
+            _lbl_js = json.dumps(label)
+            _st_components.html(
+                f"""<script>
+                (function() {{
+                  try {{
+                    var doc = window.frameElement && window.frameElement.ownerDocument;
+                    if (!doc) return;
+                    var lbl = {_lbl_js};
+                    var minV = {min_v}, maxV = {max_v};
+                    var inp = doc.querySelector('[data-testid="stNumberInput"] input[aria-label="' + lbl + '"]');
+                    var sl = doc.querySelector('[data-testid="stSlider"] [role="slider"][aria-label="' + lbl + '"]');
+                    if (!inp || !sl || inp.dataset.nrLiveSync === "1") return;
+                    inp.dataset.nrLiveSync = "1";
+                    var debTimer = null;
+                    inp.addEventListener("input", function() {{
+                      var raw = parseFloat(inp.value);
+                      if (!isFinite(raw)) return;
+                      var clamped = Math.max(minV, Math.min(maxV, Math.round(raw)));
+                      var pct = maxV > minV ? ((clamped - minV) / (maxV - minV)) * 100 : 0;
+                      sl.setAttribute("aria-valuenow", String(clamped));
+                      sl.style.left = pct + "%";
+                      var track = sl.parentElement && sl.parentElement.querySelector('[data-baseweb="slider"] > div > div > div');
+                      if (track) track.style.width = pct + "%";
+                      var thumbVal = sl.querySelector("div");
+                      if (thumbVal) {{
+                        var tv = (thumbVal.textContent || "").trim();
+                        if (tv !== "" && !isNaN(Number(tv))) {{
+                          thumbVal.textContent = String(clamped);
+                        }}
+                      }}
+                      clearTimeout(debTimer);
+                      debTimer = setTimeout(function() {{
+                        if (String(clamped) !== String(inp.value)) {{
+                          inp.value = String(clamped);
+                        }}
+                        inp.dispatchEvent(new KeyboardEvent("keydown", {{ key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }}));
+                      }}, 420);
+                    }});
+                  }} catch (e) {{}}
+                }})();
+                </script>""",
+                height=0,
+            )
     return int(st.session_state[state_key])
 
 
@@ -2809,7 +2906,6 @@ def _ensure_state() -> None:
         "nr_embedder": ${JSON.stringify(project.embedder)},
         "nr_silent_files": ${project.silentTrainingFiles},
         "nr_batch_size": ${project.batchSize},
-        "nr_batch_parity": ${project.batchParity1Gpu ?? true ? 'True' : 'False'},
         "nr_save_every": ${project.saveEveryEpoch},
         "nr_total_epoch": ${project.totalEpoch},
         "nr_turbo_training": ${config.turboTraining ?? true ? 'True' : 'False'},
@@ -2898,7 +2994,7 @@ if _auth_pass and not st.session_state.get("nr_authed", False):
             st.markdown(
                 '<div class="nr-topbar" style="margin-bottom:14px">'
                 '<div class="nr-brand-left">'
-                '<div class="nr-badge">NR</div>'
+                '<img src="${NR_LOGO_DATA_URI}" class="nr-badge-img" alt="${BRAND_NAME} logo" />'
                 '<div><div><span class="nr-brand-title">${BRAND_NAME}</span>'
                 f'<span class="nr-brand-ver">Beta version {APP_VERSION}</span></div>'
                 '<div class="nr-brand-sub">Sign in with the credentials shown in your Kaggle Live Monitor</div>'
@@ -2920,15 +3016,13 @@ if _auth_pass and not st.session_state.get("nr_authed", False):
 # ==============================================================================
 gpu_cnt = max(1, len([x for x in str(st.session_state["nr_gpu_num"]).split("-") if x.strip()]))
 bs_top = int(st.session_state["nr_batch_size"])
-parity_top = bool(st.session_state.get("nr_batch_parity", True))
-per_gpu_top = max(2, bs_top // gpu_cnt) if (parity_top and gpu_cnt >= 2 and bs_top >= 4) else bs_top
-eff_batch = per_gpu_top * gpu_cnt
+eff_batch = bs_top * gpu_cnt
 active_model_label = st.session_state["nr_model_name"].strip() or "Untitled Model"
 
 st.markdown(
     f'<div class="nr-topbar">'
     f'<div class="nr-brand-left">'
-    f'<div class="nr-badge">NR</div>'
+    f'<img src="${NR_LOGO_DATA_URI}" class="nr-badge-img" alt="${BRAND_NAME} logo" />'
     f'<div><div><span class="nr-brand-title">${BRAND_NAME}</span>'
     f'<span class="nr-brand-ver">Beta version {APP_VERSION}</span></div>'
     f'<div class="nr-brand-sub">RVC Voice Model Training, Inference &amp; Kaggle Studio</div></div></div>'

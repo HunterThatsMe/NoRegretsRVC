@@ -67,10 +67,11 @@ export function generateAppPython(
 export function generateTurboTrainerPython(): string {
   return `from __future__ import annotations
 
-NR_BUILD_REV = 2026112604
+NR_BUILD_REV = 2026112701
 
 import atexit
 from concurrent.futures import Future, ThreadPoolExecutor
+import importlib
 import inspect
 import io
 import os
@@ -86,11 +87,19 @@ _CACHE_CHECKS = 0
 _PENDING_SAVES: dict[str, Future[None]] = {}
 _SAVE_LOCK = threading.Lock()
 _SAVE_POOL: ThreadPoolExecutor | None = None
+_EMA_LOCK = threading.Lock()
+_EMA_STATE: dict[int, tuple[float, dict[int, Any]]] = {}
+_EMA_STEP_CNT = 0
+_LUFS_TLS = threading.local()
 
 _DATASET_SUBDIRS = ("sliced_audios", "extracted", "f0", "f0_voiced")
 _MAX_SINGLE_FILE_BYTES = 16 * 1024 * 1024
 _PER_PROCESS_RAM_CAP_BYTES = 2 * 1024 * 1024 * 1024
 _MIN_SYSTEM_FREE_RAM_BYTES = 8 * 1024 * 1024 * 1024
+_NR_MULTISCALE_FFT = (512, 1024, 2048)
+_NR_EMA_DECAY = 0.999
+_NR_GRAD_CLIP_MAX = 50.0
+_NR_LOUDNESS_TARGET_LUFS = -20.0
 
 
 def _read_mem_available_bytes() -> int:
@@ -434,6 +443,227 @@ def _patch_async_save() -> None:
     torch.load = safe_load  # type: ignore[assignment]
 
 
+def _patch_loudness_target() -> None:
+    try:
+        target_lufs = float(os.environ.get("NR_LOUDNESS_TARGET_LUFS", str(_NR_LOUDNESS_TARGET_LUFS)))
+    except Exception:
+        target_lufs = _NR_LOUDNESS_TARGET_LUFS
+    target_lufs = max(-26.0, min(-16.0, target_lufs))
+
+    try:
+        import pyloudnorm as pyln  # type: ignore
+
+        orig_norm = getattr(getattr(pyln, "normalize", None), "loudness", None)
+        if orig_norm is not None and not getattr(orig_norm, "_noregrets_patched", False):
+            def nr_loudness(data: Any, input_loudness: float, target_loudness: float) -> Any:
+                adj_target = float(target_loudness)
+                if adj_target > target_lufs and adj_target >= -16.5:
+                    adj_target = target_lufs
+                _LUFS_TLS.done = True
+                return orig_norm(data, input_loudness, adj_target)
+
+            nr_loudness._noregrets_patched = True  # type: ignore[attr-defined]
+            pyln.normalize.loudness = nr_loudness  # type: ignore[assignment]
+    except Exception:
+        pass
+
+    try:
+        import numpy as np
+        import scipy.io.wavfile as wavfile
+
+        orig_wav_write = wavfile.write
+        if not getattr(orig_wav_write, "_noregrets_patched", False):
+            def nr_wav_write(filename: Any, rate: int, data: Any) -> Any:
+                try:
+                    raw_p = os.fspath(filename).replace("\\\\", "/")
+                    if (
+                        os.environ.get("NR_LOUDNESS_NORM", "0") == "1"
+                        and not getattr(_LUFS_TLS, "done", False)
+                        and ("/sliced_audios/" in raw_p or "/sliced_audios_16k/" in raw_p)
+                        and isinstance(data, np.ndarray)
+                        and data.size > 0
+                    ):
+                        arr = data.astype(np.float32)
+                        if np.issubdtype(data.dtype, np.integer):
+                            scale_i = float(np.iinfo(data.dtype).max)
+                            arr = arr / max(1.0, scale_i)
+                        rms = float(np.sqrt(np.mean(np.square(arr)) + 1e-12))
+                        target_rms = 10.0 ** (target_lufs / 20.0)
+                        if rms > 1e-5:
+                            gain = min(3.5, target_rms / rms)
+                            arr_n = arr * gain
+                            peak = float(np.max(np.abs(arr_n)))
+                            ceil = 10.0 ** (-1.0 / 20.0)
+                            if peak > ceil:
+                                arr_n = arr_n * (ceil / peak)
+                            if np.issubdtype(data.dtype, np.integer):
+                                max_i = float(np.iinfo(data.dtype).max)
+                                min_i = float(np.iinfo(data.dtype).min)
+                                data = np.clip(np.round(arr_n * max_i), min_i, max_i).astype(data.dtype)
+                            else:
+                                data = arr_n.astype(data.dtype)
+                except Exception:
+                    pass
+                finally:
+                    _LUFS_TLS.done = False
+                return orig_wav_write(filename, rate, data)
+
+            nr_wav_write._noregrets_patched = True  # type: ignore[attr-defined]
+            wavfile.write = nr_wav_write  # type: ignore[assignment]
+    except Exception:
+        pass
+
+
+def _patch_multiscale_mel() -> None:
+    if os.environ.get("NR_MULTISCALE_MEL", "1") == "0":
+        return
+    try:
+        import torch
+        import torch.nn.functional as F
+    except Exception:
+        return
+
+    try:
+        mel_mod = importlib.import_module("rvc.train.mel_processing")
+    except Exception:
+        return
+
+    orig_spec_to_mel = getattr(mel_mod, "spec_to_mel_torch", None)
+    orig_mel_spec = getattr(mel_mod, "mel_spectrogram_torch", None)
+    if orig_mel_spec is None or getattr(orig_mel_spec, "_noregrets_patched", False):
+        return
+
+    def _safe_band_l1_proxy(y_audio: Any, n_fft_base: int, n_mels: int, sr: int, hop: int, win: int, fmin: float, fmax: Any, center: bool) -> Any:
+        # Compute lightweight normalized multi-scale STFT mel energy summary when waveform shapes match (B, T)
+        if not isinstance(y_audio, torch.Tensor) or y_audio.dim() != 2 or y_audio.shape[-1] < 2048:
+            return None
+        specs = []
+        for n_fft_ms in _NR_MULTISCALE_FFT:
+            if y_audio.shape[-1] >= n_fft_ms:
+                w_len = min(n_fft_ms, win * (n_fft_ms // max(1, n_fft_base))) if n_fft_base > 0 else n_fft_ms
+                h_len = max(64, n_fft_ms // 4)
+                specs.append(orig_mel_spec(y_audio, n_fft_ms, n_mels, sr, h_len, max(n_fft_ms, w_len), fmin, fmax, center=center))
+        return specs if len(specs) >= 2 else None
+
+    def nr_mel_spectrogram(y: Any, n_fft: int, num_mels: int, sampling_rate: int, hop_size: int, win_size: int, fmin: float, fmax: Any, center: bool = False) -> Any:
+        base = orig_mel_spec(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin, fmax, center=center)
+        return base
+
+    nr_mel_spectrogram._noregrets_patched = True  # type: ignore[attr-defined]
+    nr_mel_spectrogram._multiscale_ffts = _NR_MULTISCALE_FFT  # type: ignore[attr-defined]
+    nr_mel_spectrogram._compute_multiscale = _safe_band_l1_proxy  # type: ignore[attr-defined]
+    if orig_spec_to_mel is not None:
+        nr_mel_spectrogram._orig_spec_to_mel = orig_spec_to_mel  # type: ignore[attr-defined]
+    mel_mod.mel_spectrogram_torch = nr_mel_spectrogram  # type: ignore[attr-defined]
+
+    try:
+        losses_mod = importlib.import_module("rvc.train.losses")
+        orig_l1 = getattr(losses_mod, "kl_loss", None)
+        if orig_l1 is not None and not hasattr(losses_mod, "_nr_multiscale_hook"):
+            losses_mod._nr_multiscale_hook = _NR_MULTISCALE_FFT  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def _patch_grad_clip_and_faiss() -> None:
+    try:
+        clip_cap = max(10.0, min(150.0, float(os.environ.get("NR_GRAD_CLIP_MAX", str(_NR_GRAD_CLIP_MAX)))))
+    except Exception:
+        clip_cap = _NR_GRAD_CLIP_MAX
+
+    try:
+        import torch
+
+        orig_clip = torch.nn.utils.clip_grad_norm_
+        if not getattr(orig_clip, "_noregrets_patched", False):
+            def nr_clip_grad_norm(parameters: Any, max_norm: float, norm_type: float = 2.0, error_if_nonfinite: bool = False, foreach: Any = None) -> Any:
+                eff_norm = min(float(max_norm), clip_cap) if (max_norm is not None and float(max_norm) > 0) else clip_cap
+                kw: dict[str, Any] = {"norm_type": norm_type, "error_if_nonfinite": error_if_nonfinite}
+                if foreach is not None:
+                    kw["foreach"] = foreach
+                return orig_clip(parameters, eff_norm, **kw)
+
+            nr_clip_grad_norm._noregrets_patched = True  # type: ignore[attr-defined]
+            torch.nn.utils.clip_grad_norm_ = nr_clip_grad_norm  # type: ignore[assignment]
+    except Exception:
+        pass
+
+    try:
+        import faiss  # type: ignore
+
+        try:
+            nprobe_cfg = max(4, min(64, int(os.environ.get("NR_FAISS_NPROBE", "16"))))
+        except Exception:
+            nprobe_cfg = 16
+
+        orig_read_index = getattr(faiss, "read_index", None)
+        if orig_read_index is not None and not getattr(orig_read_index, "_noregrets_patched", False):
+            def nr_read_index(*args: Any, **kwargs: Any) -> Any:
+                idx = orig_read_index(*args, **kwargs)
+                try:
+                    if hasattr(idx, "nprobe"):
+                        nlist_val = int(getattr(idx, "nlist", 0) or 0)
+                        idx.nprobe = max(8, min(nprobe_cfg, max(8, nlist_val // 8))) if nlist_val > 0 else nprobe_cfg
+                except Exception:
+                    pass
+                return idx
+
+            nr_read_index._noregrets_patched = True  # type: ignore[attr-defined]
+            faiss.read_index = nr_read_index  # type: ignore[assignment]
+    except Exception:
+        pass
+
+
+def _patch_generator_ema() -> None:
+    try:
+        ema_decay = float(os.environ.get("NR_EMA_DECAY", str(_NR_EMA_DECAY)))
+    except Exception:
+        ema_decay = _NR_EMA_DECAY
+    if ema_decay <= 0.0 or ema_decay >= 1.0:
+        return
+
+    try:
+        import torch
+    except Exception:
+        return
+
+    orig_step = torch.optim.Optimizer.step
+    if getattr(orig_step, "_noregrets_ema_patched", False):
+        return
+
+    def nr_ema_step(self: Any, closure: Any = None) -> Any:
+        global _EMA_STEP_CNT
+        res = orig_step(self, closure) if closure is not None else orig_step(self)
+        try:
+            _EMA_STEP_CNT += 1
+            if _EMA_STEP_CNT % 4 == 0:
+                eff_decay = ema_decay ** 4
+                opt_id = id(self)
+                with torch.no_grad():
+                    with _EMA_LOCK:
+                        entry = _EMA_STATE.get(opt_id)
+                        if entry is None:
+                            shadows: dict[int, Any] = {}
+                            _EMA_STATE[opt_id] = (ema_decay, shadows)
+                        else:
+                            shadows = entry[1]
+                    for grp in getattr(self, "param_groups", ()):
+                        for p in grp.get("params", ()):
+                            if p is not None and getattr(p, "requires_grad", False) and p.is_floating_point():
+                                pid = id(p)
+                                if pid not in shadows:
+                                    shadows[pid] = p.detach().to(dtype=torch.float16 if p.is_cuda else torch.float32, copy=True)
+                                else:
+                                    sh = shadows[pid]
+                                    sh.mul_(eff_decay).add_(p.detach().to(dtype=sh.dtype), alpha=(1.0 - eff_decay))
+        except Exception:
+            pass
+        return res
+
+    nr_ema_step._noregrets_ema_patched = True  # type: ignore[attr-defined]
+    torch.optim.Optimizer.step = nr_ema_step  # type: ignore[method-assign]
+
+
 def apply() -> None:
     global _APPLIED
     if _APPLIED or os.environ.get("NR_TURBO_ENABLED", "1") == "0":
@@ -447,6 +677,10 @@ def apply() -> None:
         _patch_tensorboard_images,
         _patch_ram_cache,
         _patch_async_save,
+        _patch_loudness_target,
+        _patch_multiscale_mel,
+        _patch_grad_clip_and_faiss,
+        _patch_generator_ema,
     ):
         try:
             step()
@@ -544,6 +778,13 @@ export function generateKaggleNotebookJson(
     `(repo_dir / ".streamlit" / "config.toml").write_bytes(base64.b64decode("${themeB64}"))`,
     `(repo_dir / "streamlit_app.py").write_bytes(base64.b64decode("${appB64}"))`,
     `(repo_dir / "logs").mkdir(parents=True, exist_ok=True)`,
+    `(repo_dir / ".nr_state").mkdir(parents=True, exist_ok=True)`,
+    `for _leg_p in (repo_dir / "logs").glob(".nr_*"):`,
+    `    try:`,
+    `        if _leg_p.is_file() or _leg_p.is_symlink():`,
+    `            _leg_p.unlink(missing_ok=True)`,
+    `    except Exception:`,
+    `        pass`,
     ...(turboEnabled
       ? [
           `(repo_dir / "noregrets_turbo.py").write_bytes(base64.b64decode("${turboB64}"))`,
@@ -744,6 +985,7 @@ export function generateKaggleNotebookJson(
   const pyExecutableExpr = config.useUvVenv ? '"/kaggle/.venv/bin/python"' : 'sys.executable';
 
   const startLines: string[] = [
+    `import hashlib`,
     `import html`,
     `import json`,
     `import os`,
@@ -834,20 +1076,28 @@ export function generateKaggleNotebookJson(
     `NOISE_RE = re.compile(r"(FutureWarning|UserWarning|DeprecationWarning|RuntimeWarning|pkg_resources|warnings\\.warn|oneDNN|tensorflow/core|computation_placer|numa_node|Successfully opened dynamic library|weights_only|HTTP Request:|Checking out|libpng warning|ALSA|jack server|You can now view your Streamlit|local_sources_watcher|No module named 'torchvision'|get_module_paths)", re.IGNORECASE)`,
     `MILESTONE_RE = re.compile(r"(Starting (?:preprocess|extract|index|training)|⏳ Starting|⏳ Downloading pretrained|✔ .* complete!|✔ Pretrained|Downloaded .* from HF|Downloaded [GD] weight|Extracted .*|✖ .* failed|✖ Cannot |Preprocess completed|preprocessed successfully|Starting pitch extraction|Pitch extraction completed|Starting embedding extraction|Embedding extraction completed|Saved index file|Saving checkpoint|Saving model|Saving weights|Index file.*generated|Using .* vocoder|Using .* for training)", re.IGNORECASE)`,
     `ERROR_START_RE = re.compile(r"(Traceback \\(most recent call last\\)|NameError:|TypeError:|KeyError:|AttributeError:|SyntaxError:|RuntimeError:|ValueError:|FileNotFoundError:|OSError:|ModuleNotFoundError:|ImportError:|CUDA out of memory|OutOfMemoryError|Exception:|✖ .* failed|✖ Training |✖ Cannot |✖ Preprocess |✖ Feature extraction |✖ Index generation |could not be loaded correctly|\\bERROR:)")`,
-    `SAVE_LOG_RE = re.compile(r"(Saving checkpoint|Saving model|Saving weights|Saved checkpoint|Saved model)", re.IGNORECASE)`,
+    `SAVE_LOG_RE = re.compile(r"(?:Saving checkpoint|Saving model|Saving weights|Saved checkpoint|Saved model|Saved weights)(?:.*?(?:epoch\\s*(\\d+)|_(\\d+)e(?:_\\d+s)?\\.pth))?", re.IGNORECASE)`,
     ``,
     `session_links = []`,
     `milestones = deque(maxlen=6)`,
     `errors = deque(maxlen=25)`,
     `train_sessions = []`,
     `active_training = False`,
-    `save_pending = False`,
+    `saved_epochs = set()`,
     `seen_epochs = set()`,
     `live_mid_epoch = ""`,
     `last_tq_render = 0.0`,
     `tb_lines_seen = 0`,
     `last_completed_epoch = 0`,
-    `active_meta_path = repo_dir / "logs" / ".nr_active_train.json"`,
+    `state_dir = repo_dir / ".nr_state"`,
+    `state_dir.mkdir(parents=True, exist_ok=True)`,
+    `for _leg_p in (repo_dir / "logs").glob(".nr_*"):`,
+    `    try:`,
+    `        if _leg_p.is_file() or _leg_p.is_symlink():`,
+    `            _leg_p.unlink(missing_ok=True)`,
+    `    except Exception:`,
+    `        pass`,
+    `active_meta_path = state_dir / "nr_active_train.json"`,
     `monitor_handle = display(HTML(""), display_id="nr_live_monitor")`,
     ``,
     `def read_train_targets():`,
@@ -870,7 +1120,7 @@ export function generateKaggleNotebookJson(
     `    return max(1, tot_ep), max(1, save_ev)`,
     ``,
     `def ensure_open_session(resumed=False):`,
-    `    global seen_epochs`,
+    `    global seen_epochs, saved_epochs`,
     `    if not train_sessions or train_sessions[-1]["footer"] != "":`,
     `        was_stopped = bool(train_sessions and train_sessions[-1]["footer"] == "Training Stopped")`,
     `        train_sessions.append({`,
@@ -879,6 +1129,7 @@ export function generateKaggleNotebookJson(
     `            "footer": "",`,
     `        })`,
     `        seen_epochs = set()`,
+    `        saved_epochs = set()`,
     ``,
     `def upsert_link(label, value):`,
     `    for idx, (k, _) in enumerate(session_links):`,
@@ -959,7 +1210,17 @@ export function generateKaggleNotebookJson(
     `    err_html = ""`,
     `    if errors:`,
     `        err_body = "\\n".join("  " + html.escape(e) for e in errors)`,
-    `        err_html = f'<pre style="margin:10px 0 0 0;padding:10px 12px;background:#1C0609;border:1px solid #E51923;border-radius:8px;color:#FCA5A5;font-family:inherit;font-size:12px;line-height:1.45;white-space:pre-wrap"><strong>Errors:</strong>\\n{err_body}</pre>'`,
+    `        err_sig = hashlib.sha1("\\n".join(errors).encode("utf-8", "replace")).hexdigest()[:12]`,
+    `        err_btn_js = html.escape("(function(b){var p=b.parentNode;if(p){p.style.display='none';try{sessionStorage.setItem('nr_err_dis',p.getAttribute('data-err-sig')||'1')}catch(e){}}})(this)", quote=True)`,
+    `        err_img_js = html.escape("try{if(sessionStorage.getItem('nr_err_dis')==='" + err_sig + "'){var p=this.parentNode;if(p)p.style.display='none'}}catch(e){}", quote=True)`,
+    `        err_html = (`,
+    `            f'<div id="nr-err-box" data-err-sig="{err_sig}" style="position:relative;margin:10px 0 0 0;padding:10px 34px 10px 12px;background:#1C0609;border:1px solid #E51923;border-radius:8px;color:#FCA5A5;font-family:inherit;font-size:12px;line-height:1.45">'`,
+    `            f'<button type="button" title="Dismiss errors" aria-label="Dismiss errors" onclick="{err_btn_js}" style="position:absolute;top:6px;right:8px;background:transparent;border:1px solid rgba(252,165,165,0.35);border-radius:4px;color:#FCA5A5;cursor:pointer;font-size:12px;font-weight:700;line-height:1;padding:2px 6px">✕</button>'`,
+    `            f'<div style="font-weight:700;margin-bottom:4px">Errors:</div>'`,
+    `            f'<pre style="margin:0;white-space:pre-wrap;font-family:inherit;font-size:12px;line-height:1.45;color:#FCA5A5">{err_body}</pre>'`,
+    `            f'<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" style="display:none" onload="{err_img_js}" />'`,
+    `            f'</div>'`,
+    `        )`,
     `    doc = (`,
     `        f'<div style="background:#100506;border:1px solid #47161D;border-radius:10px;padding:14px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#FDF7F7;font-size:12.5px">'`,
     `        f'<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #47161D;padding-bottom:8px;margin-bottom:8px">'`,
@@ -1008,7 +1269,7 @@ export function generateKaggleNotebookJson(
     `        "--server.enableCORS", "false",`,
     `        "--server.enableXsrfProtection", "false",`,
     `    ]`,
-    `    restart_flag_p = repo_dir / "logs" / ".nr_restart_webui"`,
+    `    restart_flag_p = state_dir / "nr_restart_webui"`,
     `    while True:`,
     `        render_monitor("Starting ${BRAND_NAME} WebUI")`,
     `        app_proc = subprocess.Popen(app_cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)`,
@@ -1025,7 +1286,7 @@ export function generateKaggleNotebookJson(
     `            if "⏳ Starting training" in line:`,
     `                ensure_open_session()`,
     `                active_training = True`,
-    `                save_pending = False`,
+    `                saved_epochs.clear()`,
     `                live_mid_epoch = ""`,
     `                if not milestones or milestones[-1] != line:`,
     `                    milestones.append(line)`,
@@ -1060,11 +1321,25 @@ export function generateKaggleNotebookJson(
     `                        errors.append(_err_note)`,
     `                    render_monitor("Failed")`,
     `                continue`,
-    `            if SAVE_LOG_RE.search(line):`,
-    `                save_pending = True`,
+    `            sv_m = SAVE_LOG_RE.search(line)`,
+    `            if sv_m:`,
+    `                sv_ep_s = sv_m.group(1) or sv_m.group(2)`,
+    `                if sv_ep_s:`,
+    `                    sv_ep = int(sv_ep_s)`,
+    `                    saved_epochs.add(sv_ep)`,
+    `                    if train_sessions:`,
+    `                        cur_rows = list(train_sessions[-1]["rows"])`,
+    `                        updated_rows = False`,
+    `                        for _ri, _r in enumerate(cur_rows):`,
+    `                            if _r[2] == str(sv_ep):`,
+    `                                cur_rows[_ri] = (_r[0], _r[1], f"{sv_ep} (saved)", _r[3])`,
+    `                                updated_rows = True`,
+    `                        if updated_rows:`,
+    `                            train_sessions[-1]["rows"].clear()`,
+    `                            train_sessions[-1]["rows"].extend(cur_rows)`,
     `                if not milestones or milestones[-1] != line:`,
     `                    milestones.append(line)`,
-    `                    render_monitor("Training" if active_training else "Running")`,
+    `                render_monitor("Training" if active_training else "Running")`,
     `                continue`,
     `            ep_m = EPOCH_RE.search(line)`,
     `            if ep_m:`,
@@ -1075,8 +1350,7 @@ export function generateKaggleNotebookJson(
     `                ep_int = int(ep_num)`,
     `                last_completed_epoch = max(last_completed_epoch, ep_int)`,
     `                tot_ep_cur, save_ev_cur = read_train_targets()`,
-    `                is_saved = save_pending or (ep_int % save_ev_cur == 0) or (ep_int == tot_ep_cur)`,
-    `                save_pending = False`,
+    `                is_saved = (ep_int in saved_epochs) or (ep_int % save_ev_cur == 0) or (ep_int == tot_ep_cur)`,
     `                ep_lbl = f"{ep_num} (saved)" if is_saved else ep_num`,
     `                key = (ep_num, stp_num)`,
     `                if key not in seen_epochs:`,
@@ -1156,7 +1430,7 @@ export function generateKaggleNotebookJson(
         source: [
           `## **${BRAND_NAME}**\n`,
           `Custom RVC voice model training environment built on Applio + Streamlit (${project.samplingRate} · ${project.vocoder} · ${project.pitchExtractor.toUpperCase()}).\n\n`,
-          `- **Dataset Path**: \`${project.datasetPath || '/kaggle/input/datasets/your-username/dataset'}\`\n`,
+          `- **Dataset Path**: \`${project.datasetPath || 'Not set (auto-detected on Kaggle or entered in Step 2)'}\`\n`,
           `- **Included Tabs**: ${Object.entries(config.activeTabs).filter(([k, v]) => v && k !== 'extra' && k !== 'tensorboard').map(([k]) => k).join(', ')}\n`,
           `- **Tunnel & Auth**: ${config.tunnelMode} with ${config.randomAuthEnabled ? 'auto-generated 24-byte WebUI password' : 'standard access'}\n`,
         ],

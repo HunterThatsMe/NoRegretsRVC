@@ -43,7 +43,6 @@ export interface VoiceModelProject {
   embedder: EmbedderModel;
   silentTrainingFiles: number;
   batchSize: number;
-  batchParity1Gpu?: boolean;
   saveEveryEpoch: number;
   totalEpoch: number;
   fp16: boolean;
@@ -247,6 +246,8 @@ export interface TrainingAnalysis {
   avgDiscLoss?: number | null;
   avgGenLoss?: number | null;
   latestGradNorm?: number | null;
+  emaDecay?: number | null;
+  multiScaleMel?: boolean;
   gpuDevices: string[];
   vocoderDetected: string;
   optimizerDetected: string;

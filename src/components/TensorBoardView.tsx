@@ -81,8 +81,7 @@ export const TensorBoardView: React.FC<TensorBoardViewProps> = React.memo(({
 
   const batchAlloc = resolvePerGpuBatchSize(
     activeProject.batchSize,
-    activeProject.gpuCount,
-    activeProject.batchParity1Gpu ?? true
+    activeProject.gpuCount
   );
   const effectiveBatch = batchAlloc.totalEffectiveBatchSize;
   const activeModelTitle = activeProject.name.trim() || 'Untitled Model';

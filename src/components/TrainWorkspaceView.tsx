@@ -62,10 +62,9 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
     () =>
       resolvePerGpuBatchSize(
         activeProject.batchSize,
-        activeProject.gpuCount,
-        activeProject.batchParity1Gpu ?? true
+        activeProject.gpuCount
       ),
-    [activeProject.batchSize, activeProject.gpuCount, activeProject.batchParity1Gpu]
+    [activeProject.batchSize, activeProject.gpuCount]
   );
 
   // Lazy Model & VRAM Info calculation: skip work when panel is closed
@@ -142,8 +141,7 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
       const prev = trainingRunRef.current;
       const effBatch = resolvePerGpuBatchSize(
         proj.batchSize,
-        proj.gpuCount,
-        proj.batchParity1Gpu ?? true
+        proj.gpuCount
       ).totalEffectiveBatchSize;
       const batchTotal = Math.max(24, Math.min(120, Math.round(240 / effBatch)));
       const batchStep = Math.max(4, Math.round(batchTotal / 6));
@@ -288,8 +286,7 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
     } else {
       const effBatch = resolvePerGpuBatchSize(
         proj.batchSize,
-        proj.gpuCount,
-        proj.batchParity1Gpu ?? true
+        proj.gpuCount
       ).totalEffectiveBatchSize;
       const batchTotal = Math.max(24, Math.min(120, Math.round(240 / effBatch)));
       const baseItPerSec = proj.vocoder === 'RefineGAN' ? 1.85 : proj.vocoder === 'MRF HiFi-GAN' ? 2.25 : 2.65;
@@ -386,7 +383,7 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
               <div className="flex-1 min-w-[200px]">
                 <div className="flex items-center justify-between gap-3 text-[11px] mb-1.5">
                   <span className="text-[#AD8288] whitespace-nowrap">
-                    T4 VRAM ({activeProject.gpuCount === 2 ? 'Dual 16GB' : 'Single 16GB'}) · {batchAlloc.perGpuBatchSize}×{batchAlloc.gpuCount} = {batchAlloc.totalEffectiveBatchSize} eff. batch{batchAlloc.isParitySplit ? ' (1-GPU Parity)' : ''}
+                    T4 VRAM ({activeProject.gpuCount === 2 ? 'Dual 16GB' : 'Single 16GB'}) · {batchAlloc.perGpuBatchSize}×{batchAlloc.gpuCount} = {batchAlloc.totalEffectiveBatchSize} eff. batch
                   </span>
                   <span
                     className={`font-mono font-semibold tabular-nums whitespace-nowrap ${
@@ -466,7 +463,6 @@ export const TrainWorkspaceView: React.FC<TrainWorkspaceViewProps> = React.memo(
       <Step4TrainModelCard
         batchSize={activeProject.batchSize}
         gpuCount={activeProject.gpuCount}
-        batchParity1Gpu={activeProject.batchParity1Gpu ?? true}
         saveEveryEpoch={activeProject.saveEveryEpoch}
         totalEpoch={activeProject.totalEpoch}
         turboTraining={turboTraining}

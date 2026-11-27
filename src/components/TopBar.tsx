@@ -50,12 +50,11 @@ export const TopBar: React.FC<TopBarProps> = React.memo(
         {/* Top Framed Brand & Active Model Banner */}
         <div className="rounded-xl border border-[#47161D] bg-[#160709] px-5 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
-            <span
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white font-display font-bold text-base"
-              style={{ backgroundColor: ACCENT_HEX }}
-            >
-              NR
-            </span>
+            <img
+              src="/assets/aistudio/noregrets_rvc_logo_v2_7ca7320e.png"
+              alt="NoRegretsRVC logo"
+              className="h-10 w-10 shrink-0 rounded-lg object-cover"
+            />
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-2.5">
                 <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#FDF7F7] leading-none">
@@ -75,8 +74,7 @@ export const TopBar: React.FC<TopBarProps> = React.memo(
             {(() => {
               const batchAlloc = resolvePerGpuBatchSize(
                 activeProject.batchSize,
-                activeProject.gpuCount,
-                activeProject.batchParity1Gpu ?? true
+                activeProject.gpuCount
               );
               return (
                 <div className="rounded-lg border border-[#47161D] bg-[#100506] px-3.5 py-2 text-right">

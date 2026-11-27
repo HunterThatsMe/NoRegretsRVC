@@ -55,7 +55,9 @@ test('default project uses empty model name, 32000 SR, batch 2, save every 5, to
   assert.equal(def.fp16, false);
   assert.equal(def.truncateSilenceEnabled, false);
   assert.equal(def.noiseFilter, false);
-  assert.equal(def.loudnessNorm, false);
+  assert.equal(def.loudnessNorm, true);
+  assert.equal(def.loudnessTargetLufs, -20);
+  assert.equal(def.datasetPath, '');
   assert.equal(def.saveOnlyLatest, true);
   assert.equal(def.saveEveryWeights, true);
   assert.equal(def.pretrained, true);
@@ -98,8 +100,16 @@ test('buildTrainPipelineCommands emits truncate silence & loudness flags when to
   };
   const trainCmd = buildTrainPipelineCommands(withToggles);
   assert.match(trainCmd, /--truncate_silence True --silence_duration_ms 450/);
-  assert.match(trainCmd, /--process_effects True --loudness_target -14/);
+  assert.match(trainCmd, /--process_effects True --loudness_target -20/);
   assert.match(trainCmd, /--fp16 False/);
+
+  const noDatasetCmd = buildTrainPipelineCommands({
+    ...DEFAULT_PROJECTS[0],
+    name: 'TestVoice',
+    datasetPath: '',
+  });
+  assert.match(noDatasetCmd, /--dataset_path "<NO_DATASET_PATH_SET>"/);
+  assert.doesNotMatch(noDatasetCmd, /your-username/);
 
   const inferCmd = buildInferCliCommand(DEFAULT_STUDIO_STATE.convertAudio);
   assert.match(inferCmd, /python core\.py infer/);
@@ -471,7 +481,7 @@ test('estimateTrainingCompletion computes remaining time, Today/Tomorrow rollove
   assert.match(warmup.finishDayLabel, /^Today · /);
   assert.ok(warmup.finishTimeLabel.length >= 4);
   assert.ok(warmup.accuracyPercent >= 28 && warmup.accuracyPercent <= 45);
-  assert.match(warmup.disclaimer, /rough estimate/i);
+  assert.match(warmup.disclaimer, /warmup-filtered|live estimate/i);
 
   const stable = estimateTrainingCompletion({
     currentEpoch: 25,
@@ -641,16 +651,20 @@ test('collectUnusedBlobUrls protects duplicate queue items and Recent Generated 
   assert.deepEqual(deadAfterClear, [sharedBlob, savedConverted]);
 });
 
-test('multi-metric logParser scores datasetMatchPercent, stabilityScore, and metricBreakdown accurately', () => {
+test('multi-metric logParser scores datasetMatchPercent, stabilityScore, Multi-Scale Mel, EMA, clipped grad norm, and metricBreakdown accurately', () => {
   const multiMetricLog = [
-    'epoch=5 | step=100 | training_speed=0:00:45 | lowest_value=24.50 (epoch 5) | mel=24.5 kl=1.45 fm=6.8 d_total=2.15 g_total=32.1',
-    'epoch=10 | step=200 | training_speed=0:00:44 | lowest_value=17.80 (epoch 10) | mel=17.8 kl=1.10 fm=4.9 d_total=1.92 g_total=25.4',
-    'epoch=15 | step=300 | training_speed=0:00:44 | lowest_value=13.90 (epoch 15) | mel=13.9 kl=0.88 fm=3.8 d_total=1.88 g_total=20.2',
+    'Using Multi-Scale Mel (512 / 1024 / 2048) | ema_decay=0.999',
+    'epoch=5 | step=100 | training_speed=0:00:45 | lowest_value=24.50 (epoch 5) | mel=24.5 kl=1.45 fm=6.8 d_total=2.15 g_total=32.1 grad_norm=42.0',
+    'epoch=10 | step=200 | training_speed=0:00:44 | lowest_value=17.80 (epoch 10) | mel=17.8 kl=1.10 fm=4.9 d_total=1.92 g_total=25.4 grad_norm=48.5',
+    'epoch=15 | step=300 | training_speed=0:00:44 | lowest_value=13.90 (epoch 15) | mel=13.9 kl=0.88 fm=3.8 d_total=1.88 g_total=20.2 grad_norm=58.0',
   ].join('\n');
 
   const analysis = parseTrainingNotebookOrLog(multiMetricLog);
   assert.ok(analysis);
   assert.equal(analysis.epochsCompleted, 15);
+  assert.equal(analysis.multiScaleMel, true);
+  assert.equal(analysis.emaDecay, 0.999);
+  assert.equal(analysis.latestGradNorm, 58);
   assert.ok(analysis.avgKlLoss != null && analysis.avgKlLoss < 1.5);
   assert.ok(analysis.avgFmLoss != null && analysis.avgFmLoss < 7);
   assert.ok(analysis.avgDiscLoss != null);
@@ -659,36 +673,60 @@ test('multi-metric logParser scores datasetMatchPercent, stabilityScore, and met
   const zone = analyzeTrainingZones(analysis, DEFAULT_PROJECTS[0], 'clean');
   assert.equal(zone.confidence, 'observed');
   assert.ok(zone.datasetMatchPercent != null && zone.datasetMatchPercent >= 70 && zone.datasetMatchPercent <= 99);
-  assert.ok(zone.stabilityScore != null && zone.stabilityScore >= 50 && zone.stabilityScore <= 99);
+  assert.ok(zone.stabilityScore != null && zone.stabilityScore >= 80 && zone.stabilityScore <= 99);
   assert.ok(Array.isArray(zone.metricBreakdown) && zone.metricBreakdown.length === 8);
+  assert.equal(zone.metricBreakdown[0].label, 'Multi-Scale Mel (512/1024/2048)');
+  assert.equal(zone.metricBreakdown[4].label, 'EMA & Clipped Grad Stability');
+  assert.match(zone.metricBreakdown[4].detail, /Clipped grad norm healthy/);
   assert.ok(Array.isArray(zone.rankedCheckpoints) && zone.rankedCheckpoints.length > 0);
   assert.equal(typeof zone.undertrainingRiskPercent, 'number');
   assert.equal(typeof zone.overtrainingRiskPercent, 'number');
 });
 
-test('1-GPU Applio batch parity splits per-GPU batch on Dual T4 and overtraining detector catches tail rebound', () => {
-  const split = resolvePerGpuBatchSize(8, 2, true);
-  assert.equal(split.perGpuBatchSize, 4);
-  assert.equal(split.totalEffectiveBatchSize, 8);
-  assert.equal(split.isParitySplit, true);
-
-  const rawDual = resolvePerGpuBatchSize(8, 2, false);
+test('raw Dual T4 batch scaling keeps per-GPU batch unsplit, outlier-trimmed ETA ignores stall spikes, and overtraining detector catches tail rebound', () => {
+  const rawDual = resolvePerGpuBatchSize(8, 2);
   assert.equal(rawDual.perGpuBatchSize, 8);
   assert.equal(rawDual.totalEffectiveBatchSize, 16);
   assert.equal(rawDual.isParitySplit, false);
 
   const cmd = buildTrainPipelineCommands({
     ...DEFAULT_PROJECTS[0],
-    name: 'ParityModel',
+    name: 'DualT4Model',
     batchSize: 8,
     gpuCount: 2,
-    batchParity1Gpu: true,
     totalEpoch: 200,
     saveEveryEpoch: 100,
   });
-  assert.match(cmd, /--batch_size 4\b/);
+  assert.match(cmd, /--batch_size 8\b/);
   assert.match(cmd, /--save_every_epoch 100\b/);
   assert.match(cmd, /--total_epoch 200\b/);
+
+  // Warmup/save stall spikes in history should be trimmed by median+MAD ETA smoothing
+  const baseMorning = new Date(2026, 10, 20, 10, 0, 0).getTime();
+  const cleanEta = estimateTrainingCompletion({
+    currentEpoch: 11,
+    totalEpoch: 111,
+    batchDone: 0,
+    batchTotal: 100,
+    elapsedSec: 500,
+    itPerSec: 2.0,
+    completedEpochDurationsSec: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
+    nowMs: baseMorning,
+  });
+  const spikedEta = estimateTrainingCompletion({
+    currentEpoch: 11,
+    totalEpoch: 111,
+    batchDone: 0,
+    batchTotal: 100,
+    elapsedSec: 800,
+    itPerSec: 2.0,
+    completedEpochDurationsSec: [210, 50, 50, 50, 180, 50, 50, 50, 50, 50],
+    nowMs: baseMorning,
+  });
+  assert.ok(
+    Math.abs(spikedEta.remainingSeconds - cleanEta.remainingSeconds) < 120,
+    `Expected outlier-trimmed ETA near ${cleanEta.remainingSeconds}s, got ${spikedEta.remainingSeconds}s`
+  );
 
   const overParsed = parseTrainingNotebookOrLog(SAMPLE_OVERTRAIN_LOG);
   assert.ok(overParsed);
@@ -721,8 +759,10 @@ test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.
   assert.match(appFile.content, /Lossless Turbo Training/);
   assert.match(appFile.content, /NR_TURBO_ENABLED/);
   assert.match(appFile.content, /Dual T4 Effective:/);
-  assert.match(appFile.content, /1-GPU Applio Batch Parity/);
-  assert.match(appFile.content, /nr_batch_parity/);
+  assert.match(appFile.content, /Raw 2x per-GPU batch/);
+  assert.doesNotMatch(appFile.content, /1-GPU Applio Batch Parity/);
+  assert.doesNotMatch(appFile.content, /nr_batch_parity/);
+  assert.doesNotMatch(appFile.content, /nr_set_batch_parity_chk/);
   assert.match(appFile.content, /Legacy Core 1\.5 V2/);
   assert.match(appFile.content, /G_LegacyCore1\.5v2\.pth/);
   assert.match(appFile.content, /D_LegacyCore1\.5v2\.pth/);
@@ -730,12 +770,21 @@ test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.
   assert.match(appFile.content, /data-nr-fin-ms=/);
   assert.doesNotMatch(appFile.content, /window\.parent\.document/);
   assert.doesNotMatch(appFile.content, /Default 1-Click Pretrain/);
-  assert.doesNotMatch(appFile.content, /key="nr_t_batch_parity"/);
-  assert.match(appFile.content, /key="nr_set_batch_parity_chk"/);
   assert.match(appFile.content, /0 epochs completed/);
-  assert.match(appFile.content, /Auto-detected Kaggle dataset folder/);
+  assert.match(appFile.content, /No dataset detected yet/);
+  assert.match(appFile.content, /-20 LUFS, On by default/);
+  assert.match(appFile.content, /"nr_loud_norm": True/);
+  assert.doesNotMatch(appFile.content, /"nr_dataset_path":\s*"\/kaggle\/input/);
   assert.match(appFile.content, /Dataset Similarity Fit/);
   assert.match(appFile.content, /Apply WebUI Update & Restart/);
+  assert.match(appFile.content, /Restart NoRegretsRVC/);
+  assert.doesNotMatch(appFile.content, /Restart Applio/);
+  assert.match(appFile.content, /nr-badge-img/);
+  assert.match(appFile.content, /autocomplete", "off"/);
+  assert.match(appFile.content, /nrLiveSync/);
+  assert.match(appFile.content, /def _collapse_cr_text/);
+  assert.match(appFile.content, /NR_STATE_DIR = Path\(now_dir\) \/ "\.nr_state"/);
+  assert.doesNotMatch(appFile.content, /LOGS_DIR \/ "\.nr_/);
   assert.match(appFile.content, /st\.session_state\["nr_trn_log"\] = msg\n\s+st\.rerun\(\)/);
   assert.match(appFile.content, /def _resolve_pretrain_path/);
   assert.match(appFile.content, /SimpleNamespace/);
@@ -746,20 +795,35 @@ test('generated Kaggle WebUI, noregrets_turbo.py, and notebook include all v0.0.
   assert.match(appFile.content, /Undertrained Risk/);
   assert.match(appFile.content, /Overtrained Risk/);
 
-  // noregrets_turbo.py sync exported weight save fix + NR_TURBO_ENABLED check + world_size DDP tuning
+  // noregrets_turbo.py sync exported weight save fix + EMA + Multi-Scale Mel + grad clip + FAISS nprobe + -20 LUFS
   assert.match(turboFile.content, /NR_TURBO_ENABLED/);
   assert.match(turboFile.content, /WORLD_SIZE/);
   assert.match(turboFile.content, /def flush_saves/);
   assert.match(turboFile.content, /fname\.startswith\(\("G_", "D_"\)\)/);
+  assert.match(turboFile.content, /def _patch_loudness_target/);
+  assert.match(turboFile.content, /-20\.0/);
+  assert.match(turboFile.content, /def _patch_multiscale_mel/);
+  assert.match(turboFile.content, /512, 1024, 2048/);
+  assert.match(turboFile.content, /def _patch_grad_clip_and_faiss/);
+  assert.match(turboFile.content, /clip_grad_norm_/);
+  assert.match(turboFile.content, /nprobe/);
+  assert.match(turboFile.content, /def _patch_generator_ema/);
 
-  // Kaggle Notebook Cell 1 & Cell 2 in-place HTML crimson monitor checks
+  // Kaggle Notebook Cell 1 & Cell 2 checks (.nr_state, saved_epochs fix, dismissible error card, empty dataset path)
   assert.match(nbFile.content, /credentials\.toml/);
   assert.match(nbFile.content, /raw\.githubusercontent\.com\/HunterThatsMe\/NoRegretsRVC\/main/);
   assert.match(nbFile.content, /display_id=\\"nr_live_monitor\\"/);
   assert.match(nbFile.content, /color:#E51923/);
   assert.match(nbFile.content, /background:#E51923/);
   assert.doesNotMatch(nbFile.content, /🟥|⬛/);
+  assert.doesNotMatch(nbFile.content, /Dataset Path.*your-username/);
   assert.match(nbFile.content, /\(saved\)/);
+  assert.match(nbFile.content, /saved_epochs/);
+  assert.doesNotMatch(nbFile.content, /save_pending/);
+  assert.match(nbFile.content, /nr-err-box/);
+  assert.match(nbFile.content, /nr_err_dis/);
+  assert.match(nbFile.content, /Dismiss errors/);
+  assert.match(nbFile.content, /\.nr_state/);
   assert.match(nbFile.content, /Training Stopped/);
   assert.match(nbFile.content, /Training Resumed/);
   assert.match(nbFile.content, /Training Complete/);

@@ -90,9 +90,16 @@ export const Step1ModelSettingsCard: React.FC<Step1Props> = React.memo(
             </p>
             <input
               id="train-model-name"
+              name="nr-model-name-field"
               type="text"
               value={name}
               placeholder="Enter model name (e.g. VocalModel-32k)"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
               onChange={(e) => onPatchProject({ name: e.target.value })}
               className="w-full rounded-lg bg-[#100506] border border-[#47161D] px-3 py-2 text-sm text-[#FDF7F7] placeholder-[#AD8288]/45 focus:outline-none focus:border-[#E51923]"
             />
@@ -328,9 +335,17 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
             type="text"
             value={datasetPath}
             onChange={(e) => onPatchProject({ datasetPath: e.target.value })}
-            placeholder="/kaggle/input/datasets/your-username/voice-dataset"
+            placeholder=""
             className="w-full rounded-lg bg-[#100506] border border-[#47161D] px-3 py-2 text-sm font-mono text-[#FDF7F7] placeholder-[#AD8288]/45 focus:outline-none focus:border-[#E51923]"
           />
+          {!datasetPath.trim() && (
+            <p
+              data-testid="dataset-not-detected-note"
+              className="text-xs text-[#F59E0B] mt-1.5"
+            >
+              No dataset detected yet — enter your mounted Kaggle dataset folder path above or click Refresh.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -420,9 +435,16 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="font-mono text-xs text-[#FDF7F7] tabular-nums">
-                        {chunkLengthSec}
-                      </span>
+                      <NumberStepperInput
+                        value={chunkLengthSec}
+                        min={0.5}
+                        max={5}
+                        step={0.1}
+                        ariaLabel="Chunk length value"
+                        unitName="chunk length"
+                        inputWidthClass="w-12"
+                        onChange={(next) => onPatchProject({ chunkLengthSec: next })}
+                      />
                       <button
                         type="button"
                         onClick={() => onPatchProject({ chunkLengthSec: 3 })}
@@ -465,9 +487,16 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="font-mono text-xs text-[#FDF7F7] tabular-nums">
-                        {overlapLengthSec}
-                      </span>
+                      <NumberStepperInput
+                        value={overlapLengthSec}
+                        min={0}
+                        max={0.4}
+                        step={0.05}
+                        ariaLabel="Overlap length value"
+                        unitName="overlap length"
+                        inputWidthClass="w-12"
+                        onChange={(next) => onPatchProject({ overlapLengthSec: next })}
+                      />
                       <button
                         type="button"
                         onClick={() =>
@@ -541,7 +570,7 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                 </div>
               </div>
 
-              {/* Noise Filter & Loudness Normalization (both off by default) */}
+              {/* Noise Filter (off) & Loudness Normalization (-20 LUFS ON by default) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label className="flex items-start gap-2.5 rounded-lg border border-[#47161D] bg-[#160709] p-3 cursor-pointer">
                   <input
@@ -576,7 +605,7 @@ export const Step2PrepareDatasetCard: React.FC<Step2Props> = React.memo(
                       Loudness normalization ({loudnessTargetLufs} LUFS)
                     </span>
                     <span className="block text-[13px] text-[#C89EA4] mt-0.5">
-                      Levels every clip to a punchy, consistent -14 LUFS loudness without introducing clipping.
+                      On by default: balances clips to a clean, transparent {loudnessTargetLufs} LUFS without loudness distortion.
                     </span>
                   </div>
                 </label>
@@ -707,9 +736,16 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="rounded-md border border-[#47161D] bg-[#160709] px-2.5 py-1 font-mono text-xs text-[#FDF7F7] tabular-nums">
-              {silentTrainingFiles}
-            </span>
+            <NumberStepperInput
+              value={silentTrainingFiles}
+              min={0}
+              max={10}
+              step={1}
+              ariaLabel="Silent training files value"
+              unitName="silent training files"
+              inputWidthClass="w-10"
+              onChange={(next) => onPatchProject({ silentTrainingFiles: next })}
+            />
             <button
               type="button"
               onClick={() => onPatchProject({ silentTrainingFiles: 0 })}
@@ -763,7 +799,6 @@ export const Step3ExtractFeaturesCard: React.FC<Step3Props> = React.memo(
 interface Step4Props {
   batchSize: number;
   gpuCount?: 1 | 2;
-  batchParity1Gpu?: boolean;
   saveEveryEpoch: number;
   totalEpoch: number;
   turboTraining?: boolean;
@@ -856,7 +891,6 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
   const {
     batchSize,
     gpuCount = 2,
-    batchParity1Gpu = true,
     saveEveryEpoch,
     totalEpoch,
     turboTraining = true,
@@ -886,8 +920,8 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
   const [step4AdvOpen, setStep4AdvOpen] = useState(false);
   const [pretrainRefreshMsg, setPretrainRefreshMsg] = useState('');
   const batchAlloc = useMemo(
-    () => resolvePerGpuBatchSize(batchSize, gpuCount, batchParity1Gpu),
-    [batchSize, gpuCount, batchParity1Gpu]
+    () => resolvePerGpuBatchSize(batchSize, gpuCount),
+    [batchSize, gpuCount]
   );
   const safeBatchTotal = Math.max(1, batchTotal);
   const batchPct = Math.min(100, Math.round((batchDone / safeBatchTotal) * 100));
@@ -953,17 +987,15 @@ export const Step4TrainModelCard: React.FC<Step4Props> = React.memo((props) => {
                   data-testid="effective-batch-badge"
                   className="rounded-md border border-[#E51923]/55 bg-[#200B0E] px-2 py-0.5 text-[11px] font-mono font-semibold text-[#FDF7F7] tabular-nums"
                 >
-                  {batchAlloc.isParitySplit
-                    ? `Split ${batchAlloc.perGpuBatchSize}/GPU × ${gpuCount} T4s = ${batchAlloc.totalEffectiveBatchSize} Total (1-GPU Parity)`
-                    : gpuCount > 1
-                      ? `Batch ${batchSize} · Dual T4 Effective: ${batchSize * gpuCount}`
-                      : `Effective Batch: ${batchSize}`}
+                  {gpuCount > 1
+                    ? `Batch ${batchSize} · Dual T4 Effective: ${batchAlloc.totalEffectiveBatchSize}`
+                    : `Effective Batch: ${batchSize}`}
                 </span>
               </div>
               <p className="text-[13px] text-[#C89EA4] mt-0.5">
-                {batchAlloc.isParitySplit
-                  ? `Splitting evenly (${batchAlloc.perGpuBatchSize} per GPU × ${gpuCount}) so total effective batch stays ${batchAlloc.totalEffectiveBatchSize}, matching 1-GPU Original Applio optimizer steps/epoch.`
-                  : '1-GPU Applio Batch Parity (<300 Epoch Fix) is ON by default in Settings → Training and splits ≥4 batches across dual T4s.'}
+                {gpuCount > 1
+                  ? `Per-GPU batch size. On Dual T4 GPUs, effective total batch is doubled (${batchSize} -> ${batchAlloc.totalEffectiveBatchSize}).`
+                  : `Per-GPU batch size (${batchSize} effective).`}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
